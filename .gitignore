@@ -1,0 +1,22 @@
+# Dependências
+node_modules
+.pnp
+.pnp.js
+
+# Produção
+dist
+build
+
+# Variáveis de Ambiente (CRÍTICO)
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Supabase e Logs
+supabase/.temp
+.DS_Store
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*

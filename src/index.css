@@ -1,0 +1,59 @@
+@import "tailwindcss";
+
+@theme {
+  --color-apple-blue: #0071E3;
+  --color-surface: var(--bg-surface);
+  --color-ink: var(--text-ink);
+}
+
+:root {
+  --bg-primary: #FFFFFF;
+  --bg-secondary: #F5F5F7;
+  --bg-surface: #FFFFFF;
+  --text-ink: #1D1D1F;
+  --text-ink-secondary: #6E6E73;
+  --border-subtle: rgba(0, 0, 0, 0.1);
+}
+
+.dark {
+  --bg-primary: #000000;
+  --bg-secondary: #121212;
+  --bg-surface: #1C1C1E;
+  --text-ink: #F5F5F7;
+  --text-ink-secondary: #86868B;
+  --border-subtle: rgba(255, 255, 255, 0.1);
+}
+
+body {
+  @apply bg-[var(--bg-primary)] text-[var(--bg-ink)] transition-colors duration-300;
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Force Light Theme Base */
+.light-theme-base {
+  --bg-primary: #FFFFFF;
+  --bg-secondary: #F5F5F7;
+  --bg-surface: #FFFFFF;
+  --text-ink: #1D1D1F;
+  --text-ink-secondary: #6E6E73;
+  --border-subtle: rgba(0, 0, 0, 0.1);
+}
+
+/* Force Dark Theme Base */
+.dark-theme-base {
+  --bg-primary: #000000;
+  --bg-secondary: #121212;
+  --bg-surface: #1C1C1E;
+  --text-ink: #F5F5F7;
+  --text-ink-secondary: #86868B;
+  --border-subtle: rgba(255, 255, 255, 0.1);
+}
+
+@layer utilities {
+  .glass-card {
+    @apply backdrop-blur-md bg-white/70 dark:bg-black/70 border border-white/20 dark:border-white/10;
+  }
+}
