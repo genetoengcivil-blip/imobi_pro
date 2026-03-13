@@ -1,4 +1,4 @@
-import { HashRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { GlobalProvider, useGlobal } from './context/GlobalContext';
 import Layout from './components/Layout';
 import LoginPage from './pages/LoginPage';
@@ -15,7 +15,7 @@ import ContractsPage from './pages/ContractsPage';
 import WhatsAppPage from './pages/WhatsAppPage';
 import LandingPage from './pages/LandingPage';
 import WelcomePage from './pages/WelcomePage';
-import SuccessPage from './pages/SuccessPage'; // Importar a página de sucesso
+import SuccessPage from './pages/SuccessPage'; 
 
 // Institucionais
 import HelpCenterPage from './pages/HelpCenterPage';
@@ -28,6 +28,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const location = useLocation();
 
   if (!user) {
+    // Se não estiver logado, manda para o login
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
@@ -39,21 +40,19 @@ export default function App() {
     <GlobalProvider>
       <Router>
         <Routes>
-          {/* A Raiz (/) agora é a Landing Page oficial */}
+          {/* PÁGINAS PÚBLICAS (Abertas para todos) */}
           <Route path="/" element={<LandingPage />} />
-          
-          {/* Funil de Vendas e Checkout */}
-          <Route path="/welcome" element={<WelcomePage />} />
-          <Route path="/sucesso" element={<SuccessPage />} />
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/sucesso" element={<SuccessPage />} />
+          <Route path="/welcome" element={<WelcomePage />} />
           
-          {/* Institucionais */}
+          {/* INSTITUCIONAIS */}
           <Route path="/help" element={<HelpCenterPage />} />
           <Route path="/terms" element={<TermsPage />} />
           <Route path="/privacy" element={<PrivacyPage />} />
           <Route path="/updates" element={<UpdatesPage />} />
           
-          {/* Main App Routes (Protegidas) */}
+          {/* ÁREA DO CORRETOR (Protegida) */}
           <Route path="/app" element={
             <ProtectedRoute>
               <Layout />
@@ -73,7 +72,7 @@ export default function App() {
             <Route path="site" element={<SitePage />} />
           </Route>
 
-          {/* Fallback: Se digitar qualquer coisa errada, volta para a Landing */}
+          {/* Redireciona qualquer rota inexistente para a Landing Page */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Router>
