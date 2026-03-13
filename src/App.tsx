@@ -28,7 +28,6 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const location = useLocation();
 
   if (!user) {
-    // Se não estiver logado, manda para o login
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
@@ -40,19 +39,18 @@ export default function App() {
     <GlobalProvider>
       <Router>
         <Routes>
-          {/* PÁGINAS PÚBLICAS (Abertas para todos) */}
+          {/* --- ROTAS PÚBLICAS --- */}
           <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/sucesso" element={<SuccessPage />} />
           <Route path="/welcome" element={<WelcomePage />} />
           
-          {/* INSTITUCIONAIS */}
           <Route path="/help" element={<HelpCenterPage />} />
           <Route path="/terms" element={<TermsPage />} />
           <Route path="/privacy" element={<PrivacyPage />} />
           <Route path="/updates" element={<UpdatesPage />} />
           
-          {/* ÁREA DO CORRETOR (Protegida) */}
+          {/* --- ROTA PRIVADA (CRM) --- */}
           <Route path="/app" element={
             <ProtectedRoute>
               <Layout />
@@ -72,7 +70,7 @@ export default function App() {
             <Route path="site" element={<SitePage />} />
           </Route>
 
-          {/* Redireciona qualquer rota inexistente para a Landing Page */}
+          {/* Redirecionamento de segurança */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Router>
