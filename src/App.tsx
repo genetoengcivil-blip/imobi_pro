@@ -24,8 +24,10 @@ import PrivacyPage from './pages/PrivacyPage';
 import UpdatesPage from './pages/UpdatesPage';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { user } = useGlobal();
+  const { user, loading } = useGlobal();
   const location = useLocation();
+
+  if (loading) return null; // Aguarda o Supabase verificar a sessão
 
   if (!user) {
     return <Navigate to="/login" state={{ from: location }} replace />;
@@ -39,7 +41,8 @@ export default function App() {
     <GlobalProvider>
       <Router>
         <Routes>
-          {/* --- ROTAS PÚBLICAS --- */}
+          {/* --- ROTAS PÚBLICAS (NÃO PROTEGIDAS) --- */}
+          {/* Agora a raiz "/" abre a Landing Page sem pedir login */}
           <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/sucesso" element={<SuccessPage />} />
@@ -50,7 +53,7 @@ export default function App() {
           <Route path="/privacy" element={<PrivacyPage />} />
           <Route path="/updates" element={<UpdatesPage />} />
           
-          {/* --- ROTA PRIVADA (CRM) --- */}
+          {/* --- ROTAS PRIVADAS (ÁREA DO CORRETOR) --- */}
           <Route path="/app" element={
             <ProtectedRoute>
               <Layout />
@@ -70,7 +73,7 @@ export default function App() {
             <Route path="site" element={<SitePage />} />
           </Route>
 
-          {/* Redirecionamento de segurança */}
+          {/* Redirecionamento automático para a Landing se a página não existir */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Router>
