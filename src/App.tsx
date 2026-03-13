@@ -15,8 +15,9 @@ import ContractsPage from './pages/ContractsPage';
 import WhatsAppPage from './pages/WhatsAppPage';
 import LandingPage from './pages/LandingPage';
 import WelcomePage from './pages/WelcomePage';
+import SuccessPage from './pages/SuccessPage'; // Importar a página de sucesso
 
-// Importação das novas páginas institucionais
+// Institucionais
 import HelpCenterPage from './pages/HelpCenterPage';
 import TermsPage from './pages/TermsPage';
 import PrivacyPage from './pages/PrivacyPage';
@@ -38,22 +39,27 @@ export default function App() {
     <GlobalProvider>
       <Router>
         <Routes>
-          {/* Public Sales Funnel & Institutional */}
-          <Route path="/landing" element={<LandingPage />} />
+          {/* A Raiz (/) agora é a Landing Page oficial */}
+          <Route path="/" element={<LandingPage />} />
+          
+          {/* Funil de Vendas e Checkout */}
           <Route path="/welcome" element={<WelcomePage />} />
+          <Route path="/sucesso" element={<SuccessPage />} />
           <Route path="/login" element={<LoginPage />} />
+          
+          {/* Institucionais */}
           <Route path="/help" element={<HelpCenterPage />} />
           <Route path="/terms" element={<TermsPage />} />
           <Route path="/privacy" element={<PrivacyPage />} />
           <Route path="/updates" element={<UpdatesPage />} />
           
-          {/* Main App Routes (Protected) */}
-          <Route path="/" element={
+          {/* Main App Routes (Protegidas) */}
+          <Route path="/app" element={
             <ProtectedRoute>
               <Layout />
             </ProtectedRoute>
           }>
-            <Route index element={<Navigate to="/dashboard" replace />} />
+            <Route index element={<Navigate to="/app/dashboard" replace />} />
             <Route path="dashboard" element={<DashboardPage />} />
             <Route path="leads" element={<LeadsListPage />} />
             <Route path="pipeline" element={<PipelinePage />} />
@@ -67,8 +73,8 @@ export default function App() {
             <Route path="site" element={<SitePage />} />
           </Route>
 
-          {/* Catch-all */}
-          <Route path="*" element={<Navigate to="/landing" replace />} />
+          {/* Fallback: Se digitar qualquer coisa errada, volta para a Landing */}
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Router>
     </GlobalProvider>
