@@ -28,7 +28,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     return (
       <div className="min-h-screen bg-black flex flex-col items-center justify-center">
         <div className="w-12 h-12 border-4 border-[#0217ff] border-t-transparent rounded-full animate-spin"></div>
-        <p className="mt-4 text-[#0217ff] text-[10px] font-black uppercase tracking-widest animate-pulse">Carregando CRM...</p>
+        <p className="mt-4 text-[#0217ff] text-[10px] font-black uppercase tracking-widest animate-pulse">Sincronizando Banco de Dados...</p>
       </div>
     );
   }
@@ -76,7 +76,6 @@ export default function App() {
             <Route path="profile" element={<ProfilePage />} />
             <Route path="settings" element={<SettingsPage />} />
             <Route path="site" element={<SitePage />} />
-            {/* Redirecionamento de segurança para links errados dentro do app */}
             <Route path="*" element={<Navigate to="/app/dashboard" replace />} />
           </Route>
 
