@@ -28,7 +28,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useGlobal();
   const location = useLocation();
 
-  if (loading) return null; // Aguarda o Supabase verificar a sessão
+  if (loading) return null; 
 
   if (!user) {
     return <Navigate to="/login" state={{ from: location }} replace />;
@@ -43,7 +43,6 @@ export default function App() {
       <Router>
         <Routes>
           {/* --- ROTAS PÚBLICAS (NÃO PROTEGIDAS) --- */}
-          {/* Agora a raiz "/" abre a Landing Page sem pedir login */}
           <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/sucesso" element={<SuccessPage />} />
@@ -53,6 +52,9 @@ export default function App() {
           <Route path="/terms" element={<TermsPage />} />
           <Route path="/privacy" element={<PrivacyPage />} />
           <Route path="/updates" element={<UpdatesPage />} />
+          
+          {/* Rota do Site Público (Movida para fora de /app para evitar o erro e permitir acesso público) */}
+          <Route path="/v/:slug" element={<PublicSitePage />} />
           
           {/* --- ROTAS PRIVADAS (ÁREA DO CORRETOR) --- */}
           <Route path="/app" element={
@@ -72,7 +74,6 @@ export default function App() {
             <Route path="profile" element={<ProfilePage />} />
             <Route path="settings" element={<SettingsPage />} />
             <Route path="site" element={<SitePage />} />
-            <Route path="/v/:slug" element={<PublicSitePage />} />
           </Route>
 
           {/* Redirecionamento automático para a Landing se a página não existir */}
