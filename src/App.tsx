@@ -38,10 +38,10 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
   if (user.status === 'bloqueado') {
     return (
-      <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center p-6 text-center font-sans">
+      <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center p-6 text-center">
         <h1 className="text-4xl font-black mb-4 uppercase italic">Acesso Suspenso</h1>
-        <p className="text-zinc-500 max-w-md mb-8 italic">Identificamos uma pendência na sua assinatura. Regularize o seu pagamento para retomar o acesso.</p>
-        <a href="https://wa.me/5583986667292" className="px-8 py-4 bg-[#0217ff] rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-lg shadow-blue-600/20">Falar com Suporte</a>
+        <p className="text-zinc-500 max-w-md mb-8 italic text-lg">Identificamos uma pendência na sua assinatura. Regularize seu pagamento para retomar o acesso.</p>
+        <a href="https://wa.me/5583986667292" className="px-10 py-5 bg-[#0217ff] rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl shadow-blue-600/30">Falar com Suporte</a>
       </div>
     );
   }
