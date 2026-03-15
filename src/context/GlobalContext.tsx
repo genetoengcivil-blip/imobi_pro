@@ -82,26 +82,22 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return () => subscription.unsubscribe();
   }, []);
 
-  // 🛡️ ADICIONAR LEAD - Sem alerts feios, apenas devolve o erro para o Formulário tratar
+  // 🛡️ ADICIONAR LEAD - Agora usa a memória (user.id) e evita o erro de Lock do Supabase!
   const addLead = async (leadData: any) => {
-    const { data: { session } } = await supabase.auth.getSession();
-    const payload = { ...leadData, user_id: session?.user?.id };
+    const payload = { ...leadData, user_id: user?.id };
     
     const { data, error } = await supabase.from('leads').insert([payload]).select();
     
-    if (error) throw error; // Envia o erro para o Toast do formulário
+    if (error) throw error; 
 
     if (data && data.length > 0) {
       setLeads(prev => [{ ...data[0], createdAt: data[0].created_at }, ...prev]);
     }
   };
 
-  // 🛡️ ATUALIZAR LEAD - Sem alerts feios
   const updateLead = async (id: string, updates: any) => {
     const { error } = await supabase.from('leads').update(updates).eq('id', id);
-    
-    if (error) throw error; // Envia o erro para o Toast do formulário
-
+    if (error) throw error; 
     setLeads(prev => prev.map(l => l.id === id ? { ...l, ...updates } : l));
   };
 
@@ -111,8 +107,9 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const addProperty = async (prop: any) => {
-    const { data: { session } } = await supabase.auth.getSession();
-    const { data } = await supabase.from('properties').insert([{ ...prop, user_id: session?.user?.id }]).select();
+    // Também ajustado para propriedades para evitar o erro no futuro
+    const payload = { ...prop, user_id: user?.id };
+    const { data } = await supabase.from('properties').insert([payload]).select();
     if (data) setProperties(prev => [data[0], ...prev]);
   };
 
