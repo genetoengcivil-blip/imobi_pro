@@ -43,7 +43,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
         <p className="text-zinc-500 max-w-md mb-8 italic">
           Identificamos uma pendência na sua assinatura. Regularize seu pagamento para retomar o acesso aos seus leads.
         </p>
-        <a href="https://wa.me/5583986667292" className="px-8 py-4 bg-[#0217ff] rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-lg shadow-blue-600/20">
+        <a href="https://wa.me/5583986667292" className="px-8 py-4 bg-[#0217ff] rounded-2xl font-black uppercase text-[10px] tracking-widest">
           Falar com Suporte
         </a>
       </div>
@@ -81,7 +81,7 @@ export default function App() {
             <Route path="site" element={<SitePage />} />
           </Route>
 
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path=\"*\" element={<Navigate to=\"/\" replace />} />
         </Routes>
       </Router>
     </GlobalProvider>
