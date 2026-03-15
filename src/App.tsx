@@ -16,6 +16,7 @@ import WhatsAppPage from './pages/WhatsAppPage';
 import LandingPage from './pages/LandingPage';
 import WelcomePage from './pages/WelcomePage';
 import SuccessPage from './pages/SuccessPage'; 
+import PublicSitePage from './pages/PublicSitePage';
 
 // Institucionais
 import HelpCenterPage from './pages/HelpCenterPage';
@@ -71,6 +72,7 @@ export default function App() {
             <Route path="profile" element={<ProfilePage />} />
             <Route path="settings" element={<SettingsPage />} />
             <Route path="site" element={<SitePage />} />
+            <Route path="/v/:slug" element={<PublicSitePage />} />
           </Route>
 
           {/* Redirecionamento automático para a Landing se a página não existir */}

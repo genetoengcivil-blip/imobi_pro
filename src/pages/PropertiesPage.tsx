@@ -1,343 +1,242 @@
-import { useState, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { 
-  Plus, Search, MapPin, Home, Bed, Bath, Ruler, Trash2, Edit2, 
-  Loader2, Image as ImageIcon, X, Upload, Car, Check, Star, 
-  Wind, Shield, Coffee, Waves, Dumbbell, Utensils, Baby, TreePine, PawPrint
+  Plus, Search, Home, MapPin, Bed, Bath, Ruler, 
+  Trash2, Edit3, Image as ImageIcon, X, Loader2, 
+  PlusCircle, Check, DollarSign, FileText, Globe
 } from 'lucide-react';
 import { useGlobal } from '../context/GlobalContext';
+import { supabase } from '../lib/supabase';
 
 export default function PropertiesPage() {
-  const { properties, addProperty, deleteProperty, updateProperty, uploadPropertyImage, darkMode } = useGlobal();
-  
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
-  const [isSearchingCEP, setIsSearchingCEP] = useState(false);
-  const [editingProperty, setEditingProperty] = useState<any>(null);
-  const [searchTerm, setSearchTerm] = useState('');
+  const { user } = useGlobal();
+  const [loading, setLoading] = useState(false);
+  const [properties, setProperties] = useState<any[]>([]);
+  const [showModal, setShowModal] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
-  // Lista de Características (Amenidades) Premium
-  const amenitiesList = [
-    { id: 'piscina', label: 'Piscina', icon: Waves },
-    { id: 'academia', label: 'Academia', icon: Dumbbell },
-    { id: 'churrasqueira', label: 'Churrasqueira', icon: Utensils },
-    { id: 'salao_festas', label: 'Salão de Festas', icon: Coffee },
-    { id: 'portaria', label: 'Portaria 24h', icon: Shield },
-    { id: 'ar_condicionado', label: 'Ar Condicionado', icon: Wind },
-    { id: 'playground', label: 'Playground', icon: Baby },
-    { id: 'jardim', label: 'Jardim', icon: TreePine },
-    { id: 'pet_friendly', label: 'Pet Friendly', icon: PawPrint },
-    { id: 'mobiliado', label: 'Mobiliado', icon: Home },
-  ];
-
-  const statusOptions = [
-    { label: 'Disponível', value: 'disponível', color: 'bg-emerald-500' },
-    { label: 'Oportunidade', value: 'oportunidade', color: 'bg-orange-500' },
-    { label: 'Reservado', value: 'reservado', color: 'bg-blue-600' },
-    { label: 'Vendido', value: 'vendido', color: 'bg-zinc-500' }
-  ];
-
-  const [newProperty, setNewProperty] = useState({
-    title: '', description: '', price: 0, location: '',
-    type: 'venda', status: 'disponível', 
-    bedrooms: 0, suites: 0, bathrooms: 0, parkings: 0, 
-    area: 0, condominium: 0, iptu: 0,
-    images: [] as string[], features: [] as string[],
-    address: { cep: '', logradouro: '', numero: '', bairro: '', cidade: '', estado: '' }
+  // Estados do Formulário
+  const [formData, setFormData] = useState({
+    title: '',
+    price: '',
+    location: '',
+    type: 'venda',
+    bedrooms: '',
+    bathrooms: '',
+    suites: '',
+    area: '',
+    description: '',
+    images: [] as string[]
   });
 
-  const filtered = useMemo(() => {
-    return (properties || []).filter(p => 
-      (p.title || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
-      (p.address?.bairro || '').toLowerCase().includes(searchTerm.toLowerCase())
-    );
-  }, [properties, searchTerm]);
+  useEffect(() => {
+    if (user) loadProperties();
+  }, [user]);
 
-  const handleCEPChange = async (cep: string) => {
-    const cleanCEP = cep.replace(/\D/g, '');
-    setNewProperty(prev => ({ ...prev, address: { ...prev.address!, cep: cleanCEP } }));
-    if (cleanCEP.length === 8) {
-      setIsSearchingCEP(true);
-      try {
-        const res = await fetch(`https://viacep.com.br/ws/${cleanCEP}/json/`);
-        const data = await res.json();
-        if (!data.erro) {
-          setNewProperty(prev => ({
-            ...prev,
-            location: `${data.logradouro}, ${data.bairro}, ${data.localidade} - ${data.uf}`,
-            address: { ...prev.address!, logradouro: data.logradouro, bairro: data.bairro, cidade: data.localidade, estado: data.uf }
-          }));
-        }
-      } catch (err) { console.error(err); } finally { setIsSearchingCEP(false); }
+  async function loadProperties() {
+    const { data } = await supabase
+      .from('properties')
+      .select('*')
+      .eq('user_id', user?.id)
+      .order('created_at', { ascending: false });
+    
+    setProperties(data || []);
+  }
+
+  // Lógica de Upload de Imagens
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0) return;
+    setUploading(true);
+
+    const files = Array.from(e.target.files);
+    const uploadedUrls: string[] = [...formData.images];
+
+    for (const file of files) {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${Math.random()}.${fileExt}`;
+      const filePath = `${user?.id}/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('properties')
+        .upload(filePath, file);
+
+      if (!uploadError) {
+        const { data: { publicUrl } } = supabase.storage
+          .from('properties')
+          .getPublicUrl(filePath);
+        uploadedUrls.push(publicUrl);
+      }
+    }
+
+    setFormData({ ...formData, images: uploadedUrls });
+    setUploading(false);
+  };
+
+  const removeImage = (index: number) => {
+    const newImages = formData.images.filter((_, i) => i !== index);
+    setFormData({ ...formData, images: newImages });
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+
+    try {
+      const { error } = await supabase.from('properties').insert([{
+        ...formData,
+        user_id: user?.id,
+        price: parseFloat(formData.price.replace(/\D/g, '')),
+        created_at: new Date()
+      }]);
+
+      if (error) throw error;
+
+      setShowModal(false);
+      setFormData({
+        title: '', price: '', location: '', type: 'venda',
+        bedrooms: '', bathrooms: '', suites: '', area: '',
+        description: '', images: []
+      });
+      loadProperties();
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const toggleFeature = (id: string) => {
-    setNewProperty(prev => ({
-      ...prev,
-      features: prev.features.includes(id) 
-        ? prev.features.filter(f => f !== id) 
-        : [...prev.features, id]
-    }));
+  const deleteProperty = async (id: string) => {
+    if (!confirm('Tem certeza que deseja excluir este imóvel?')) return;
+    await supabase.from('properties').delete().eq('id', id);
+    loadProperties();
   };
 
-  const formatBRL = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(v || 0);
-
-  // ESTILOS DE ALTO CONTRASTE
-  const textPrimary = darkMode ? 'text-white' : 'text-zinc-900';
-  const textSecondary = darkMode ? 'text-zinc-400' : 'text-zinc-600';
-  const cardBg = darkMode ? 'bg-[#0c0c0c] border-white/10' : 'bg-white border-zinc-200 shadow-2xl shadow-zinc-200/50';
-  const innerCard = darkMode ? 'bg-zinc-900/50' : 'bg-zinc-50';
-
   return (
-    <div className={`space-y-8 animate-fade-in pb-24 font-sans px-4 lg:px-0 ${textPrimary}`}>
+    <div className="space-y-8 animate-in fade-in duration-500">
       
-      {/* HEADER PREMIUM */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 pt-4">
+      {/* HEADER */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
-          <h1 className="text-4xl md:text-5xl font-black tracking-tighter uppercase italic leading-none">
-            MEU<span className="text-[#0217ff]">INVENTÁRIO</span>
-          </h1>
-          <div className="flex items-center gap-2 mt-2">
-            <span className="h-1 w-12 bg-[#0217ff] rounded-full"></span>
-            <p className="text-[#0217ff] font-black text-[10px] uppercase tracking-[0.3em]">Catálogo de Ativos Luxo</p>
-          </div>
+          <h1 className="text-3xl font-black uppercase italic tracking-tighter text-white">Gestão de <span className="text-blue-600">Ativos</span></h1>
+          <p className="text-zinc-500 font-medium italic">Você possui {properties.length} imóveis cadastrados no portfólio.</p>
         </div>
-
-        <div className="flex flex-col md:flex-row flex-1 max-w-2xl gap-3">
-          <div className={`flex-1 relative flex items-center rounded-[24px] border-2 ${darkMode ? 'bg-zinc-900 border-white/5' : 'bg-white border-zinc-100 shadow-sm'}`}>
-            <Search className="absolute left-5 w-5 h-5 text-[#0217ff]" />
-            <input 
-              type="text" 
-              placeholder="PESQUISAR POR BAIRRO OU NOME..." 
-              className="w-full bg-transparent pl-14 pr-6 py-5 outline-none font-black text-xs uppercase dark:text-white placeholder:text-zinc-500"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-          </div>
-          <button onClick={() => { setEditingProperty(null); setIsModalOpen(true); }} className="px-10 py-5 bg-[#0217ff] text-white rounded-[24px] font-black text-xs uppercase tracking-widest shadow-2xl shadow-blue-600/40 hover:scale-[1.02] active:scale-95 transition-all">
-            ADICIONAR ATIVO
-          </button>
-        </div>
+        <button 
+          onClick={() => setShowModal(true)}
+          className="flex items-center gap-3 px-8 py-4 bg-blue-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-xl shadow-blue-600/20"
+        >
+          <Plus size={16} /> Novo Imóvel
+        </button>
       </div>
 
-      {/* GRID DE CARDS RESPONSIVO */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 lg:gap-12">
-        {filtered.map(p => {
-          const statusObj = statusOptions.find(s => s.value === p.status) || statusOptions[0];
-          return (
-            <div key={p.id} className={`rounded-[48px] border-2 overflow-hidden flex flex-col transition-all duration-500 group hover:-translate-y-2 ${cardBg}`}>
-              
-              {/* Imagem + Badge de Status */}
-              <div className="aspect-[4/3] bg-zinc-800 relative overflow-hidden">
-                {p.images?.[0] ? (
-                  <img src={p.images[0]} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-1000" alt="Capa" />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center text-zinc-700"><Home size={64} /></div>
-                )}
-                <div className="absolute top-6 left-6 flex flex-col gap-2">
-                  <span className={`px-4 py-2 ${statusObj.color} text-white text-[10px] font-black rounded-xl uppercase tracking-widest shadow-2xl`}>
-                    {statusObj.label}
-                  </span>
-                </div>
+      {/* GRID DE IMÓVEIS */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+        {properties.map((p) => (
+          <div key={p.id} className="bg-zinc-900/30 border border-white/5 rounded-[40px] overflow-hidden group hover:border-blue-600/50 transition-all">
+            <div className="aspect-video relative overflow-hidden">
+              {p.images?.[0] ? (
+                <img src={p.images[0]} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
+              ) : (
+                <div className="w-full h-full bg-zinc-900 flex items-center justify-center text-zinc-800"><Home size={48} /></div>
+              )}
+              <div className="absolute top-4 left-4 flex gap-2">
+                <span className="px-3 py-1 bg-black/60 backdrop-blur-md text-[9px] font-black uppercase text-white rounded-lg">{p.type}</span>
               </div>
-
-              {/* Informações Técnicas */}
-              <div className="p-8 md:p-10 flex-1 flex flex-col gap-5">
-                <div className="flex items-center gap-2 text-[#0217ff] text-sm font-black uppercase tracking-widest">
-                  <MapPin size={22} fill="currentColor" fillOpacity={0.2} /> 
-                  <span>{p.address?.bairro || 'Localização'}</span>
-                </div>
-
-                <h3 className={`text-2xl md:text-3xl font-black uppercase tracking-tighter italic leading-[0.85] ${textPrimary}`}>
-                  {p.title || 'IMÓVEL SEM TÍTULO'}
-                </h3>
-                
-                {/* Exibição das Features (Caracteristicas) no Card */}
-                <div className="flex flex-wrap gap-2 mb-2">
-                  {p.features?.slice(0, 3).map((fId: string) => {
-                    const feature = amenitiesList.find(a => a.id === fId);
-                    if (!feature) return null;
-                    return (
-                      <span key={fId} className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase border ${darkMode ? 'bg-white/5 border-white/10 text-zinc-400' : 'bg-zinc-50 border-zinc-100 text-zinc-500'}`}>
-                        {feature.label}
-                      </span>
-                    )
-                  })}
-                  {p.features?.length > 3 && <span className="text-[9px] font-black text-[#0217ff] uppercase">+ {p.features.length - 3} itens</span>}
-                </div>
-
-                {/* Specs Grid (Maiores para Mobile) */}
-                <div className="grid grid-cols-2 gap-3">
-                  {[
-                    { icon: Bed, val: `${p.bedrooms || 0} Qts` },
-                    { icon: Car, val: `${p.parkings || 0} Vagas` },
-                    { icon: Bath, val: `${p.bathrooms || 0} Banh` },
-                    { icon: Ruler, val: `${p.area || 0} m²` }
-                  ].map((item, idx) => (
-                    <div key={idx} className={`flex items-center gap-3 p-4 rounded-[24px] border ${darkMode ? 'bg-white/5 border-white/5' : 'bg-zinc-50 border-zinc-100'}`}>
-                      <item.icon size={22} className="text-[#0217ff]" />
-                      <span className={`font-black text-sm uppercase ${textPrimary}`}>{item.val}</span>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Footer do Card */}
-                <div className="mt-auto pt-8 border-t-2 border-zinc-100 dark:border-white/5 flex items-center justify-between">
-                  <span className="text-3xl font-black text-[#0217ff] tracking-tighter italic">{formatBRL(p.price)}</span>
-                  <div className="flex gap-2">
-                    <button onClick={() => { setEditingProperty(p); setNewProperty(p); setIsModalOpen(true); }} className={`p-4 rounded-2xl transition-all ${darkMode ? 'bg-white/5 text-zinc-500 hover:text-blue-500' : 'bg-zinc-100 text-zinc-500 hover:text-blue-500'}`}><Edit2 size={22}/></button>
-                    <button onClick={() => deleteProperty(p.id)} className={`p-4 rounded-2xl transition-all ${darkMode ? 'bg-white/5 text-zinc-500 hover:text-red-500' : 'bg-zinc-100 text-zinc-500 hover:text-red-500'}`}><Trash2 size={22}/></button>
-                  </div>
-                </div>
+              <button 
+                onClick={() => deleteProperty(p.id)}
+                className="absolute top-4 right-4 p-2 bg-red-500/20 text-red-500 rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500 hover:text-white"
+              >
+                <Trash2 size={16} />
+              </button>
+            </div>
+            <div className="p-8">
+              <h3 className="text-lg font-black uppercase italic tracking-tighter text-white truncate mb-4">{p.title}</h3>
+              <div className="grid grid-cols-3 gap-4 border-y border-white/5 py-4 mb-6">
+                <div className="text-center"><span className="block text-zinc-500 text-[9px] font-black uppercase">Área</span><span className="text-xs font-bold">{p.area}m²</span></div>
+                <div className="text-center"><span className="block text-zinc-500 text-[9px] font-black uppercase">Quartos</span><span className="text-xs font-bold">{p.bedrooms}</span></div>
+                <div className="text-center"><span className="block text-zinc-500 text-[9px] font-black uppercase">Suítes</span><span className="text-xs font-bold">{p.suites}</span></div>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xl font-black text-white italic">R$ {p.price.toLocaleString()}</span>
+                <button className="text-blue-500 hover:text-white transition-colors"><Edit3 size={18} /></button>
               </div>
             </div>
-          );
-        })}
+          </div>
+        ))}
       </div>
 
-      {/* MODAL DE CADASTRO PREMIUM */}
-      {isModalOpen && (
-        <div className="fixed inset-0 bg-black/95 backdrop-blur-xl z-[200] flex items-center justify-center p-2 lg:p-4 overflow-y-auto">
-          <div className={`w-full max-w-4xl rounded-[56px] shadow-2xl overflow-hidden flex flex-col my-auto border-2 ${darkMode ? 'bg-[#0a0a0a] border-white/10' : 'bg-white border-zinc-200'}`}>
-            
-            <div className={`p-8 lg:p-12 border-b-2 flex items-center justify-between ${darkMode ? 'bg-white/5 border-white/5' : 'bg-zinc-50 border-zinc-100'}`}>
-              <h2 className={`text-3xl lg:text-4xl font-black italic uppercase tracking-tighter ${textPrimary}`}>Configurar Ativo</h2>
-              <button onClick={() => setIsModalOpen(false)} className="p-4 bg-red-500 text-white rounded-2xl shadow-xl active:scale-90 transition-all"><X size={32} /></button>
+      {/* MODAL DE CADASTRO (Full Screen) */}
+      {showModal && (
+        <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-xl flex items-center justify-center p-4 md:p-10 overflow-y-auto">
+          <div className="bg-zinc-950 w-full max-w-6xl rounded-[48px] border border-white/10 shadow-2xl flex flex-col max-h-[90vh]">
+            <div className="p-8 border-b border-white/5 flex items-center justify-between">
+              <h2 className="text-2xl font-black uppercase italic tracking-tighter">Cadastrar <span className="text-blue-600">Novo Ativo</span></h2>
+              <button onClick={() => setShowModal(false)} className="p-2 hover:bg-white/5 rounded-full text-zinc-500"><X size={24} /></button>
             </div>
 
-            <form onSubmit={(e) => { e.preventDefault(); editingProperty ? updateProperty(editingProperty.id, newProperty) : addProperty(newProperty); setIsModalOpen(false); }} className="p-8 lg:p-12 space-y-12 overflow-y-auto max-h-[75vh] custom-scrollbar">
+            <form onSubmit={handleSubmit} className="p-8 md:p-12 overflow-y-auto custom-scrollbar space-y-12">
               
-              {/* STATUS DE MERCADO */}
-              <div className="space-y-4">
-                <label className="text-[11px] font-black text-[#0217ff] uppercase tracking-[0.2em] ml-1">Status de Mercado</label>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  {statusOptions.map(opt => (
-                    <button
-                      key={opt.value}
-                      type="button"
-                      onClick={() => setNewProperty({...newProperty, status: opt.value})}
-                      className={`py-5 rounded-3xl text-[10px] font-black uppercase tracking-widest border-2 transition-all ${
-                        newProperty.status === opt.value 
-                        ? 'bg-[#0217ff] border-[#0217ff] text-white shadow-xl scale-105' 
-                        : `bg-transparent ${darkMode ? 'border-white/10 text-zinc-500' : 'border-zinc-200 text-zinc-400'}`
-                      }`}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* GALERIA FOTOGRÁFICA */}
-              <div className="space-y-4">
-                <label className="text-[11px] font-black text-[#0217ff] uppercase tracking-[0.2em]">Book Fotográfico</label>
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                  {newProperty.images.map((img, idx) => (
-                    <div key={idx} className="relative aspect-square rounded-[32px] overflow-hidden border-2 border-white/10 shadow-xl group">
+              {/* Seção de Fotos */}
+              <div className="space-y-6">
+                <label className="text-xs font-black uppercase tracking-widest text-zinc-500 flex items-center gap-2">
+                  <ImageIcon size={16} /> Galeria de Imagens (Luxo)
+                </label>
+                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                  {formData.images.map((img, i) => (
+                    <div key={i} className="aspect-square rounded-2xl relative group overflow-hidden border border-white/10">
                       <img src={img} className="w-full h-full object-cover" />
-                      <button type="button" onClick={() => setNewProperty(prev => ({...prev, images: prev.images.filter((_, i) => i !== idx)}))} className="absolute top-2 right-2 p-2 bg-red-500 text-white rounded-xl shadow-lg"><Trash2 size={12}/></button>
+                      <button 
+                        type="button" onClick={() => removeImage(i)}
+                        className="absolute top-2 right-2 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <X size={12} />
+                      </button>
                     </div>
                   ))}
-                  <label className={`aspect-square rounded-[32px] border-4 border-dashed flex flex-col items-center justify-center cursor-pointer transition-all ${darkMode ? 'bg-white/5 border-white/10' : 'bg-zinc-50 border-zinc-200'}`}>
-                    {isUploading ? <Loader2 className="animate-spin text-[#0217ff]" /> : <><Upload size={36} className="text-[#0217ff] mb-2"/><span className="text-[10px] font-black text-zinc-500 uppercase">Upload</span></>}
-                    <input type="file" multiple className="hidden" onChange={async (e) => {
-                      const files = Array.from(e.target.files || []);
-                      setIsUploading(true);
-                      for (const f of files) {
-                        const url = await uploadPropertyImage(f);
-                        if (url) setNewProperty(prev => ({...prev, images: [...prev.images, url]}));
-                      }
-                      setIsUploading(false);
-                    }} disabled={isUploading} />
+                  <label className="aspect-square rounded-2xl border-2 border-dashed border-white/10 flex flex-col items-center justify-center cursor-pointer hover:border-blue-600 hover:bg-blue-600/5 transition-all">
+                    {uploading ? <Loader2 className="animate-spin text-blue-600" /> : <PlusCircle className="text-zinc-600" />}
+                    <span className="text-[10px] font-black uppercase mt-2 text-zinc-500">Adicionar</span>
+                    <input type="file" multiple hidden accept="image/*" onChange={handleImageUpload} />
                   </label>
                 </div>
               </div>
 
-              {/* LOCALIZAÇÃO PRIVADA */}
-              <div className={`p-8 rounded-[48px] border-2 ${darkMode ? 'bg-white/5 border-white/5' : 'bg-zinc-50 border-zinc-100'}`}>
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black text-zinc-500 uppercase ml-1">CEP</label>
-                    <div className="relative">
-                      <input type="text" className={`w-full rounded-2xl py-4 px-6 outline-none border-2 font-black ${darkMode ? 'bg-zinc-900 border-white/10' : 'bg-white border-zinc-200'}`} value={newProperty.address?.cep} onChange={e => handleCEPChange(e.target.value)} placeholder="00000-000" />
-                      {isSearchingCEP && <Loader2 className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-[#0217ff] animate-spin" />}
-                    </div>
-                  </div>
-                  <div className="md:col-span-3 space-y-2">
-                    <label className="text-[10px] font-black text-zinc-500 uppercase ml-1">Endereço Público (Bairro / Cidade)</label>
-                    <input required className={`w-full rounded-2xl py-4 px-6 outline-none border-2 font-black ${darkMode ? 'bg-zinc-900 border-white/10' : 'bg-white border-zinc-200'}`} value={newProperty.location} onChange={e => setNewProperty({...newProperty, location: e.target.value})} placeholder="MANAÍRA, JOÃO PESSOA - PB" />
-                  </div>
-                </div>
-              </div>
-
-              {/* DADOS E CARACTERÍSTICAS (AMENIDADES) */}
-              <div className="space-y-10">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black text-[#0217ff] uppercase tracking-widest ml-1">Título do Anúncio</label>
-                    <input required className={`w-full rounded-2xl py-5 px-6 outline-none border-2 font-black text-lg ${darkMode ? 'bg-zinc-900 border-white/10' : 'bg-white border-zinc-200'}`} value={newProperty.title} onChange={e => setNewProperty({...newProperty, title: e.target.value})} placeholder="EX: COBERTURA DUPLEX COM VISTA MAR" />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className={`p-6 rounded-[32px] border-2 ${darkMode ? 'bg-zinc-900 border-white/5' : 'bg-white border-zinc-100'}`}>
-                      <label className="text-[9px] font-black text-[#0217ff] uppercase block mb-2">Preço de Venda</label>
-                      <input type="number" className="bg-transparent font-black w-full outline-none text-2xl text-[#0217ff]" value={newProperty.price || ''} onChange={e => setNewProperty({...newProperty, price: Number(e.target.value)})} />
-                    </div>
-                    <div className={`p-6 rounded-[32px] border-2 ${darkMode ? 'bg-zinc-900 border-white/5' : 'bg-white border-zinc-100'}`}>
-                      <label className="text-[9px] font-black text-zinc-500 uppercase block mb-2">Área (M²)</label>
-                      <input type="number" className="bg-transparent font-black w-full outline-none text-2xl" value={newProperty.area || ''} onChange={e => setNewProperty({...newProperty, area: Number(e.target.value)})} />
-                    </div>
-                  </div>
-                </div>
-
-                {/* AMENIDADES (O QUE VOCÊ PEDIU) */}
+              {/* Seção de Dados */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 <div className="space-y-4">
-                  <label className="text-[11px] font-black text-[#0217ff] uppercase tracking-[0.2em] ml-1">O que o imóvel oferece? (Tags)</label>
-                  <div className="flex flex-wrap gap-3">
-                    {amenitiesList.map(item => (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onClick={() => toggleFeature(item.id)}
-                        className={`px-5 py-3 rounded-2xl flex items-center gap-2 border-2 transition-all font-black text-[10px] uppercase ${
-                          newProperty.features.includes(item.id)
-                          ? 'bg-[#0217ff] border-[#0217ff] text-white shadow-lg'
-                          : `bg-transparent ${darkMode ? 'border-white/10 text-zinc-500' : 'border-zinc-200 text-zinc-400'}`
-                        }`}
-                      >
-                        <item.icon size={16} />
-                        {item.label}
-                      </button>
-                    ))}
-                  </div>
+                  <label className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Título do Anúncio</label>
+                  <input required className="w-full bg-zinc-900/50 border-2 border-white/5 rounded-2xl py-4 px-6 text-white outline-none focus:border-blue-600" 
+                    value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} />
                 </div>
-
-                {/* SPECS TÉCNICAS */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                   {[
-                     { label: 'QUARTOS', key: 'bedrooms', icon: Bed },
-                     { label: 'SUÍTES', key: 'suites', icon: Star },
-                     { label: 'BANHEIROS', key: 'bathrooms', icon: Bath },
-                     { icon: Car, label: 'VAGAS', key: 'parkings' }
-                   ].map((spec) => (
-                     <div key={spec.key} className={`p-5 rounded-[32px] border-2 ${darkMode ? 'bg-zinc-900 border-white/5' : 'bg-white border-zinc-100'}`}>
-                        <label className="text-[9px] font-black text-zinc-500 uppercase block mb-2">{spec.label}</label>
-                        <div className="flex items-center gap-3">
-                           <spec.icon size={20} className="text-[#0217ff]" />
-                           <input type="number" className="bg-transparent font-black w-full text-2xl outline-none" value={(newProperty as any)[spec.key]} onChange={e => setNewProperty({...newProperty, [spec.key]: Number(e.target.value)})} />
-                        </div>
-                     </div>
-                   ))}
+                <div className="space-y-4">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Valor (R$)</label>
+                  <input required className="w-full bg-zinc-900/50 border-2 border-white/5 rounded-2xl py-4 px-6 text-white outline-none focus:border-blue-600" 
+                    value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} />
+                </div>
+                <div className="space-y-4">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Localização (Bairro/Cidade)</label>
+                  <input required className="w-full bg-zinc-900/50 border-2 border-white/5 rounded-2xl py-4 px-6 text-white outline-none focus:border-blue-600" 
+                    value={formData.location} onChange={e => setFormData({...formData, location: e.target.value})} />
+                </div>
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="space-y-4"><label className="text-[9px] font-black uppercase text-zinc-500">Quartos</label>
+                  <input type="number" className="w-full bg-zinc-900/50 border-2 border-white/5 rounded-xl py-4 text-center" 
+                    value={formData.bedrooms} onChange={e => setFormData({...formData, bedrooms: e.target.value})} /></div>
+                  <div className="space-y-4"><label className="text-[9px] font-black uppercase text-zinc-500">Banheiros</label>
+                  <input type="number" className="w-full bg-zinc-900/50 border-2 border-white/5 rounded-xl py-4 text-center" 
+                    value={formData.bathrooms} onChange={e => setFormData({...formData, bathrooms: e.target.value})} /></div>
+                  <div className="space-y-4"><label className="text-[9px] font-black uppercase text-zinc-500">Suítes</label>
+                  <input type="number" className="w-full bg-zinc-900/50 border-2 border-white/5 rounded-xl py-4 text-center" 
+                    value={formData.suites} onChange={e => setFormData({...formData, suites: e.target.value})} /></div>
                 </div>
               </div>
 
-              {/* DESCRIÇÃO */}
               <div className="space-y-4">
-                <label className="text-[11px] font-black text-[#0217ff] uppercase tracking-widest ml-1">Descrição Comercial</label>
-                <textarea rows={6} className={`w-full rounded-[40px] py-8 px-10 outline-none border-2 font-medium italic text-lg leading-relaxed ${darkMode ? 'bg-zinc-900 border-white/10 text-white' : 'bg-zinc-50 border-zinc-200 text-zinc-900'}`} value={newProperty.description} onChange={e => setNewProperty({...newProperty, description: e.target.value})} placeholder="Conte a história deste imóvel..." />
+                <label className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Descrição Técnica</label>
+                <textarea rows={6} className="w-full bg-zinc-900/50 border-2 border-white/5 rounded-[32px] py-6 px-8 text-white outline-none focus:border-blue-600 resize-none"
+                  value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} />
               </div>
 
-              <button type="submit" className="w-full py-8 bg-[#0217ff] text-white rounded-[40px] font-black uppercase tracking-[0.4em] shadow-2xl shadow-blue-600/50 hover:scale-[1.01] transition-all">
-                PUBLICAR ATIVO
+              <button disabled={loading || uploading} className="w-full py-7 bg-blue-600 text-white rounded-[24px] font-black text-xs uppercase tracking-[0.3em] shadow-2xl shadow-blue-600/40 hover:scale-[1.01] active:scale-95 transition-all flex items-center justify-center gap-4">
+                {loading ? <Loader2 className="animate-spin" /> : <><Check size={20} /> Salvar e Publicar Ativo</>}
               </button>
             </form>
           </div>
