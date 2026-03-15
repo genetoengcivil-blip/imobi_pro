@@ -39,21 +39,22 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         .eq('id', authUser.id)
         .single();
 
-      if (profile) {
-        setUser({ ...authUser, ...profile });
-      } else {
+      if (error) {
+        console.warn("Perfil não encontrado, usando dados do Auth.");
         setUser(authUser);
+      } else {
+        setUser({ ...authUser, ...profile });
       }
     } catch (err) {
-      console.error("Erro ao carregar perfil:", err);
+      console.error("Erro crítico ao carregar perfil:", err);
       setUser(authUser);
     } finally {
-      setLoading(false);
+      setLoading(false); // Garante que o loading para de girar
     }
   };
 
   useEffect(() => {
-    const initialize = async () => {
+    const initializeAuth = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (session?.user) {
         await fetchUserProfile(session.user);
@@ -62,9 +63,9 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
     };
 
-    initialize();
+    initializeAuth();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (session?.user) {
         await fetchUserProfile(session.user);
       } else {
