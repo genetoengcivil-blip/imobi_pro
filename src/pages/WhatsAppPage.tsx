@@ -1,119 +1,239 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { 
-  Search, Send, Phone, Video, MoreVertical, CheckCheck,
-  Settings, Shield, Smartphone, ChevronLeft, Loader2,
-  QrCode, Info, MessageSquare, Paperclip, Smile,
-  Maximize2, User, Power
+  Search, Send, Phone, MoreVertical, CheckCheck,
+  Shield, Smartphone, ChevronLeft, Loader2,
+  QrCode, MessageSquare, Paperclip, Smile
 } from 'lucide-react';
 import { useGlobal } from '../context/GlobalContext';
 
+// 🔒 CONFIGURAÇÕES SECRETAS DO DONO DO SAAS (Ficam escondidas do cliente)
+// No futuro, o ideal é que isto venha do seu backend/Supabase, mas para já, fica aqui.
+const EVO_URL = "http://137.131.136.246:8080"; 
+const EVO_GLOBAL_KEY = "MIIEowIBAAKCAQEAuI+VrfEFvd8JKK7JVftIwUmTgS3ezht3TFdHuMjp1EH/z5UP
+VuOwmLb0eYsY0vSqRGXUqeWgN4JcNtKgBI9nGuW6yyj47Jga3HglqQJsneVQdRu/
+KZMhrz1qVtaLuAsxieVyGetpgz45WlTpavADoybeQpopESH4QhXkKEogjBbgSSXP
+RiOtfgTtcFC7ji4H9ZqNLWO9cdxR6I9WOgILONUz6PDfvzxGPuRXr61JVzMVjUDt
+Z/qsP1IPm8Mg+D8+yCK0D7O1UUa3Ih6PK3NRRYf2p+zxoCTjUp+caGB6o4Llrgmh
+EvJnHkGDrmyucKV46o4HKv3txyC1AINXV+5uPQIDAQABAoIBAAQkfOiVk1pqqir2
+mWBLrptgCmaI4ApiRXA6OUrlf5IbFSHUp658l9clrCEaRSlfAn9chcR2ef0k+Orm
+GV9g1KCe7W1n8wZkd53hOH8tpcB5iC/Iuqa1PblQOJXQZPxxi+AbfU8loI2olOL5
+KvASiRJdafm2uhs/VvIsyZ055LcgNpBISnmAIAQlzv4meYMu0K2ABgN38c8KSBUu
+MSVCWIeLtSqPwLZLK6KYlpqJg+sR3RC2vEkChXq4mfRLIiB5YiB5DPuPcgPe+81c
+5rPF5BHaA+LW+gK0ELnupSIu3LkfQg3IYPHni1TWOUz+1h42I+OzF38J+uTA5B16
+uYeiyUECgYEA3JcEVLt/+ywmprb6SWn602KW6FrOmdM3XP9d5lUPotHe6cDOjCf/
+xUM2IwtB/Ghi9W8VScMu3HkSeP+vVDkxlcyaNMKZzY5PiVWUTig0pQwRMZkXfyAi
+im4NPU+rOvcQkGev0UcRp+cSh35T9a8wWMifKJsSRuBvqHepjMFFfBECgYEA1i/7
+D1/lvQ/w34fU2exz+CFsfsxTIg5bUe/uufQAiof8mtxFQlqFFle0QxClWQNi+/4u
+8i0Ypfb2jTrz4QCTCZhN8YiLnyKu1rkZpPacgMLvEi3V0kXemJa3FKQbmG6rNfEs
+nGhrwcJ8Z7N3X/3NKvNLxJvYhS95Yb7UC/Yl620CgYA6Naew7GGTWE1CxRo68Tp9
+OZD087F9Kh177u9KbrvXjWYzbOuUVKHL3jaU/M2G28zxU0Tc2CKvj0tunpoXsZgC
+HaG7tnZ7pcgbR3gBP97UhuCqo+ltZH945B2eRj27K6M1WAcvRH/GPNXI528kb/xk
+EVzejD1Acs1EOX+GYyIA4QKBgCJeSJbK+H5B1JDJpung+yrRkis2dhB85UJckZ3c
+/Uk9UNc4iRSAmeJf6Fjqjt2doYB15OqPOelHm4BF+WQdR3q+qaMcGetLEWr7AJZr
+y+kNXnc4S5sWAwXRCUeSnarz9x0Mue/PAZtxraymK32HqChAKeQ+bZvRZlS83iGd
+ObBxAoGBANH4GiJM+DBK6ktrzoCxY1fuHcU554MdhpWpu+QSohDLnlJcvvCVF2Jw
+Ic2qXBLqMIEjzMU2+4j8PTXyAQtavTriiCjH4ORoHZtwfWxFIMVBnCGZ4s2EyMmp
+jPoG/tHgUrPRxTEgmr4UAXK14yMu8XdBa7MTB5kgnphJ4KZXruiA";
+
 export default function WhatsAppPage() {
-  const { leads, messages, addMessage, markAsRead, whatsappConnected, setWhatsappConnected, darkMode } = useGlobal();
+  const { user, leads, messages, addMessage, markAsRead, whatsappConnected, setWhatsappConnected, darkMode } = useGlobal();
   const [selectedLead, setSelectedLead] = useState<any>(null);
   const [newMessage, setNewMessage] = useState('');
-  const [isConnecting, setIsConnecting] = useState(false);
-  const [showConfig, setShowConfig] = useState(false);
+  
+  const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'generating' | 'waiting_scan'>('disconnected');
+  const [qrCodeBase64, setQrCodeBase64] = useState<string | null>(null);
+  
+  // 🚀 O SEGREDO DO SAAS: Cada cliente tem a sua própria instância baseada no seu ID único!
+  const instanceName = `imobipro_user_${user?.id?.replace(/-/g, '') || 'demo'}`;
+
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  // Filtra mensagens do lead selecionado
+  const theme = {
+    bgApp: darkMode ? 'bg-zinc-950' : 'bg-zinc-50',
+    bgCard: darkMode ? 'bg-black' : 'bg-white',
+    bgSidebar: darkMode ? 'bg-zinc-950' : 'bg-zinc-50',
+    bgHeader: darkMode ? 'bg-zinc-950/50' : 'bg-zinc-100',
+    bgHover: darkMode ? 'hover:bg-zinc-900/50' : 'hover:bg-zinc-200/50',
+    border: darkMode ? 'border-white/5' : 'border-zinc-200',
+    textMain: darkMode ? 'text-white' : 'text-zinc-900',
+    textMuted: darkMode ? 'text-zinc-500' : 'text-zinc-500',
+    inputBg: darkMode ? 'bg-black' : 'bg-white',
+    msgSentBg: darkMode ? 'bg-[#0217ff]' : 'bg-[#0217ff]',
+    msgReceivedBg: darkMode ? 'bg-zinc-900' : 'bg-white',
+  };
+
   const activeMessages = useMemo(() => {
     if (!selectedLead) return [];
-    return (messages || []).filter(m => m.leadId === selectedLead.id);
+    return (messages || []).filter((m: any) => m.leadId === selectedLead.id);
   }, [messages, selectedLead]);
 
-  // Scroll automático e marcação de lida
   useEffect(() => {
-    if (selectedLead) {
-      markAsRead(selectedLead.id);
-    }
+    if (selectedLead) markAsRead(selectedLead.id);
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [selectedLead, activeMessages, markAsRead]);
 
-  const handleConnect = () => {
-    setIsConnecting(true);
-    setTimeout(() => {
-      setWhatsappConnected(true);
-      setIsConnecting(false);
-    }, 2500);
+  // 1. GERAR QR CODE INVISÍVEL PARA O CLIENTE
+  const handleGenerateQR = async () => {
+    setConnectionStatus('generating');
+
+    try {
+      const response = await fetch(`${EVO_URL}/instance/create`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': EVO_GLOBAL_KEY
+        },
+        body: JSON.stringify({
+          instanceName: instanceName,
+          qrcode: true,
+          integration: "WHATSAPP-BAILEYS"
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.qrcode && data.qrcode.base64) {
+        setQrCodeBase64(data.qrcode.base64);
+        setConnectionStatus('waiting_scan');
+        checkConnectionStatus();
+      } else if (data.instance?.status === 'open') {
+        setWhatsappConnected(true);
+        setConnectionStatus('disconnected');
+      } else {
+        fetchConnectInstance();
+      }
+    } catch (error) {
+      console.error("Erro:", error);
+      alert("Serviço de WhatsApp temporariamente indisponível. Contacte o suporte.");
+      setConnectionStatus('disconnected');
+    }
   };
 
-  const handleSendMessage = (e: React.FormEvent) => {
+  const fetchConnectInstance = async () => {
+    try {
+      const res = await fetch(`${EVO_URL}/instance/connect/${instanceName}`, {
+        method: 'GET',
+        headers: { 'apikey': EVO_GLOBAL_KEY }
+      });
+      const data = await res.json();
+      if (data.base64) {
+        setQrCodeBase64(data.base64);
+        setConnectionStatus('waiting_scan');
+        checkConnectionStatus();
+      }
+    } catch (e) {
+      setConnectionStatus('disconnected');
+    }
+  };
+
+  const checkConnectionStatus = () => {
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`${EVO_URL}/instance/connectionState/${instanceName}`, {
+          method: 'GET',
+          headers: { 'apikey': EVO_GLOBAL_KEY }
+        });
+        const data = await res.json();
+        
+        if (data.instance?.state === 'open') {
+          clearInterval(interval);
+          setWhatsappConnected(true);
+          setConnectionStatus('disconnected');
+        }
+      } catch (e) {}
+    }, 5000);
+  };
+
+  const handleDisconnect = async () => {
+    if(window.confirm("Tem a certeza que deseja desconectar o seu WhatsApp?")) {
+      try {
+        await fetch(`${EVO_URL}/instance/logout/${instanceName}`, {
+          method: 'DELETE',
+          headers: { 'apikey': EVO_GLOBAL_KEY }
+        });
+      } catch (e) {}
+      setWhatsappConnected(false);
+      setConnectionStatus('disconnected');
+    }
+  };
+
+  const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newMessage.trim() || !selectedLead) return;
+    if (!newMessage.trim() || !selectedLead || !selectedLead.phone) return;
 
-    addMessage({
-      leadId: selectedLead.id,
-      content: newMessage,
-      timestamp: new Date().toISOString(),
-      sender: 'user',
-      status: 'sent'
-    });
+    const messageText = newMessage;
     setNewMessage('');
+    addMessage(selectedLead.id, messageText, 'sent');
+
+    try {
+      const cleanPhone = selectedLead.phone.replace(/\D/g, '');
+      await fetch(`${EVO_URL}/message/sendText/${instanceName}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': EVO_GLOBAL_KEY
+        },
+        body: JSON.stringify({
+          number: `55${cleanPhone}`,
+          options: { delay: 1200, presence: 'composing' },
+          textMessage: { text: messageText }
+        })
+      });
+    } catch (error) {
+      console.error("Erro ao enviar mensagem:", error);
+    }
   };
 
-  const formatTime = (iso: string) => {
-    return new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-  };
-
-  // TELA DE CONEXÃO (QR CODE)
+  // --- ECRÃ DO CLIENTE SAAS ---
   if (!whatsappConnected) {
     return (
-      <div className="h-[calc(100vh-140px)] flex items-center justify-center animate-fade-in p-4">
-        <div className="max-w-5xl w-full grid md:grid-cols-2 gap-0 bg-white dark:bg-zinc-900 rounded-[40px] overflow-hidden shadow-2xl border border-zinc-200 dark:border-white/5">
-          <div className="p-12 space-y-8">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-[#0217ff] rounded-2xl flex items-center justify-center shadow-lg shadow-[#0217ff]/30">
-                <MessageSquare className="text-white w-6 h-6" />
-              </div>
-              <h1 className="text-2xl font-black dark:text-white italic">IMOBIPRO<span className="text-[#0217ff]">.CONNECT</span></h1>
+      <div className={`p-8 pb-32 min-h-[calc(100vh-80px)] flex flex-col items-center justify-center animate-fade-in font-sans ${theme.textMain}`}>
+        <div className={`w-full max-w-4xl flex flex-col md:flex-row items-center gap-12 ${theme.bgCard} p-12 rounded-[48px] border ${theme.border} shadow-2xl`}>
+          
+          <div className="flex-1 space-y-8">
+            <div className="w-20 h-20 bg-emerald-500/10 rounded-3xl flex items-center justify-center border border-emerald-500/20">
+              <MessageSquare className="text-emerald-500" size={40} />
             </div>
-            
-            <div className="space-y-6">
-              <h2 className="text-4xl font-black leading-tight dark:text-white">Escaneie para <br/><span className="text-[#0217ff]">sincronizar.</span></h2>
-              <div className="space-y-5">
-                {[
-                  { icon: Smartphone, t: "Abra o WhatsApp", d: "No seu celular, acesse as configurações." },
-                  { icon: Settings, t: "Aparelhos Conectados", d: "Toque em 'Conectar um aparelho'." },
-                  { icon: QrCode, t: "Aponte a Câmera", d: "Capture o código ao lado para espelhar." }
-                ].map((step, i) => (
-                  <div key={i} className="flex gap-4">
-                    <div className="flex-shrink-0 w-10 h-10 rounded-xl bg-zinc-100 dark:bg-white/5 flex items-center justify-center text-[#0217ff]">
-                      <step.icon size={18} />
-                    </div>
-                    <div>
-                      <h4 className="text-sm font-black dark:text-white uppercase tracking-tighter">{step.t}</h4>
-                      <p className="text-xs text-zinc-500 font-medium">{step.d}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
+            <div>
+              <h1 className="text-4xl font-black italic uppercase tracking-tighter mb-4">Conecte o <span className="text-emerald-500">WhatsApp</span></h1>
+              <p className={`${theme.textMuted} font-medium text-lg leading-relaxed`}>
+                Sincronize o seu WhatsApp com o CRM. Leia o QR Code e centralize o seu atendimento de forma automática.
+              </p>
             </div>
           </div>
 
-          <div className="bg-[#f8f9fa] dark:bg-zinc-800/50 p-12 flex flex-col items-center justify-center relative">
-            <div className="bg-white p-8 rounded-[40px] shadow-2xl relative group">
-              {isConnecting ? (
-                <div className="w-64 h-64 flex flex-col items-center justify-center gap-4 text-center">
-                  <Loader2 className="w-12 h-12 text-[#0217ff] animate-spin" />
-                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400 animate-pulse">Autenticando instância...</p>
+          <div className={`w-full md:w-[400px] aspect-square rounded-[32px] border-2 border-dashed ${connectionStatus === 'waiting_scan' ? 'border-emerald-500/50 bg-emerald-500/5' : theme.border} flex flex-col items-center justify-center p-8 relative transition-all`}>
+            
+            {connectionStatus === 'disconnected' && (
+              <div className="text-center space-y-6 animate-in zoom-in">
+                <QrCode size={64} className={`${theme.textMuted} mx-auto opacity-50`} />
+                <button onClick={handleGenerateQR} className="px-8 py-4 bg-emerald-500 text-white rounded-2xl font-black uppercase tracking-widest text-xs hover:scale-105 shadow-xl shadow-emerald-500/20 transition-all">
+                  Conectar Aparelho
+                </button>
+              </div>
+            )}
+
+            {connectionStatus === 'generating' && (
+              <div className="text-center space-y-4 animate-in fade-in">
+                <Loader2 size={48} className="text-emerald-500 animate-spin mx-auto" />
+                <p className={`font-black uppercase tracking-widest text-[10px] ${theme.textMuted} animate-pulse`}>A gerar chave de acesso...</p>
+              </div>
+            )}
+
+            {connectionStatus === 'waiting_scan' && qrCodeBase64 && (
+              <div className="text-center space-y-6 animate-in zoom-in duration-500">
+                <div className="bg-white p-4 rounded-2xl shadow-xl inline-block">
+                  <img src={qrCodeBase64} alt="QR Code" className="w-56 h-56" />
                 </div>
-              ) : (
-                <>
-                  <img 
-                    src={`https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=imobipro-${Date.now()}`} 
-                    alt="QR Code" 
-                    className="w-64 h-64 rounded-xl opacity-90 group-hover:opacity-100 transition-opacity" 
-                  />
-                  <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all bg-white/80 backdrop-blur-sm rounded-[40px]">
-                    <button onClick={handleConnect} className="px-8 py-4 bg-[#0217ff] text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl active:scale-95">
-                      Gerar novo código
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-            <div className="mt-8 flex items-center gap-2 text-[10px] font-black text-zinc-400 uppercase tracking-widest">
-              <Shield className="w-4 h-4 text-green-500" /> API CRIPTOGRAFADA PONTO-A-PONTO
+                <div className="flex items-center justify-center gap-2 text-emerald-500">
+                  <Loader2 size={16} className="animate-spin" />
+                  <p className="font-black uppercase tracking-widest text-[10px]">Aguardando Leitura...</p>
+                </div>
+              </div>
+            )}
+
+            <div className={`absolute -bottom-4 bg-zinc-900 text-white px-6 py-2 rounded-full flex items-center gap-2 text-[10px] font-black uppercase tracking-widest shadow-xl border border-white/10`}>
+              <Shield size={14} className="text-emerald-500" /> End-to-End Encryption
             </div>
           </div>
         </div>
@@ -121,186 +241,95 @@ export default function WhatsAppPage() {
     );
   }
 
-  // TELA DE CHAT ATIVA
+  // --- ECRÃ DO CHAT (Mantido igual ao anterior) ---
   return (
-    <div className={`h-[calc(100vh-140px)] flex border border-zinc-200 dark:border-white/5 rounded-[40px] overflow-hidden animate-fade-in shadow-2xl ${darkMode ? 'bg-[#0b141a]' : 'bg-[#f0f2f5]'}`}>
-      
-      {/* Sidebar: Lista de Conversas */}
-      <div className={`w-80 md:w-96 flex flex-col border-r border-zinc-200 dark:border-[#202c33] ${darkMode ? 'bg-[#111b21]' : 'bg-white'}`}>
-        <div className={`p-5 flex items-center justify-between ${darkMode ? 'bg-[#202c33]' : 'bg-zinc-50'}`}>
-          <div className="flex items-center gap-3">
-             <div className="w-10 h-10 rounded-full bg-[#0217ff] flex items-center justify-center text-white font-black italic shadow-md">IP</div>
-             <span className="text-xs font-black uppercase tracking-tighter dark:text-white">Conversas</span>
+    <div className={`h-[calc(100vh-80px)] flex animate-fade-in font-sans ${theme.textMain}`}>
+      <div className={`w-80 border-r ${theme.border} ${theme.bgSidebar} flex flex-col`}>
+        <div className={`p-6 border-b ${theme.border}`}>
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-xl font-black italic tracking-tighter uppercase">Conversas</h2>
+            <button onClick={handleDisconnect} title="Desconectar WhatsApp" className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse cursor-pointer hover:scale-150 transition-all" />
           </div>
-          <div className="flex gap-1">
-            <button onClick={() => setShowConfig(true)} className="p-2.5 text-zinc-500 hover:bg-zinc-200 dark:hover:bg-white/5 rounded-xl transition-all"><Settings size={18} /></button>
-          </div>
-        </div>
-
-        <div className="p-4">
-          <div className={`relative flex items-center rounded-2xl px-4 py-2.5 ${darkMode ? 'bg-[#202c33]' : 'bg-zinc-100'}`}>
-            <Search className="w-4 h-4 text-zinc-500 mr-3" />
-            <input type="text" placeholder="Procurar lead..." className="bg-transparent border-none focus:outline-none text-sm w-full dark:text-white font-medium" />
+          <div className="relative">
+            <Search className={`absolute left-4 top-1/2 -translate-y-1/2 ${theme.textMuted}`} size={16} />
+            <input type="text" placeholder="Procurar chat..." className={`w-full ${theme.inputBg} border ${theme.border} rounded-xl py-3 pl-10 pr-4 text-sm focus:outline-none focus:border-emerald-500 transition-colors ${theme.textMain}`} />
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto">
-          {leads.map((lead) => (
-            <button
-              key={lead.id}
-              onClick={() => setSelectedLead(lead)}
-              className={`w-full p-4 flex items-center gap-4 transition-all relative ${
-                selectedLead?.id === lead.id ? (darkMode ? 'bg-[#2a3942]' : 'bg-zinc-100') : (darkMode ? 'hover:bg-[#202c33]' : 'hover:bg-zinc-50')
-              }`}
-            >
-              <div className="w-14 h-14 rounded-2xl bg-[#0217ff]/10 text-[#0217ff] flex items-center justify-center font-black text-xl flex-shrink-0">
-                {lead.name.charAt(0)}
-              </div>
-              <div className="flex-1 text-left min-w-0">
-                <div className="flex items-center justify-between mb-1">
-                  <span className="font-black text-sm truncate dark:text-white uppercase tracking-tighter">{lead.name}</span>
-                  <span className="text-[9px] text-zinc-500 font-black">12:45</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <p className="text-xs text-zinc-500 truncate font-medium">Certo, vamos agendar a visita...</p>
-                  <div className={`w-2 h-2 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)]`} />
-                </div>
-              </div>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Main Chat Window */}
-      <div className="flex-1 flex flex-col relative">
-        {selectedLead ? (
-          <>
-            {/* Header do Chat */}
-            <div className={`p-4 flex items-center justify-between border-b border-zinc-200 dark:border-[#202c33] z-10 ${darkMode ? 'bg-[#202c33]' : 'bg-white'}`}>
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#0217ff] to-blue-700 flex items-center justify-center text-white font-black text-lg shadow-xl shadow-blue-500/20">
-                  {selectedLead.name.charAt(0)}
-                </div>
-                <div>
-                  <h3 className="font-black dark:text-white text-sm uppercase tracking-tighter">{selectedLead.name}</h3>
-                  <div className="flex items-center gap-2">
-                    <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-                    <span className="text-[9px] font-black text-green-500 uppercase tracking-widest">Aparelho Conectado</span>
+        <div className="flex-1 overflow-y-auto custom-scrollbar">
+          {(leads || []).map((lead: any) => {
+            const leadMsgs = (messages || []).filter((m: any) => m.leadId === lead.id);
+            const lastMsg = leadMsgs[leadMsgs.length - 1];
+            return (
+              <button key={lead.id} onClick={() => setSelectedLead(lead)} className={`w-full p-4 border-b ${theme.border} flex items-start gap-4 transition-colors ${selectedLead?.id === lead.id ? (darkMode ? 'bg-zinc-900' : 'bg-zinc-100') : theme.bgHover}`}>
+                <div className="relative">
+                  <div className="w-12 h-12 rounded-xl bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 flex items-center justify-center font-black text-lg">
+                    {lead.name.charAt(0).toUpperCase()}
                   </div>
                 </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <button className="p-3 text-zinc-400 hover:bg-zinc-100 dark:hover:bg-white/5 rounded-2xl transition-all"><Phone size={18} /></button>
-                <button className="p-3 text-zinc-400 hover:bg-zinc-100 dark:hover:bg-white/5 rounded-2xl transition-all"><Video size={18} /></button>
-                <button className="p-3 text-zinc-400 hover:bg-zinc-100 dark:hover:bg-white/5 rounded-2xl transition-all"><MoreVertical size={18} /></button>
-              </div>
-            </div>
-
-            {/* Mensagens com Wallpaper Estilo WhatsApp */}
-            <div className={`flex-1 overflow-y-auto p-8 space-y-4 relative ${darkMode ? 'bg-[#0b141a]' : 'bg-[#e5ddd5]'}`}>
-              {/* Wallpaper Pattern */}
-              <div className="absolute inset-0 opacity-[0.04] pointer-events-none bg-[url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png')] bg-repeat" />
-              
-              <div className="max-w-3xl mx-auto space-y-4 relative z-10">
-                {activeMessages.map((msg) => {
-                  const isUser = msg.sender === 'user';
-                  return (
-                    <div key={msg.id} className={`flex ${isUser ? 'justify-end' : 'justify-start'} animate-in slide-in-from-bottom-2 duration-300`}>
-                      <div className={`max-w-[75%] px-4 py-2.5 rounded-[22px] shadow-sm relative group ${
-                        isUser 
-                          ? (darkMode ? 'bg-[#005c4b] text-white rounded-tr-none' : 'bg-[#dcf8c6] text-zinc-900 rounded-tr-none') 
-                          : (darkMode ? 'bg-[#202c33] text-white rounded-tl-none' : 'bg-white text-zinc-900 rounded-tl-none')
-                      }`}>
-                        <p className="text-sm font-medium leading-relaxed pr-10">{msg.content}</p>
-                        <div className="flex items-center gap-1 absolute bottom-1.5 right-3">
-                          <span className={`text-[9px] font-bold ${darkMode ? 'text-white/50' : 'text-zinc-500'}`}>{formatTime(msg.timestamp)}</span>
-                          {isUser && <CheckCheck size={14} className="text-blue-400" />}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-                <div ref={chatEndRef} />
-              </div>
-            </div>
-
-            {/* Barra de Input Estilizada */}
-            <div className={`p-6 ${darkMode ? 'bg-[#202c33]' : 'bg-zinc-50'}`}>
-              <form onSubmit={handleSendMessage} className="max-w-4xl mx-auto flex items-center gap-4">
-                <button type="button" className="p-3 text-zinc-500 hover:bg-zinc-200 dark:hover:bg-white/5 rounded-2xl transition-all"><Paperclip size={20} /></button>
-                <div className={`flex-1 rounded-2xl px-6 py-4 shadow-inner ${darkMode ? 'bg-[#2a3942]' : 'bg-white'}`}>
-                  <input
-                    type="text"
-                    value={newMessage}
-                    onChange={(e) => setNewMessage(e.target.value)}
-                    placeholder="Escreva sua mensagem aqui..."
-                    className="w-full bg-transparent border-none focus:outline-none dark:text-white font-medium text-sm"
-                  />
+                <div className="flex-1 text-left">
+                  <div className="flex justify-between items-center mb-1">
+                    <span className={`font-bold text-sm ${theme.textMain} truncate`}>{lead.name}</span>
+                  </div>
+                  <p className={`text-xs ${theme.textMuted} truncate`}>{lastMsg ? lastMsg.content : 'Iniciar conversa...'}</p>
                 </div>
-                <button type="submit" disabled={!newMessage.trim()} className={`p-4 rounded-2xl transition-all ${
-                  newMessage.trim() ? 'bg-[#0217ff] text-white shadow-xl shadow-blue-600/30' : 'bg-zinc-200 text-zinc-400 dark:bg-zinc-800'
-                }`}>
-                  <Send size={20} />
-                </button>
-              </form>
-            </div>
-          </>
-        ) : (
-          <div className={`flex-1 flex flex-col items-center justify-center p-12 text-center ${darkMode ? 'bg-[#222e35]' : 'bg-[#f8f9fa]'}`}>
-            <div className="w-24 h-24 bg-[#0217ff]/5 rounded-[32px] flex items-center justify-center text-[#0217ff] mb-8 animate-bounce">
-              <MessageSquare size={40} />
-            </div>
-            <h2 className="text-3xl font-black dark:text-white italic mb-4">MENSAGENS<span className="text-[#0217ff]">.IMOBIPRO</span></h2>
-            <p className="text-zinc-500 max-w-sm font-medium leading-relaxed mb-12">
-              Selecione um lead ao lado para gerenciar a conversa. Toda a comunicação é sincronizada em tempo real com seu WhatsApp.
-            </p>
-            <div className="flex gap-4">
-               <div className="px-6 py-3 bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-200 dark:border-white/5 shadow-sm flex items-center gap-2">
-                  <Shield size={14} className="text-green-500" />
-                  <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Criptografia Ativa</span>
-               </div>
-            </div>
-          </div>
-        )}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
-      {/* Painel de Configuração da API (Nível SaaS) */}
-      {showConfig && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-xl z-[200] flex items-center justify-center p-6">
-          <div className="bg-white dark:bg-zinc-950 w-full max-w-lg rounded-[48px] shadow-2xl p-12 relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-blue-600 to-[#0217ff]" />
-            <div className="flex items-center justify-between mb-10">
-              <div className="flex items-center gap-3">
-                <Settings className="w-6 h-6 text-[#0217ff]" />
-                <h2 className="text-2xl font-black dark:text-white italic">API Gateway</h2>
-              </div>
-              <button onClick={() => setShowConfig(false)} className="p-3 hover:bg-zinc-100 dark:hover:bg-white/5 rounded-2xl transition-all">
-                <ChevronLeft className="w-6 h-6 rotate-180" />
-              </button>
-            </div>
-
-            <div className="space-y-6">
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest ml-1">Endpoint do Servidor</label>
-                <input type="text" defaultValue="https://evolution-api.imobipro.io" className="w-full bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/5 rounded-2xl py-4 px-5 focus:outline-none dark:text-white font-bold" />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest ml-1">ID Instância</label>
-                  <input type="text" defaultValue="INST_019283" className="w-full bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/5 rounded-2xl py-4 px-5 focus:outline-none dark:text-white font-bold" />
+      {selectedLead ? (
+        <div className={`flex-1 flex flex-col ${theme.bgApp}`}>
+          <div className={`h-20 border-b ${theme.border} ${theme.bgCard} flex items-center justify-between px-6`}>
+            <div className="flex items-center gap-4">
+              <button onClick={() => setSelectedLead(null)} className={`lg:hidden p-2 -ml-2 ${theme.textMuted}`}><ChevronLeft size={24} /></button>
+              <div className="flex items-center gap-4">
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center font-black">
+                  {selectedLead.name.charAt(0).toUpperCase()}
                 </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest ml-1">Status</label>
-                  <div className="w-full bg-green-500/10 border border-green-500/20 rounded-2xl py-4 px-5 text-green-500 font-black text-center text-xs">ONLINE</div>
+                <div>
+                  <h3 className={`font-bold ${theme.textMain}`}>{selectedLead.name}</h3>
+                  <p className={`text-[10px] font-black ${theme.textMuted} uppercase tracking-widest`}>{selectedLead.phone || 'Sem número'}</p>
                 </div>
-              </div>
-
-              <div className="pt-8 flex gap-4">
-                <button onClick={() => {setWhatsappConnected(false); setShowConfig(false);}} className="flex-1 py-5 bg-red-500/10 text-red-500 rounded-3xl font-black uppercase text-[11px] tracking-widest hover:bg-red-500 hover:text-white transition-all">Desconectar</button>
-                <button onClick={() => setShowConfig(false)} className="flex-1 py-5 bg-[#0217ff] text-white rounded-3xl font-black uppercase text-[11px] tracking-widest shadow-xl shadow-[#0217ff]/30">Salvar Gateway</button>
               </div>
             </div>
           </div>
+
+          <div className="flex-1 overflow-y-auto p-6 space-y-6">
+            {activeMessages.map((msg: any) => {
+              const isSent = msg.direction === 'sent';
+              return (
+                <div key={msg.id} className={`flex flex-col ${isSent ? 'items-end' : 'items-start'}`}>
+                  <div className={`max-w-[70%] p-4 ${isSent ? `${theme.msgSentBg} text-white rounded-2xl rounded-tr-sm` : `${theme.msgReceivedBg} border ${theme.border} ${theme.textMain} rounded-2xl rounded-tl-sm`}`}>
+                    <p className="text-sm font-medium">{msg.content}</p>
+                  </div>
+                </div>
+              );
+            })}
+            <div ref={chatEndRef} />
+          </div>
+
+          <div className={`p-4 ${theme.bgCard} border-t ${theme.border}`}>
+            <form onSubmit={handleSendMessage} className="flex gap-3">
+              <input 
+                type="text" placeholder="Escreva uma mensagem..." 
+                className={`flex-1 ${theme.inputBg} border ${theme.border} rounded-2xl px-6 focus:outline-none focus:border-emerald-500 transition-colors ${theme.textMain} text-sm font-medium`}
+                value={newMessage} onChange={e => setNewMessage(e.target.value)}
+              />
+              <button type="submit" disabled={!newMessage.trim()} className="p-4 bg-emerald-500 text-white rounded-2xl disabled:opacity-50 hover:scale-105 transition-all shadow-lg shadow-emerald-500/20">
+                <Send size={20} className="ml-1" />
+              </button>
+            </form>
+          </div>
+        </div>
+      ) : (
+        <div className={`flex-1 flex flex-col items-center justify-center ${theme.bgApp}`}>
+          <div className={`w-24 h-24 rounded-full ${theme.bgCard} border ${theme.border} flex items-center justify-center mb-6 shadow-2xl`}>
+            <Smartphone size={40} className="text-emerald-500" />
+          </div>
+          <h2 className="text-2xl font-black italic uppercase tracking-tighter mb-2">ImobiPro <span className="text-emerald-500">Chat</span></h2>
+          <p className={`${theme.textMuted} font-medium`}>Selecione uma conversa ao lado.</p>
         </div>
       )}
     </div>
