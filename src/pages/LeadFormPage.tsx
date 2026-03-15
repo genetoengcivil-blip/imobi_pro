@@ -1,11 +1,14 @@
 import React, { useState } from 'react';
-import { X, Save, Phone, Mail, User, DollarSign, Loader2, Percent } from 'lucide-react';
+import { X, Save, Phone, Mail, User, DollarSign, Loader2, Percent, AlertCircle } from 'lucide-react';
 import { useGlobal } from '../context/GlobalContext';
 
 export default function LeadFormPage({ lead, onClose }: { lead?: any, onClose: () => void }) {
   const { addLead, updateLead, darkMode } = useGlobal();
   const [isSubmitting, setIsSubmitting] = useState(false);
   
+  // Substitui o "alert()" nativo por mensagens bonitas dentro do formulário
+  const [toastMessage, setToastMessage] = useState<{ type: 'error' | 'success', text: string } | null>(null);
+
   const theme = {
     overlay: 'bg-black/60 backdrop-blur-md',
     bgApp: darkMode ? 'bg-zinc-950' : 'bg-white',
@@ -16,14 +19,13 @@ export default function LeadFormPage({ lead, onClose }: { lead?: any, onClose: (
     hoverBg: darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-100',
   };
 
-  // Carrega os dados do lead existente ou define valores padrão para um novo
   const [formData, setFormData] = useState({
     name: lead?.name || '',
     email: lead?.email || '',
     phone: lead?.phone || '',
     status: (lead?.status || 'novo').toLowerCase(), 
-    value: Number(lead?.value) || 0,
-    commission: Number(lead?.commission_rate) || Number(lead?.commission) || 6, // Padrão 6%
+    value: lead?.value || '',
+    commission: lead?.commission_rate || lead?.comissao || lead?.commission || 6,
     source: lead?.source || 'Orgânico',
     notes: lead?.notes || '',
   });
@@ -31,13 +33,19 @@ export default function LeadFormPage({ lead, onClose }: { lead?: any, onClose: (
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
+    setToastMessage(null);
     
     try {
-      // Salva o dado como commission_rate para sincronizar com o banco e o Dashboard
+      // 🛡️ Blindagem de Comissão: Enviamos a variável com os 2 nomes para garantir que o banco de dados aceita
       const dataToSave = {
         ...formData,
-        commission_rate: formData.commission 
+        value: Number(formData.value) || 0,
+        commission_rate: Number(formData.commission) || 0,
+        comissao: Number(formData.commission) || 0
       };
+      
+      // Remove o campo raw para não causar erro de schema no Supabase
+      delete (dataToSave as any).commission; 
 
       if (lead && lead.id) {
         await updateLead(lead.id, dataToSave);
@@ -46,8 +54,8 @@ export default function LeadFormPage({ lead, onClose }: { lead?: any, onClose: (
       }
       onClose();
     } catch (error) {
-      console.error("Erro ao salvar:", error);
-      alert("Falha ao salvar. Verifique se a sua sessão expirou.");
+      console.error(error);
+      setToastMessage({ type: 'error', text: 'Ocorreu um erro ao comunicar com o servidor. Tente novamente.' });
     } finally {
       setIsSubmitting(false);
     }
@@ -72,10 +80,16 @@ export default function LeadFormPage({ lead, onClose }: { lead?: any, onClose: (
         </div>
 
         <div className="p-6 overflow-y-auto custom-scrollbar flex-1">
+          {/* SAAS STANDARD: MENSAGEM DE ERRO/SUCESSO INLINE */}
+          {toastMessage && (
+            <div className={`mb-6 p-4 rounded-xl flex items-center gap-3 text-xs font-bold uppercase tracking-widest ${toastMessage.type === 'error' ? 'bg-red-500/10 text-red-500' : 'bg-emerald-500/10 text-emerald-500'}`}>
+              <AlertCircle size={16} /> {toastMessage.text}
+            </div>
+          )}
+
           <form id="lead-form" onSubmit={handleSubmit} className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               
-              {/* NOME */}
               <div className="space-y-2">
                 <label className={`text-[10px] font-black ${theme.textMuted} uppercase tracking-widest ml-1`}>Nome Completo *</label>
                 <div className="relative">
@@ -84,7 +98,6 @@ export default function LeadFormPage({ lead, onClose }: { lead?: any, onClose: (
                 </div>
               </div>
 
-              {/* CONTATOS */}
               <div className="space-y-2">
                 <label className={`text-[10px] font-black ${theme.textMuted} uppercase tracking-widest ml-1`}>WhatsApp / E-mail</label>
                 <div className="flex gap-2">
@@ -99,22 +112,20 @@ export default function LeadFormPage({ lead, onClose }: { lead?: any, onClose: (
                 </div>
               </div>
 
-              {/* VALOR E COMISSÃO */}
               <div className="space-y-2">
                 <label className={`text-[10px] font-black ${theme.textMuted} uppercase tracking-widest ml-1`}>Negociação (Valor e Comissão)</label>
                 <div className="flex gap-2">
                   <div className="relative w-2/3">
                     <DollarSign className={`absolute left-4 top-1/2 -translate-y-1/2 text-emerald-500`} size={16} />
-                    <input type="number" placeholder="Valor Imóvel" value={formData.value || ''} onChange={(e) => setFormData({ ...formData, value: Number(e.target.value) })} className={`w-full ${theme.inputBg} border ${theme.border} rounded-xl py-3 pl-10 pr-4 focus:outline-none focus:border-emerald-500 transition-all font-black text-emerald-500`} />
+                    <input type="number" placeholder="Valor Imóvel" value={formData.value} onChange={(e) => setFormData({ ...formData, value: e.target.value })} className={`w-full ${theme.inputBg} border ${theme.border} rounded-xl py-3 pl-10 pr-4 focus:outline-none focus:border-emerald-500 transition-all font-black text-emerald-500`} />
                   </div>
                   <div className="relative w-1/3">
                     <Percent className={`absolute right-4 top-1/2 -translate-y-1/2 text-purple-500`} size={16} />
-                    <input type="number" step="0.1" placeholder="6" value={formData.commission || ''} onChange={(e) => setFormData({ ...formData, commission: Number(e.target.value) })} className={`w-full ${theme.inputBg} border ${theme.border} rounded-xl py-3 pl-4 pr-10 focus:outline-none focus:border-purple-500 transition-all font-black text-purple-500`} />
+                    <input type="number" step="0.1" placeholder="6" value={formData.commission} onChange={(e) => setFormData({ ...formData, commission: e.target.value })} className={`w-full ${theme.inputBg} border ${theme.border} rounded-xl py-3 pl-4 pr-10 focus:outline-none focus:border-purple-500 transition-all font-black text-purple-500`} />
                   </div>
                 </div>
               </div>
 
-              {/* STATUS DO FUNIL */}
               <div className="space-y-2">
                 <label className={`text-[10px] font-black ${theme.textMuted} uppercase tracking-widest ml-1`}>Etapa no Funil</label>
                 <select value={formData.status} onChange={(e) => setFormData({ ...formData, status: e.target.value })} className={`w-full ${theme.inputBg} border ${theme.border} rounded-xl py-3 px-4 focus:outline-none focus:border-[#0217ff] transition-all font-bold ${theme.textMain} appearance-none`}>
@@ -151,9 +162,3 @@ export default function LeadFormPage({ lead, onClose }: { lead?: any, onClose: (
               {isSubmitting ? 'Salvando...' : 'Salvar Lead'}
             </button>
           </div>
-        </div>
-
-      </div>
-    </div>
-  );
-}
