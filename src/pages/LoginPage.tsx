@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { Lock, Mail, Eye, EyeOff, Loader2, ShieldAlert, CheckCircle } from 'lucide-react';
+import { Lock, Mail, Eye, EyeOff, Loader2, ShieldAlert } from 'lucide-react';
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -9,7 +9,6 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
-  // Estados para o Primeiro Acesso
   const [mustChangePassword, setMustChangePassword] = useState(false);
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -30,8 +29,20 @@ export default function LoginPage() {
 
       if (signInError) throw signInError;
 
-      // VERIFICAÇÃO DE PRIMEIRO ACESSO
-      // Verificamos se a flag enviada pelo Webhook da Nexano está presente
+      // VERIFICAÇÃO DE STATUS DE BLOQUEIO
+      const { data: profile, error: profileError } = await supabase
+        .from('perfil')
+        .select('status, motivo_bloqueio')
+        .eq('id', data.user.id)
+        .single();
+
+      if (profile?.status === 'bloqueado') {
+        await supabase.auth.signOut(); // Desloga imediatamente
+        setError(`Acesso Suspenso: ${profile.motivo_bloqueio || 'Verifique a sua assinatura'}.`);
+        setLoading(false);
+        return;
+      }
+
       const isFirstAccess = data.user?.user_metadata?.must_change_password;
 
       if (isFirstAccess) {
@@ -40,43 +51,27 @@ export default function LoginPage() {
         navigate('/app/dashboard');
       }
     } catch (err: any) {
-      setError('Credenciais inválidas ou erro de conexão.');
+      setError(err.message === 'Invalid login credentials' ? 'E-mail ou senha incorretos.' : err.message);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleChangePassword = async (e: React.FormEvent) => {
+  const handleUpdatePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     if (newPassword !== confirmPassword) {
       setError('As senhas não coincidem.');
       return;
     }
-    if (newPassword.length < 6) {
-      setError('A nova senha deve ter pelo menos 6 caracteres.');
-      return;
-    }
 
     setLoading(true);
     try {
-      // 1. Atualiza a senha no Supabase Auth
-      const { error: updateError } = await supabase.auth.updateUser({
-        password: newPassword
-      });
-
-      if (updateError) throw updateError;
-
-      // 2. Remove a flag de "must_change_password" para que ele não caia aqui de novo
-      await supabase.auth.updateUser({
+      const { error } = await supabase.auth.updateUser({ 
+        password: newPassword,
         data: { must_change_password: false }
       });
 
-      // 3. Atualiza o perfil no banco de dados (Profiles)
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        await supabase.from('profiles').update({ is_temporary_password: false }).eq('id', user.id);
-      }
-
+      if (error) throw error;
       navigate('/app/dashboard');
     } catch (err: any) {
       setError(err.message);
@@ -86,93 +81,81 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-black flex items-center justify-center p-6 font-sans">
-      <div className="w-full max-w-md">
-        
-        {/* LOGO */}
-        <div className="text-center mb-12">
-          <h1 className="text-4xl font-black italic uppercase tracking-tighter text-white">
-            IMOBI<span className="text-[#0217ff]">PRO</span>
-          </h1>
-          <p className="text-zinc-500 text-[10px] font-black uppercase tracking-[0.3em] mt-2">Acesso restrito ao corretor</p>
-        </div>
-
-        <div className="bg-zinc-900/50 border border-white/5 p-8 md:p-12 rounded-[48px] shadow-2xl backdrop-blur-xl">
+    <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center p-6 selection:bg-[#0217ff]/30">
+      <div className="w-full max-w-[440px] animate-fade-in">
+        <div className="bg-zinc-950 border border-white/5 rounded-[48px] p-10 shadow-2xl relative overflow-hidden">
           
           {!mustChangePassword ? (
-            /* FORMULÁRIO DE LOGIN NORMAL */
-            <form onSubmit={handleLogin} className="space-y-6">
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">E-mail de Acesso</label>
-                <div className="relative">
-                  <Mail className="absolute left-5 top-1/2 -translate-y-1/2 text-[#0217ff]" size={20} />
+            <form onSubmit={handleLogin} className="space-y-8 relative z-10">
+              <div className="text-center">
+                <h2 className="text-3xl font-black italic uppercase tracking-tighter">Entrar na <span className="text-[#0217ff]">Área VIP</span></h2>
+                <p className="text-zinc-500 text-[10px] font-black uppercase tracking-widest mt-2 italic">Aceda ao seu ecossistema ImobiPro</p>
+              </div>
+
+              <div className="space-y-4">
+                <div className="relative group">
+                  <Mail className="absolute left-6 top-1/2 -translate-y-1/2 text-zinc-600 group-focus-within:text-[#0217ff] transition-colors" size={18} />
                   <input 
-                    type="email" required
-                    className="w-full bg-black border-2 border-white/5 rounded-2xl py-5 pl-14 pr-6 outline-none focus:border-[#0217ff] transition-all font-bold text-white"
-                    placeholder="seu@email.com"
+                    type="email" required placeholder="E-mail de acesso"
+                    className="w-full bg-black border-2 border-white/5 rounded-2xl py-5 pl-16 pr-6 outline-none focus:border-[#0217ff] transition-all font-bold text-white placeholder:text-zinc-700"
                     value={email} onChange={e => setEmail(e.target.value)}
                   />
                 </div>
-              </div>
 
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Senha (CPF Inicial)</label>
-                <div className="relative">
-                  <Lock className="absolute left-5 top-1/2 -translate-y-1/2 text-[#0217ff]" size={20} />
+                <div className="relative group">
+                  <Lock className="absolute left-6 top-1/2 -translate-y-1/2 text-zinc-600 group-focus-within:text-[#0217ff] transition-colors" size={18} />
                   <input 
-                    type={showPassword ? "text" : "password"} required
-                    className="w-full bg-black border-2 border-white/5 rounded-2xl py-5 pl-14 pr-14 outline-none focus:border-[#0217ff] transition-all font-bold text-white"
-                    placeholder="••••••••"
+                    type={showPassword ? "text" : "password"} required placeholder="Sua senha"
+                    className="w-full bg-black border-2 border-white/5 rounded-2xl py-5 pl-16 pr-16 outline-none focus:border-[#0217ff] transition-all font-bold text-white placeholder:text-zinc-700"
                     value={password} onChange={e => setPassword(e.target.value)}
                   />
-                  <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-5 top-1/2 -translate-y-1/2 text-zinc-600">
-                    {showPassword ? <EyeOff size={20}/> : <Eye size={20}/>}
+                  <button 
+                    type="button" onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-6 top-1/2 -translate-y-1/2 text-zinc-600 hover:text-white transition-colors"
+                  >
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                   </button>
                 </div>
               </div>
 
               {error && (
-                <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-500 text-xs font-bold flex items-center gap-3 italic">
-                  <ShieldAlert size={18} /> {error}
+                <div className="bg-red-500/10 border border-red-500/20 p-4 rounded-xl flex items-center gap-3">
+                  <ShieldAlert className="text-red-500 shrink-0" size={18} />
+                  <p className="text-red-500 text-[10px] font-black uppercase tracking-tight leading-tight">{error}</p>
                 </div>
               )}
 
-              <button disabled={loading} type="submit" className="w-full py-6 bg-[#0217ff] text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-2xl shadow-blue-600/40 hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-3">
-                {loading ? <Loader2 className="animate-spin" /> : "Entrar no Sistema"}
+              <button disabled={loading} type="submit" className="w-full py-6 bg-white text-black rounded-2xl font-black text-xs uppercase tracking-widest hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-3">
+                {loading ? <Loader2 className="animate-spin" /> : "Aceder ao Painel"}
               </button>
             </form>
           ) : (
-            /* FORMULÁRIO DE TROCA DE SENHA (PRIMEIRO ACESSO) */
-            <form onSubmit={handleChangePassword} className="space-y-6 animate-fade-in">
-              <div className="text-center mb-8">
-                <div className="w-16 h-16 bg-[#0217ff]/20 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <CheckCircle className="text-[#0217ff]" size={32} />
-                </div>
-                <h2 className="text-xl font-black uppercase italic text-white leading-tight">Primeiro Acesso Detectado!</h2>
+            <form onSubmit={handleUpdatePassword} className="space-y-8 relative z-10">
+              <div className="text-center">
+                <h2 className="text-3xl font-black italic uppercase tracking-tighter">Primeiro <span className="text-[#0217ff]">Acesso</span></h2>
                 <p className="text-zinc-500 text-xs font-medium mt-2 italic">Por segurança, crie uma nova senha agora.</p>
               </div>
 
               <div className="space-y-4">
                 <input 
-                  type="password" required placeholder="Nova Senha Definida"
-                  className="w-full bg-black border-2 border-white/5 rounded-2xl py-5 px-6 outline-none focus:border-[#0217ff] transition-all font-bold text-white"
+                  type="password" required placeholder="Nova Senha"
+                  className="w-full bg-black border-2 border-white/5 rounded-2xl py-5 px-6 outline-none focus:border-[#0217ff] transition-all font-bold text-white placeholder:text-zinc-700"
                   value={newPassword} onChange={e => setNewPassword(e.target.value)}
                 />
                 <input 
                   type="password" required placeholder="Confirme a Nova Senha"
-                  className="w-full bg-black border-2 border-white/5 rounded-2xl py-5 px-6 outline-none focus:border-[#0217ff] transition-all font-bold text-white"
+                  className="w-full bg-black border-2 border-white/5 rounded-2xl py-5 px-6 outline-none focus:border-[#0217ff] transition-all font-bold text-white placeholder:text-zinc-700"
                   value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)}
                 />
               </div>
 
-              {error && <p className="text-red-500 text-xs font-bold text-center italic">{error}</p>}
+              {error && <p className="text-red-500 text-[10px] font-black uppercase text-center italic">{error}</p>}
 
-              <button disabled={loading} type="submit" className="w-full py-6 bg-white text-black rounded-2xl font-black text-xs uppercase tracking-widest hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-3">
+              <button disabled={loading} type="submit" className="w-full py-6 bg-[#0217ff] text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-3">
                 {loading ? <Loader2 className="animate-spin" /> : "Ativar Minha Conta"}
               </button>
             </form>
           )}
-
         </div>
       </div>
     </div>
