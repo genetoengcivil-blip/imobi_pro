@@ -24,14 +24,32 @@ import TermsPage from './pages/TermsPage';
 import PrivacyPage from './pages/PrivacyPage';
 import UpdatesPage from './pages/UpdatesPage';
 
+// COMPONENTE DE ROTA PROTEGIDA COM LOGICA DE BLOQUEIO
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useGlobal();
   const location = useLocation();
 
   if (loading) return null; 
 
+  // 1. Bloqueio se não estiver logado
   if (!user) {
     return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+
+  // 2. Bloqueio se o Status no Perfil for 'bloqueado'
+  // Nota: O 'user.status' vem do seu Contexto que busca da tabela 'perfil'
+  if (user.status === 'bloqueado') {
+    return (
+      <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center p-6 text-center">
+        <h1 className="text-4xl font-black mb-4 uppercase italic">Acesso Suspenso</h1>
+        <p className="text-zinc-500 max-w-md mb-8">
+          Identificamos uma pendência na sua assinatura. Por favor, regularize seu pagamento na Nexano para retomar o acesso aos seus leads.
+        </p>
+        <a href="https://wa.me/5583986667292" className="px-8 py-4 bg-[#0217ff] rounded-2xl font-bold uppercase text-xs">
+          Falar com Suporte
+        </a>
+      </div>
+    );
   }
 
   return <>{children}</>;
@@ -42,18 +60,19 @@ export default function App() {
     <GlobalProvider>
       <Router>
         <Routes>
-          {/* --- ROTAS PÚBLICAS (NÃO PROTEGIDAS) --- */}
+          {/* --- ROTAS PÚBLICAS --- */}
           <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<LoginPage />} />
-          <Route path="/sucesso" element={<SuccessPage />} />
           <Route path="/welcome" element={<WelcomePage />} />
+          <Route path="/success" element={<SuccessPage />} />
           
+          {/* Links Institucionais (Sincronizados com o Footer da Landing) */}
           <Route path="/help" element={<HelpCenterPage />} />
           <Route path="/terms" element={<TermsPage />} />
           <Route path="/privacy" element={<PrivacyPage />} />
           <Route path="/updates" element={<UpdatesPage />} />
           
-          {/* Rota do Site Público (Movida para fora de /app para evitar o erro e permitir acesso público) */}
+          {/* Rota do Site Público */}
           <Route path="/v/:slug" element={<PublicSitePage />} />
           
           {/* --- ROTAS PRIVADAS (ÁREA DO CORRETOR) --- */}
@@ -76,7 +95,6 @@ export default function App() {
             <Route path="site" element={<SitePage />} />
           </Route>
 
-          {/* Redirecionamento automático para a Landing se a página não existir */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Router>

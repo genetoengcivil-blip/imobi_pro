@@ -1,47 +1,44 @@
-import { useNavigate } from 'react-router-dom';
-import { ArrowLeft } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { ArrowLeft, Shield } from 'lucide-react';
 import { Logo } from '../components/Logo';
 
 export default function TermsPage() {
-  const navigate = useNavigate();
-
   return (
-    <div className="min-h-screen bg-black text-white font-sans selection:bg-[#0217ff]/30">
-      <nav className="fixed top-0 left-0 right-0 z-50 bg-black/90 backdrop-blur-xl border-b border-white/10 h-20 flex items-center px-6">
-        <div className="max-w-7xl mx-auto w-full flex items-center justify-between">
-          <button onClick={() => navigate('/landing')} className="flex items-center gap-2 text-zinc-400 hover:text-white transition-colors font-bold">
-            <ArrowLeft className="w-5 h-5" /> Voltar ao Início
-          </button>
-          <div className="flex items-center gap-2">
-            <Logo className="w-8 h-8" />
-            <span className="font-bold text-xl">Imobi<span className="text-[#0217ff]">Pro</span></span>
+    <div className="min-h-screen bg-black text-white font-sans p-6 md:p-20">
+      <div className="max-w-4xl mx-auto">
+        <Link to="/" className="inline-flex items-center gap-2 text-zinc-500 hover:text-[#0217ff] transition-colors mb-12 text-xs font-black uppercase tracking-widest">
+          <ArrowLeft size={16} /> Voltar para a Home
+        </Link>
+
+        <div className="flex items-center gap-4 mb-12">
+          <div className="w-16 h-16 bg-[#0217ff]/10 rounded-2xl flex items-center justify-center">
+            <Shield className="text-[#0217ff]" size={32} />
+          </div>
+          <div>
+            <h1 className="text-4xl font-black italic uppercase tracking-tighter">Termos de <span className="text-[#0217ff]">Uso</span></h1>
+            <p className="text-zinc-500 text-sm font-medium italic">Última atualização: 15 de Março de 2026</p>
           </div>
         </div>
-      </nav>
 
-      <div className="pt-32 pb-20 px-6 max-w-3xl mx-auto">
-        <h1 className="text-4xl font-black mb-4">Termos de Uso</h1>
-        <p className="text-zinc-500 mb-12">Última atualização: {new Date().toLocaleDateString('pt-BR')}</p>
-
-        <div className="space-y-8 text-zinc-300 leading-relaxed">
+        <div className="space-y-8 text-zinc-400 leading-relaxed italic text-lg">
           <section>
-            <h2 className="text-2xl font-bold text-white mb-4">1. Aceitação dos Termos</h2>
-            <p>Ao aceder e utilizar o sistema ImobiPro, concorda em cumprir e vincular-se a estes Termos de Uso. Se não concordar com alguma parte destes termos, não deverá utilizar a nossa plataforma.</p>
+            <h2 className="text-white font-black uppercase text-sm tracking-[0.2em] mb-4">1. Aceitação dos Termos</h2>
+            <p>Ao aceder ao ImobiPro, você concorda em cumprir estes termos de serviço, todas as leis e regulamentos aplicáveis. O software é fornecido como SaaS (Software as a Service) para gestão imobiliária.</p>
           </section>
 
           <section>
-            <h2 className="text-2xl font-bold text-white mb-4">2. Uso da Plataforma</h2>
-            <p>O ImobiPro é um software de gestão (CRM) destinado a corretores de imóveis e imobiliárias. É estritamente proibido utilizar a plataforma para fins ilegais, envio de spam ou partilha de conteúdo não autorizado.</p>
+            <h2 className="text-white font-black uppercase text-sm tracking-[0.2em] mb-4">2. Licença de Uso</h2>
+            <p>A licença concedida é pessoal, intransferível e revogável em caso de inadimplência ou violação destes termos. É proibido realizar engenharia reversa ou tentar extrair o código-fonte da plataforma.</p>
           </section>
 
           <section>
-            <h2 className="text-2xl font-bold text-white mb-4">3. Assinaturas e Pagamentos</h2>
-            <p>O acesso às ferramentas premium requer uma assinatura ativa (Mensal, Semestral ou Anual). Os pagamentos são processados com segurança através da plataforma Nexano. O não pagamento resultará na suspensão temporária do acesso à conta.</p>
+            <h2 className="text-white font-black uppercase text-sm tracking-[0.2em] mb-4">3. Responsabilidade dos Dados</h2>
+            <p>O corretor é o único responsável pela veracidade dos imóveis cadastrados e pelo tratamento dos dados dos leads capturados, devendo este respeitar as diretrizes da LGPD em suas comunicações via WhatsApp.</p>
           </section>
 
           <section>
-            <h2 className="text-2xl font-bold text-white mb-4">4. Cancelamento</h2>
-            <p>Pode cancelar a sua assinatura a qualquer momento através do painel de configurações. O cancelamento interrompe as cobranças futuras, mas não dá direito a reembolso de períodos já faturados e utilizados.</p>
+            <h2 className="text-white font-black uppercase text-sm tracking-[0.2em] mb-4">4. Cancelamento e Reembolso</h2>
+            <p>O cancelamento pode ser feito a qualquer momento via plataforma de pagamento (Nexano). O acesso permanecerá ativo até o fim do período já pago. Reembolsos seguem o Código de Defesa do Consumidor (7 dias).</p>
           </section>
         </div>
       </div>

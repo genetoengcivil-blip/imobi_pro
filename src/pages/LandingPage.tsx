@@ -1,15 +1,31 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { 
   ArrowRight, Star, Check, Play, ChevronDown, 
   MessageSquare, Globe, Calculator, ShieldCheck, Zap, 
-  Database, Cpu, Smartphone, Layout, Rocket, MessageCircle, Users, Building2, TrendingUp
+  Database, Cpu, Smartphone, Layout, Rocket, MessageCircle, Users, Building2, TrendingUp,
+  Cookie, Shield
 } from 'lucide-react';
 import { Logo } from '../components/Logo';
 
 export default function LandingPage() {
   const navigate = useNavigate();
   const [openFaq, setOpenFaq] = useState<number | null>(0);
+  const [showLGPD, setShowLGPD] = useState(false);
+
+  // Verificação LGPD ao carregar a página
+  useEffect(() => {
+    const consent = localStorage.getItem('imobipro_consent');
+    if (!consent) {
+      const timer = setTimeout(() => setShowLGPD(true), 2000); // Aparece após 2 segundos
+      return () => clearTimeout(timer);
+    }
+  }, []);
+
+  const acceptLGPD = () => {
+    localStorage.setItem('imobipro_consent', 'true');
+    setShowLGPD(false);
+  };
 
   const scrollToPlans = () => {
     document.getElementById('plans')?.scrollIntoView({ behavior: 'smooth' });
@@ -290,7 +306,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Footer Reformulado */}
+      {/* Footer Reformulado - CORRIGIDO LINKS PARA App.tsx */}
       <footer className="py-24 border-t border-white/5 bg-black">
         <div className="max-w-7xl mx-auto px-6">
           <div className="flex flex-col items-center gap-6 mb-12 text-center">
@@ -299,8 +315,9 @@ export default function LandingPage() {
           </div>
 
           <div className="flex flex-col md:flex-row items-center justify-center gap-8 mb-12 text-[10px] font-black uppercase tracking-widest text-zinc-500">
-            <Link to="/termos" className="hover:text-white transition-colors">Termos de Uso</Link>
-            <Link to="/privacidade" className="hover:text-white transition-colors">Política de Privacidade</Link>
+            {/* Links corrigidos para /terms e /privacy de acordo com as rotas do App.tsx */}
+            <Link to="/terms" className="hover:text-white transition-colors">Termos de Uso</Link>
+            <Link to="/privacy" className="hover:text-white transition-colors">Política de Privacidade</Link>
             <a href="mailto:atendimento.imobipro@gmail.com" className="hover:text-white transition-colors italic lowercase tracking-normal">atendimento.imobipro@gmail.com</a>
           </div>
 
@@ -309,6 +326,31 @@ export default function LandingPage() {
           </div>
         </div>
       </footer>
+
+      {/* BANNER LGPD - DESIGN DISCRETO INTEGRADO */}
+      {showLGPD && (
+        <div className="fixed bottom-6 left-6 right-6 z-[110] animate-in fade-in slide-in-from-bottom-10 duration-700">
+          <div className="max-w-4xl mx-auto bg-zinc-900/90 backdrop-blur-xl border border-white/10 p-6 rounded-[32px] flex flex-col md:flex-row items-center justify-between gap-6 shadow-2xl">
+            <div className="flex items-center gap-4 text-left">
+              <div className="w-12 h-12 bg-[#0217ff]/20 rounded-2xl flex items-center justify-center shrink-0">
+                <Shield className="w-6 h-6 text-[#0217ff]" />
+              </div>
+              <div>
+                <h4 className="font-bold text-sm uppercase tracking-tighter italic">Privacidade e LGPD</h4>
+                <p className="text-xs text-zinc-400 max-w-xl italic">
+                  Utilizamos cookies para melhorar sua experiência. Ao continuar, você concorda com nossos <Link to="/terms" className="text-white underline">Termos</Link> e <Link to="/privacy" className="text-white underline">Privacidade</Link>.
+                </p>
+              </div>
+            </div>
+            <button 
+              onClick={acceptLGPD}
+              className="px-8 py-3 bg-white text-black font-black text-[10px] uppercase tracking-widest rounded-xl hover:bg-zinc-200 transition-all whitespace-nowrap"
+            >
+              Aceitar e Continuar
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
