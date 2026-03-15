@@ -12,9 +12,9 @@ export default function LeadsListPage() {
   const { leads, deleteLead, darkMode } = useGlobal();
   const [searchTerm, setSearchTerm] = useState('');
   
-  // Controle do Modal
+  // Controle do Modal de Formulário
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [leadToEdit, setLeadToEdit] = useState<any>(null); // Guarda o lead que vai ser editado
+  const [leadToEdit, setLeadToEdit] = useState<any>(null);
 
   const theme = {
     bgCard: darkMode ? 'bg-black' : 'bg-white',
@@ -167,11 +167,9 @@ export default function LeadsListPage() {
 
                     <td className="px-8 py-6 text-right">
                       <div className="flex items-center justify-end gap-2">
-                        {/* BOTÃO EDITAR */}
                         <button type="button" onClick={() => handleEditLead(lead)} className={`p-3 ${theme.btnBg} border ${theme.border} rounded-xl ${theme.textMuted} hover:text-[#0217ff] transition-all`}>
                           <Edit size={16} />
                         </button>
-                        {/* BOTÃO APAGAR */}
                         <button type="button" onClick={() => handleDeleteLead(lead.id)} className={`p-3 ${theme.btnBg} border ${theme.border} rounded-xl ${theme.textMuted} hover:text-red-500 transition-all`}>
                           <Trash2 size={16} />
                         </button>

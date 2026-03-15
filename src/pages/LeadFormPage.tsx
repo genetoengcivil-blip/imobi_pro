@@ -16,13 +16,14 @@ export default function LeadFormPage({ lead, onClose }: { lead?: any, onClose: (
     hoverBg: darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-100',
   };
 
+  // Carrega os dados do lead existente ou define valores padrão para um novo
   const [formData, setFormData] = useState({
     name: lead?.name || '',
     email: lead?.email || '',
     phone: lead?.phone || '',
-    status: (lead?.status || 'novo').toLowerCase(), // Força minúscula para o Dashboard entender perfeitamente
-    value: lead?.value || 0,
-    commission: lead?.commission_rate || lead?.commission || 6, // Garante que puxa os 6% como padrão
+    status: (lead?.status || 'novo').toLowerCase(), 
+    value: Number(lead?.value) || 0,
+    commission: Number(lead?.commission_rate) || Number(lead?.commission) || 6, // Padrão 6%
     source: lead?.source || 'Orgânico',
     notes: lead?.notes || '',
   });
@@ -32,7 +33,7 @@ export default function LeadFormPage({ lead, onClose }: { lead?: any, onClose: (
     setIsSubmitting(true);
     
     try {
-      // Salva o dado como commission_rate para que o banco e o Dashboard leiam corretamente
+      // Salva o dado como commission_rate para sincronizar com o banco e o Dashboard
       const dataToSave = {
         ...formData,
         commission_rate: formData.commission 
@@ -137,7 +138,6 @@ export default function LeadFormPage({ lead, onClose }: { lead?: any, onClose: (
         </div>
 
         <div className={`p-6 border-t ${theme.border} bg-black/5 flex items-center justify-between`}>
-          {/* Se for edição, mostramos a data original só para informação */}
           <div className={`text-xs ${theme.textMuted} italic`}>
              {lead ? `Cadastrado em: ${new Date(lead.createdAt).toLocaleDateString('pt-BR')}` : 'Será cadastrado hoje'}
           </div>
