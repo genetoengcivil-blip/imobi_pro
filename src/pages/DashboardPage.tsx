@@ -237,7 +237,8 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            <div className="h-[350px] w-full">
+            {/* A BLINDAGEM DO GRÁFICO (Fix "width -1 and height -1") */}
+            <div className="w-full" style={{ height: '350px', minHeight: '350px' }}>
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={chartData}>
                   <defs>
