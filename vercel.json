@@ -1,8 +1,12 @@
 {
   "rewrites": [
     {
-      "source": "/evo-api/:match*",
-      "destination": "http://137.131.136.246:8080/:match*"
+      "source": "/evo-api/:path*",
+      "destination": "http://137.131.136.246:8080/:path*"
+    },
+    {
+      "source": "/index.html",
+      "destination": "/index.html"
     },
     {
       "source": "/(.*)",
