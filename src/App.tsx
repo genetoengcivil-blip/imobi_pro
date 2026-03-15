@@ -28,7 +28,6 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     return (
       <div className="min-h-screen bg-black flex flex-col items-center justify-center">
         <div className="w-12 h-12 border-4 border-[#0217ff] border-t-transparent rounded-full animate-spin"></div>
-        <p className="mt-4 text-[#0217ff] text-[10px] font-black uppercase tracking-widest animate-pulse">Sincronizando Banco de Dados...</p>
       </div>
     );
   }
@@ -55,6 +54,7 @@ export default function App() {
     <GlobalProvider>
       <Router>
         <Routes>
+          {/* ROTAS PÚBLICAS */}
           <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/terms" element={<TermsPage />} />
@@ -63,22 +63,22 @@ export default function App() {
           <Route path="/welcome" element={<WelcomePage />} />
           <Route path="/v/:slug" element={<PublicSitePage />} />
           
-          <Route path="/app" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
-            <Route index element={<Navigate to="/app/dashboard" replace />} />
-            <Route path="dashboard" element={<DashboardPage />} />
-            <Route path="leads" element={<LeadsListPage />} />
-            <Route path="pipeline" element={<PipelinePage />} />
-            <Route path="whatsapp" element={<WhatsAppPage />} />
-            <Route path="properties" element={<PropertiesPage />} />
-            <Route path="contracts" element={<ContractsPage />} />
-            <Route path="calendar" element={<CalendarPage />} />
-            <Route path="financial" element={<FinancialPage />} />
-            <Route path="profile" element={<ProfilePage />} />
-            <Route path="settings" element={<SettingsPage />} />
-            <Route path="site" element={<SitePage />} />
-            <Route path="*" element={<Navigate to="/app/dashboard" replace />} />
+          {/* ROTAS PRIVADAS DO CRM (Acessadas diretamente, ex: /dashboard) */}
+          <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
+            <Route path="/dashboard" element={<DashboardPage />} />
+            <Route path="/leads" element={<LeadsListPage />} />
+            <Route path="/pipeline" element={<PipelinePage />} />
+            <Route path="/whatsapp" element={<WhatsAppPage />} />
+            <Route path="/properties" element={<PropertiesPage />} />
+            <Route path="/contracts" element={<ContractsPage />} />
+            <Route path="/calendar" element={<CalendarPage />} />
+            <Route path="/financial" element={<FinancialPage />} />
+            <Route path="/profile" element={<ProfilePage />} />
+            <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/site" element={<SitePage />} />
           </Route>
 
+          {/* Se a rota não existir, joga para a Landing Page */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Router>
