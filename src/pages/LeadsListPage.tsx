@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { 
   Download, Plus, Search, Filter, MoreHorizontal, 
-  Mail, Phone, Calendar, Tag, Trash2, FileSpreadsheet 
+  Mail, Phone, Calendar, Tag, Trash2, FileSpreadsheet, Users
 } from 'lucide-react';
 import { useGlobal } from '../context/GlobalContext';
 import * as XLSX from 'xlsx';
@@ -10,114 +10,120 @@ export default function LeadsListPage() {
   const { leads, darkMode } = useGlobal();
   const [searchTerm, setSearchTerm] = useState('');
 
-  // 🛡️ Safe Guard para os dados
-  const safeLeads = leads || [];
+  // 🛡️ SANITIZAÇÃO DE DADOS: Impede a tela branca se o banco enviar null
+  const safeLeads = (leads || []).map(lead => ({
+    ...lead,
+    name: lead?.name || lead?.nome || lead?.client_name || 'Lead sem nome',
+    email: lead?.email || '',
+    phone: lead?.phone || lead?.telefone || '',
+    status: lead?.status || 'NOVO',
+    value: Number(lead?.value) || Number(lead?.valor) || 0,
+    createdAt: lead?.createdAt || lead?.created_at || new Date().toISOString(),
+    source: lead?.source || 'Orgânico'
+  }));
 
-  // 📊 Lógica de Exportação para Excel
+  // 🛡️ FILTRO SEGURO: Evita o erro de .toLowerCase() em dados null
+  const filteredLeads = safeLeads.filter(lead => {
+    const term = (searchTerm || '').toLowerCase();
+    const name = (lead.name || '').toLowerCase();
+    const email = (lead.email || '').toLowerCase();
+    const phone = (lead.phone || '').toLowerCase();
+    return name.includes(term) || email.includes(term) || phone.includes(term);
+  });
+
+  // 📊 Lógica de Exportação para Excel Segura
   const exportToExcel = () => {
-    // 1. Prepara os dados para o formato de planilha
-    const dataToExport = safeLeads.map(lead => ({
-      'Nome do Lead': lead.name,
-      'E-mail': lead.email || 'Não informado',
-      'Telefone': lead.phone || 'Não informado',
-      'Valor do Negócio': new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(lead.value || 0),
-      'Status': lead.status?.toUpperCase() || 'NOVO',
-      'Origem': lead.source || 'Site Público',
-      'Data de Captação': new Date(lead.createdAt).toLocaleDateString('pt-BR')
-    }));
+    try {
+      const dataToExport = filteredLeads.map(lead => ({
+        'Nome do Lead': lead.name,
+        'E-mail': lead.email || 'Não informado',
+        'Telefone': lead.phone || 'Não informado',
+        'Valor do Negócio': new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(lead.value),
+        'Status': lead.status.toUpperCase(),
+        'Origem': lead.source,
+        'Data de Captação': new Date(lead.createdAt).toLocaleDateString('pt-BR')
+      }));
 
-    // 2. Cria a planilha e o livro (Workbook)
-    const worksheet = XLSX.utils.json_to_sheet(dataToExport);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Leads ImobiPro");
-
-    // 3. Gera o download do arquivo
-    XLSX.writeFile(workbook, `leads_imobipro_${new Date().toLocaleDateString('pt-BR').replace(/\//g, '-')}.xlsx`);
+      const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Leads");
+      XLSX.writeFile(workbook, `Leads_ImobiPro_${new Date().toISOString().split('T')[0]}.xlsx`);
+    } catch (error) {
+      console.error("Erro ao exportar excel:", error);
+      alert("Houve um erro ao gerar o Excel. Verifique os dados dos leads.");
+    }
   };
 
-  const filteredLeads = safeLeads.filter(l => 
-    l.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    l.email?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
   return (
-    <div className="space-y-8 animate-in fade-in duration-700 pb-20">
-      
-      {/* Header com Ações */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+    <div className="p-8 pb-32 animate-fade-in max-w-7xl mx-auto font-sans">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-12">
         <div>
-          <h1 className="text-3xl font-black uppercase italic tracking-tighter text-white">
-            Gestão de <span className="text-[#0217ff]">Leads</span>
-          </h1>
-          <p className="text-zinc-500 font-medium italic">Sua base de dados possui {safeLeads.length} contatos qualificados.</p>
+          <h1 className="text-4xl font-black italic uppercase tracking-tighter mb-2 text-white">Gestão de <span className="text-[#0217ff]">Leads</span></h1>
+          <p className="text-zinc-500 font-medium italic text-sm">Acompanhe e converta seus contactos em clientes.</p>
         </div>
         
-        <div className="flex items-center gap-3">
-          {/* BOTÃO EXPORTAR */}
-          <button 
-            onClick={exportToExcel}
-            className="flex items-center gap-3 px-6 py-4 bg-zinc-900 border border-white/5 text-zinc-400 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:text-white hover:border-white/20 transition-all"
-          >
-            <FileSpreadsheet size={16} className="text-emerald-500" /> Exportar Planilha
+        <div className="flex items-center gap-4">
+          <button onClick={exportToExcel} className="flex items-center gap-3 px-6 py-3 bg-zinc-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-zinc-800 transition-all border border-white/5">
+            <FileSpreadsheet size={16} className="text-emerald-500" /> Exportar
           </button>
-          
-          <button className="flex items-center gap-3 px-8 py-4 bg-[#0217ff] text-white rounded-[20px] font-black text-[10px] uppercase tracking-widest hover:bg-blue-600 transition-all shadow-xl shadow-blue-600/20">
+          <button className="flex items-center gap-3 px-6 py-3 bg-[#0217ff] text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-blue-600/20 hover:scale-105 transition-all">
             <Plus size={16} /> Novo Lead
           </button>
         </div>
       </div>
 
-      {/* Barra de Busca e Filtros */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="md:col-span-2 relative">
-          <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-zinc-600" size={18} />
+      {/* SEARCH E FILTROS */}
+      <div className="flex flex-col md:flex-row gap-4 mb-8">
+        <div className="relative flex-1 group">
+          <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-zinc-600 group-focus-within:text-[#0217ff] transition-colors" size={18} />
           <input 
-            type="text"
-            placeholder="Buscar por nome ou e-mail..."
-            className="w-full bg-zinc-900/30 border border-white/5 rounded-2xl py-4 pl-14 pr-6 text-white outline-none focus:border-[#0217ff] transition-all font-bold placeholder-zinc-700"
+            type="text" 
+            placeholder="Buscar por nome, e-mail ou telefone..." 
+            className="w-full bg-black border-2 border-white/5 rounded-2xl py-4 pl-14 pr-6 text-sm outline-none focus:border-[#0217ff] transition-all text-white placeholder:text-zinc-700 font-medium"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
-        <button className="flex items-center justify-center gap-3 bg-zinc-900/50 border border-white/5 text-zinc-400 rounded-2xl font-black text-[10px] uppercase tracking-widest">
-          <Filter size={16} /> Filtros Avançados
+        <button className="flex items-center justify-center gap-3 px-8 py-4 bg-black border-2 border-white/5 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:border-white/20 transition-all">
+          <Filter size={16} /> Filtros
         </button>
       </div>
 
-      {/* Lista de Leads */}
-      <div className="bg-zinc-900/30 border border-white/5 rounded-[48px] overflow-hidden">
+      {/* TABELA DE LEADS */}
+      <div className="bg-black border border-white/5 rounded-[48px] overflow-hidden shadow-2xl">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="border-b border-white/5 text-zinc-500 text-[10px] font-black uppercase tracking-widest">
-                <th className="px-8 py-6">Lead / Contato</th>
-                <th className="px-8 py-6 text-center">Valor Estimado</th>
-                <th className="px-8 py-6 text-center">Status</th>
-                <th className="px-8 py-6 text-right">Ações</th>
+              <tr className="border-b border-white/5 bg-zinc-950/50">
+                <th className="px-8 py-6 text-[10px] font-black text-zinc-500 uppercase tracking-widest">Contato</th>
+                <th className="px-8 py-6 text-[10px] font-black text-zinc-500 uppercase tracking-widest text-center">Valor Potencial</th>
+                <th className="px-8 py-6 text-[10px] font-black text-zinc-500 uppercase tracking-widest text-center">Status</th>
+                <th className="px-8 py-6 text-[10px] font-black text-zinc-500 uppercase tracking-widest text-right">Ações</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-white/5">
-              {filteredLeads.map((lead, i) => (
-                <tr key={i} className="group hover:bg-white/[0.02] transition-all">
+            <tbody>
+              {filteredLeads.map((lead, idx) => (
+                <tr key={lead.id || idx} className="border-b border-white/5 hover:bg-zinc-900/30 transition-colors group">
                   <td className="px-8 py-6">
                     <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-zinc-800 to-zinc-900 flex items-center justify-center font-black text-[#0217ff] border border-white/5 group-hover:border-[#0217ff]/50 transition-all">
-                        {lead.name?.charAt(0)}
+                      <div className="w-12 h-12 rounded-2xl bg-[#0217ff]/10 border border-[#0217ff]/20 flex items-center justify-center font-black text-[#0217ff] uppercase">
+                        {lead.name.charAt(0)}
                       </div>
                       <div>
-                        <div className="text-white font-bold group-hover:text-[#0217ff] transition-colors">{lead.name}</div>
-                        <div className="text-[10px] text-zinc-500 font-black uppercase tracking-tighter flex items-center gap-2">
-                          <Mail size={10} /> {lead.email || 'N/A'}
+                        <div className="font-bold text-white mb-1">{lead.name}</div>
+                        <div className="flex items-center gap-3 text-xs text-zinc-500 italic">
+                          <span className="flex items-center gap-1"><Mail size={12}/> {lead.email || 'S/ E-mail'}</span>
+                          <span className="flex items-center gap-1"><Phone size={12}/> {lead.phone || 'S/ Tel'}</span>
                         </div>
                       </div>
                     </div>
                   </td>
                   <td className="px-8 py-6 text-center font-black text-white italic">
-                    {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(lead.value || 0)}
+                    {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(lead.value)}
                   </td>
                   <td className="px-8 py-6 text-center">
                     <span className="px-4 py-1.5 bg-zinc-800 text-zinc-400 text-[9px] font-black uppercase rounded-lg border border-white/5 group-hover:bg-[#0217ff]/10 group-hover:text-[#0217ff] transition-all">
-                      {lead.status || 'NOVO'}
+                      {lead.status.toUpperCase()}
                     </span>
                   </td>
                   <td className="px-8 py-6 text-right">
