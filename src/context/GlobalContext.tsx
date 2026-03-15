@@ -39,16 +39,17 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         .eq('id', authUser.id)
         .single();
 
-      if (profile) {
-        setUser({ ...authUser, ...profile });
-      } else {
+      if (error) {
+        console.warn("Perfil não encontrado, usando dados do Auth.");
         setUser(authUser);
+      } else {
+        setUser({ ...authUser, ...profile });
       }
     } catch (err) {
-      console.error("Erro ao carregar perfil:", err);
+      console.error("Erro crítico ao carregar perfil:", err);
       setUser(authUser);
     } finally {
-      setLoading(false);
+      setLoading(false); // Garante que o loading para de girar
     }
   };
 
