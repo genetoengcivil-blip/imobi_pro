@@ -26,8 +26,9 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center">
-        <div className="w-10 h-10 border-4 border-[#0217ff] border-t-transparent rounded-full animate-spin"></div>
+      <div className="min-h-screen bg-black flex flex-col items-center justify-center">
+        <div className="w-12 h-12 border-4 border-[#0217ff] border-t-transparent rounded-full animate-spin"></div>
+        <p className="mt-4 text-[#0217ff] text-[10px] font-black uppercase tracking-widest animate-pulse">Carregando CRM...</p>
       </div>
     );
   }
@@ -40,8 +41,8 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     return (
       <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center p-6 text-center font-sans">
         <h1 className="text-4xl font-black mb-4 uppercase italic">Acesso Suspenso</h1>
-        <p className="text-zinc-500 max-w-md mb-8 italic">Identificamos uma pendência na sua assinatura. Regularize o seu pagamento para retomar o acesso.</p>
-        <a href="https://wa.me/5583986667292" className="px-8 py-4 bg-[#0217ff] rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-lg shadow-blue-600/20">Falar com Suporte</a>
+        <p className="text-zinc-500 max-w-md mb-8 italic">Identificamos uma pendência na sua assinatura. Regularize o seu pagamento para retomar o acesso aos seus dados.</p>
+        <a href="https://wa.me/5583986667292" className="px-8 py-4 bg-[#0217ff] rounded-2xl font-black uppercase text-[10px] tracking-widest hover:scale-105 transition-all">Falar com Suporte</a>
       </div>
     );
   }
@@ -75,6 +76,8 @@ export default function App() {
             <Route path="profile" element={<ProfilePage />} />
             <Route path="settings" element={<SettingsPage />} />
             <Route path="site" element={<SitePage />} />
+            {/* Redirecionamento de segurança para links errados dentro do app */}
+            <Route path="*" element={<Navigate to="/app/dashboard" replace />} />
           </Route>
 
           <Route path="*" element={<Navigate to="/" replace />} />
