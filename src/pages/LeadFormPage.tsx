@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { X, Save, Trash2 } from 'lucide-react';
+import { X, Save, Trash2, Building, Phone, Mail, User, DollarSign } from 'lucide-react';
 import { useGlobal } from '../context/GlobalContext';
-import { Lead, LEAD_STATUSES } from '../types';
+import { Lead } from '../types';
 
 interface LeadFormProps {
   lead?: Lead;
@@ -10,17 +10,27 @@ interface LeadFormProps {
 
 export default function LeadFormPage({ lead, onClose }: LeadFormProps) {
   const { addLead, updateLead, darkMode } = useGlobal();
-  const [formData, setFormData] = useState<Omit<Lead, 'id' | 'createdAt'>>({
+  
+  // TEMA DINÂMICO PARA O MODAL
+  const theme = {
+    overlay: 'bg-black/60 backdrop-blur-md',
+    bgApp: darkMode ? 'bg-zinc-950' : 'bg-white',
+    border: darkMode ? 'border-white/10' : 'border-zinc-200',
+    textMain: darkMode ? 'text-white' : 'text-zinc-900',
+    textMuted: darkMode ? 'text-zinc-400' : 'text-zinc-500',
+    inputBg: darkMode ? 'bg-white/5' : 'bg-zinc-50',
+    hoverBg: darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-100',
+  };
+
+  const [formData, setFormData] = useState({
     name: lead?.name || '',
     email: lead?.email || '',
     phone: lead?.phone || '',
     status: lead?.status || 'novo',
     value: lead?.value || 0,
-    commission: lead?.commission || 0,
-    source: lead?.source || '',
+    commission: lead?.commission || 6, // 6% Padrão imobiliário
+    source: lead?.source || 'Orgânico',
     notes: lead?.notes || '',
-    nextFollowUp: lead?.nextFollowUp || '',
-    lastContact: lead?.lastContact || ''
   });
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -28,146 +38,142 @@ export default function LeadFormPage({ lead, onClose }: LeadFormProps) {
     if (lead) {
       updateLead(lead.id, formData);
     } else {
-      addLead(formData as any);
+      addLead(formData);
     }
     onClose();
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[110] flex items-center justify-center p-4">
-      <div className={`w-full max-w-xl rounded-[32px] border border-zinc-200 dark:border-white/10 shadow-2xl overflow-hidden flex flex-col max-h-[90vh] ${darkMode ? 'bg-zinc-950 text-white' : 'bg-white text-zinc-900'}`}>
-        <div className="p-6 border-b border-zinc-200 dark:border-white/5 flex items-center justify-between bg-zinc-50 dark:bg-zinc-900/50">
+    <div className={`fixed inset-0 ${theme.overlay} z-[110] flex items-center justify-center p-4 animate-in fade-in duration-200`}>
+      <div className={`w-full max-w-2xl rounded-[32px] border ${theme.border} ${theme.bgApp} shadow-2xl overflow-hidden flex flex-col max-h-[90vh]`}>
+        
+        {/* CABEÇALHO DO MODAL */}
+        <div className={`p-6 border-b ${theme.border} flex items-center justify-between`}>
           <div>
-            <h2 className="text-xl font-bold">{lead ? 'Editar Lead' : 'Novo Lead'}</h2>
-            <p className="text-xs text-zinc-500 font-medium">Informações do contato e negociação.</p>
+            <h2 className={`text-2xl font-black italic uppercase tracking-tighter ${theme.textMain}`}>
+              {lead ? 'Editar Lead' : 'Novo Lead'}
+            </h2>
+            <p className={`text-xs ${theme.textMuted} font-medium mt-1 italic`}>
+              {lead ? 'Atualize as informações do cliente' : 'Cadastre um novo cliente no seu funil'}
+            </p>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-zinc-200 dark:hover:bg-white/10 rounded-xl transition-colors">
-            <X className="w-5 h-5 text-zinc-400" />
+          <button type="button" onClick={onClose} className={`p-2 rounded-xl ${theme.hoverBg} ${theme.textMuted} transition-colors`}>
+            <X size={24} />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-8 overflow-y-auto space-y-6">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="col-span-2 space-y-2">
-              <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest ml-1">Nome Completo</label>
-              <input
-                required
-                type="text"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                className="w-full bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/5 rounded-xl py-4 px-6 focus:outline-none focus:border-blue-500"
-                placeholder="Ex: João Silva"
-              />
-            </div>
+        {/* CORPO DO FORMULÁRIO */}
+        <div className="p-6 overflow-y-auto custom-scrollbar flex-1">
+          <form id="lead-form" onSubmit={handleSubmit} className="space-y-6">
             
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* NOME */}
+              <div className="space-y-2">
+                <label className={`text-[10px] font-black ${theme.textMuted} uppercase tracking-widest ml-1`}>Nome Completo *</label>
+                <div className="relative">
+                  <User className={`absolute left-4 top-1/2 -translate-y-1/2 ${theme.textMuted}`} size={16} />
+                  <input
+                    required type="text" placeholder="Ex: João Silva"
+                    value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    className={`w-full ${theme.inputBg} border ${theme.border} rounded-xl py-3 pl-10 pr-4 focus:outline-none focus:border-[#0217ff] transition-all font-bold ${theme.textMain}`}
+                  />
+                </div>
+              </div>
+
+              {/* WHATSAPP / TELEFONE */}
+              <div className="space-y-2">
+                <label className={`text-[10px] font-black ${theme.textMuted} uppercase tracking-widest ml-1`}>WhatsApp</label>
+                <div className="relative">
+                  <Phone className={`absolute left-4 top-1/2 -translate-y-1/2 ${theme.textMuted}`} size={16} />
+                  <input
+                    type="text" placeholder="(00) 00000-0000"
+                    value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                    className={`w-full ${theme.inputBg} border ${theme.border} rounded-xl py-3 pl-10 pr-4 focus:outline-none focus:border-[#0217ff] transition-all font-bold ${theme.textMain}`}
+                  />
+                </div>
+              </div>
+
+              {/* EMAIL */}
+              <div className="space-y-2">
+                <label className={`text-[10px] font-black ${theme.textMuted} uppercase tracking-widest ml-1`}>E-mail</label>
+                <div className="relative">
+                  <Mail className={`absolute left-4 top-1/2 -translate-y-1/2 ${theme.textMuted}`} size={16} />
+                  <input
+                    type="email" placeholder="joao@email.com"
+                    value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                    className={`w-full ${theme.inputBg} border ${theme.border} rounded-xl py-3 pl-10 pr-4 focus:outline-none focus:border-[#0217ff] transition-all font-bold ${theme.textMain}`}
+                  />
+                </div>
+              </div>
+
+              {/* VALOR POTENCIAL */}
+              <div className="space-y-2">
+                <label className={`text-[10px] font-black ${theme.textMuted} uppercase tracking-widest ml-1`}>Valor do Imóvel (R$)</label>
+                <div className="relative">
+                  <DollarSign className={`absolute left-4 top-1/2 -translate-y-1/2 text-emerald-500`} size={16} />
+                  <input
+                    type="number" placeholder="Ex: 500000"
+                    value={formData.value || ''} onChange={(e) => setFormData({ ...formData, value: Number(e.target.value) })}
+                    className={`w-full ${theme.inputBg} border ${theme.border} rounded-xl py-3 pl-10 pr-4 focus:outline-none focus:border-emerald-500 transition-all font-black text-emerald-500`}
+                  />
+                </div>
+              </div>
+
+              {/* STATUS */}
+              <div className="space-y-2">
+                <label className={`text-[10px] font-black ${theme.textMuted} uppercase tracking-widest ml-1`}>Etapa no Funil</label>
+                <select
+                  value={formData.status} onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                  className={`w-full ${theme.inputBg} border ${theme.border} rounded-xl py-3 px-4 focus:outline-none focus:border-[#0217ff] transition-all font-bold ${theme.textMain} appearance-none`}
+                >
+                  <option value="novo">Novo Lead</option>
+                  <option value="contatado">Contatado</option>
+                  <option value="qualificado">Qualificado</option>
+                  <option value="visita">Visita Agendada</option>
+                  <option value="proposta">Proposta</option>
+                  <option value="fechado">Fechado (Ganho)</option>
+                  <option value="perdido">Perdido</option>
+                </select>
+              </div>
+
+              {/* ORIGEM */}
+              <div className="space-y-2">
+                <label className={`text-[10px] font-black ${theme.textMuted} uppercase tracking-widest ml-1`}>Origem do Lead</label>
+                <select
+                  value={formData.source} onChange={(e) => setFormData({ ...formData, source: e.target.value })}
+                  className={`w-full ${theme.inputBg} border ${theme.border} rounded-xl py-3 px-4 focus:outline-none focus:border-[#0217ff] transition-all font-bold ${theme.textMain} appearance-none`}
+                >
+                  <option value="Instagram">Instagram</option>
+                  <option value="Site Público">Site Público</option>
+                  <option value="WhatsApp">WhatsApp Direto</option>
+                  <option value="Indicação">Indicação</option>
+                  <option value="Portal Imobiliário">Portal Imobiliário</option>
+                </select>
+              </div>
+            </div>
+
+            {/* OBSERVAÇÕES */}
             <div className="space-y-2">
-              <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest ml-1">Telefone</label>
-              <input
-                required
-                type="tel"
-                value={formData.phone}
-                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                className="w-full bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/5 rounded-xl py-4 px-6 focus:outline-none focus:border-blue-500"
-                placeholder="(00) 00000-0000"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest ml-1">E-mail</label>
-              <input
-                required
-                type="email"
-                value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                className="w-full bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/5 rounded-xl py-4 px-6 focus:outline-none focus:border-blue-500"
-                placeholder="email@exemplo.com"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest ml-1">Status</label>
-              <select
-                value={formData.status}
-                onChange={(e) => setFormData({ ...formData, status: e.target.value as any })}
-                className="w-full bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/5 rounded-xl py-4 px-6 focus:outline-none focus:border-blue-500"
-              >
-                {LEAD_STATUSES.map(s => (
-                  <option key={s.value} value={s.value}>{s.label}</option>
-                ))}
-              </select>
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest ml-1">Origem</label>
-              <input
-                type="text"
-                value={formData.source}
-                onChange={(e) => setFormData({ ...formData, source: e.target.value })}
-                className="w-full bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/5 rounded-xl py-4 px-6 focus:outline-none focus:border-blue-500"
-                placeholder="Ex: Instagram, Site, Indicação"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest ml-1">Valor do Imóvel</label>
-              <input
-                type="number"
-                value={formData.value || ''}
-                onChange={(e) => setFormData({ ...formData, value: parseFloat(e.target.value) })}
-                className="w-full bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/5 rounded-xl py-4 px-6 focus:outline-none focus:border-blue-500"
-                placeholder="R$ 0,00"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest ml-1">Comissão Estimada</label>
-              <input
-                type="number"
-                value={formData.commission || ''}
-                onChange={(e) => setFormData({ ...formData, commission: parseFloat(e.target.value) })}
-                className="w-full bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/5 rounded-xl py-4 px-6 focus:outline-none focus:border-blue-500"
-                placeholder="R$ 0,00"
-              />
-            </div>
-
-            <div className="col-span-2 space-y-2">
-              <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest ml-1">Próximo Follow-up</label>
-              <input
-                type="date"
-                value={formData.nextFollowUp}
-                onChange={(e) => setFormData({ ...formData, nextFollowUp: e.target.value })}
-                className="w-full bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/5 rounded-xl py-4 px-6 focus:outline-none focus:border-blue-500"
-              />
-            </div>
-
-            <div className="col-span-2 space-y-2">
-              <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest ml-1">Observações</label>
+              <label className={`text-[10px] font-black ${theme.textMuted} uppercase tracking-widest ml-1`}>Notas / Observações</label>
               <textarea
-                rows={3}
-                value={formData.notes}
-                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                className="w-full bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/5 rounded-xl py-4 px-6 focus:outline-none focus:border-blue-500 resize-none"
-                placeholder="Notas sobre o atendimento..."
+                rows={3} placeholder="Escreva informações importantes sobre o atendimento..."
+                value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                className={`w-full ${theme.inputBg} border ${theme.border} rounded-xl py-3 px-4 focus:outline-none focus:border-[#0217ff] transition-all font-medium ${theme.textMain} resize-none`}
               />
             </div>
-          </div>
+          </form>
+        </div>
 
-          <div className="pt-6 border-t border-zinc-100 dark:border-white/5 flex gap-4">
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex-1 py-4 border border-zinc-200 dark:border-white/10 rounded-2xl font-bold hover:bg-zinc-50 dark:hover:bg-white/5 transition-colors"
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              className="flex-1 py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-bold shadow-lg shadow-blue-600/20 transition-all hover:scale-[1.02] active:scale-95"
-            >
-              Salvar Lead
-            </button>
-          </div>
-        </form>
+        {/* RODAPÉ DO MODAL (AÇÕES) */}
+        <div className={`p-6 border-t ${theme.border} bg-black/5 flex items-center justify-end gap-4`}>
+          <button type="button" onClick={onClose} className={`px-6 py-3 border ${theme.border} rounded-xl font-black text-[10px] uppercase tracking-widest ${theme.textMain} ${theme.hoverBg} transition-all`}>
+            Cancelar
+          </button>
+          
+          <button type="submit" form="lead-form" className="flex items-center gap-3 px-8 py-3 bg-[#0217ff] text-white rounded-xl font-black text-[10px] uppercase tracking-widest hover:scale-105 shadow-xl shadow-blue-600/30 transition-all">
+            <Save size={16} /> Salvar Lead
+          </button>
+        </div>
       </div>
     </div>
   );
