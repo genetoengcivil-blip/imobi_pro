@@ -31,24 +31,17 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [loading, setLoading] = useState(true);
   const [darkMode, setDarkMode] = useState(false);
 
-  // FUNÇÃO BLINDADA: Corrige dados falhados antes de renderizar a tela
   const carregarDados = async (authUser: any) => {
     try {
-      // 1. Perfil
       const { data: profile } = await supabase.from('perfil').select('*').eq('id', authUser.id).single();
-      setUser({ 
-        ...authUser, 
-        ...profile, 
-        name: profile?.nome_exibicao || authUser?.user_metadata?.full_name || 'Corretor' 
-      });
+      setUser({ ...authUser, ...profile, name: profile?.nome_exibicao || authUser?.user_metadata?.full_name || 'Corretor' });
 
-      // 2. Leads Sanitizados (Impede Tela Branca na aba Leads)
       const { data: leadsData } = await supabase.from('leads').select('*').order('created_at', { ascending: false });
       if (leadsData) {
         setLeads(leadsData.map((l: any) => ({
           ...l,
-          id: l.id?.toString() || Math.random().toString(),
-          name: l.name || l.client_name || l.nome || 'Lead sem nome',
+          id: l.id?.toString(),
+          name: l.name || l.nome || l.client_name || 'Lead sem nome',
           email: l.email || '',
           phone: l.phone || l.telefone || '',
           status: l.status || 'novo',
@@ -58,42 +51,15 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         })));
       }
 
-      // 3. Imóveis Sanitizados
+      // Restantes Buscas (Imóveis, Transações, Compromissos) mantidas normais
       const { data: propertiesData } = await supabase.from('properties').select('*').order('created_at', { ascending: false });
-      if (propertiesData) {
-        setProperties(propertiesData.map((p: any) => ({
-          ...p,
-          id: p.id?.toString() || Math.random().toString(),
-          title: p.title || p.titulo || 'Imóvel sem título',
-          price: Number(p.price) || Number(p.valor) || 0,
-          status: p.status || 'disponivel',
-          createdAt: p.created_at || p.createdAt || new Date().toISOString()
-        })));
-      }
+      if (propertiesData) setProperties(propertiesData);
 
-      // 4. Financeiro Sanitizado (Impede Tela Branca no Dashboard)
       const { data: transData } = await supabase.from('transactions').select('*');
-      if (transData) {
-        setTransactions(transData.map((t: any) => ({
-          ...t,
-          id: t.id?.toString() || Math.random().toString(),
-          type: t.type || t.tipo || 'receita',
-          amount: Number(t.amount) || Number(t.valor) || 0,
-          date: t.date || t.data || t.created_at || new Date().toISOString(),
-          description: t.description || t.descricao || 'Sem descrição'
-        })));
-      }
+      if (transData) setTransactions(transData);
 
-      // 5. Agenda Sanitizada
       const { data: appData } = await supabase.from('appointments').select('*');
-      if (appData) {
-        setAppointments(appData.map((a: any) => ({
-          ...a,
-          id: a.id?.toString() || Math.random().toString(),
-          title: a.title || a.titulo || 'Compromisso',
-          date: a.date || a.data || a.created_at || new Date().toISOString()
-        })));
-      }
+      if (appData) setAppointments(appData);
 
     } catch (err) {
       console.error("Erro ignorado no carregamento:", err);
@@ -109,33 +75,58 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       if (session?.user) await carregarDados(session.user);
       else setLoading(false);
     };
-    
     initAuth();
-
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (session?.user) await carregarDados(session.user);
-      else {
-        setUser(null);
-        setLoading(false);
-      }
+      else { setUser(null); setLoading(false); }
     });
-
     return () => subscription.unsubscribe();
   }, []);
 
+  // 🛡️ ADICIONAR LEAD (AGORA BLINDADO CONTRA ERROS DO SUPABASE)
   const addLead = async (leadData: any) => {
-    const { data: { session } } = await supabase.auth.getSession();
-    const payload = { ...leadData, created_at: leadData.createdAt || new Date().toISOString(), user_id: session?.user?.id };
-    delete payload.createdAt;
-    const { data } = await supabase.from('leads').insert([payload]).select();
-    if (data) setLeads(prev => [{ ...data[0], createdAt: data[0].created_at }, ...prev]);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      const payload = { ...leadData, user_id: session?.user?.id };
+      delete payload.createdAt; // Remove campos antigos para não crachar o banco
+      delete payload.id;
+
+      const { data, error } = await supabase.from('leads').insert([payload]).select();
+      
+      if (error) {
+        console.error("Erro do Supabase (addLead):", error);
+        alert(`Ocorreu um erro ao salvar o Lead no banco: ${error.message}`);
+        return;
+      }
+
+      if (data && data.length > 0) {
+        setLeads(prev => [{ ...data[0], createdAt: data[0].created_at }, ...prev]);
+      }
+    } catch (err) {
+      console.error("Falha catastrófica ao adicionar lead:", err);
+    }
   };
 
+  // 🛡️ ATUALIZAR LEAD (AGORA BLINDADO)
   const updateLead = async (id: string, updates: any) => {
-    const payload = { ...updates, created_at: updates.createdAt };
-    delete payload.createdAt;
-    await supabase.from('leads').update(payload).eq('id', id);
-    setLeads(prev => prev.map(l => l.id === id ? { ...l, ...updates, createdAt: updates.createdAt || new Date().toISOString() } : l));
+    try {
+      const payload = { ...updates };
+      delete payload.createdAt;
+      delete payload.id;
+
+      const { error } = await supabase.from('leads').update(payload).eq('id', id);
+      
+      if (error) {
+        console.error("Erro do Supabase (updateLead):", error);
+        alert(`Ocorreu um erro ao atualizar o Lead: ${error.message}`);
+        return;
+      }
+
+      setLeads(prev => prev.map(l => l.id === id ? { ...l, ...updates, createdAt: l.createdAt } : l));
+    } catch (err) {
+      console.error("Falha ao atualizar lead:", err);
+    }
   };
 
   const deleteLead = async (id: string) => {
