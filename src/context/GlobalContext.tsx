@@ -47,11 +47,10 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           status: l.status || 'novo',
           value: Number(l.value) || Number(l.valor) || 0,
           createdAt: l.created_at || l.createdAt || new Date().toISOString(),
-          commission_rate: Number(l.commission_rate) || Number(l.comissao) || 6
+          commission_rate: Number(l.commission_rate) || Number(l.comissao) || Number(l.commission) || 6
         })));
       }
 
-      // Restantes Buscas (Imóveis, Transações, Compromissos) mantidas normais
       const { data: propertiesData } = await supabase.from('properties').select('*').order('created_at', { ascending: false });
       if (propertiesData) setProperties(propertiesData);
 
@@ -83,50 +82,27 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return () => subscription.unsubscribe();
   }, []);
 
-  // 🛡️ ADICIONAR LEAD (AGORA BLINDADO CONTRA ERROS DO SUPABASE)
+  // 🛡️ ADICIONAR LEAD - Sem alerts feios, apenas devolve o erro para o Formulário tratar
   const addLead = async (leadData: any) => {
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      const payload = { ...leadData, user_id: session?.user?.id };
-      delete payload.createdAt; // Remove campos antigos para não crachar o banco
-      delete payload.id;
+    const { data: { session } } = await supabase.auth.getSession();
+    const payload = { ...leadData, user_id: session?.user?.id };
+    
+    const { data, error } = await supabase.from('leads').insert([payload]).select();
+    
+    if (error) throw error; // Envia o erro para o Toast do formulário
 
-      const { data, error } = await supabase.from('leads').insert([payload]).select();
-      
-      if (error) {
-        console.error("Erro do Supabase (addLead):", error);
-        alert(`Ocorreu um erro ao salvar o Lead no banco: ${error.message}`);
-        return;
-      }
-
-      if (data && data.length > 0) {
-        setLeads(prev => [{ ...data[0], createdAt: data[0].created_at }, ...prev]);
-      }
-    } catch (err) {
-      console.error("Falha catastrófica ao adicionar lead:", err);
+    if (data && data.length > 0) {
+      setLeads(prev => [{ ...data[0], createdAt: data[0].created_at }, ...prev]);
     }
   };
 
-  // 🛡️ ATUALIZAR LEAD (AGORA BLINDADO)
+  // 🛡️ ATUALIZAR LEAD - Sem alerts feios
   const updateLead = async (id: string, updates: any) => {
-    try {
-      const payload = { ...updates };
-      delete payload.createdAt;
-      delete payload.id;
+    const { error } = await supabase.from('leads').update(updates).eq('id', id);
+    
+    if (error) throw error; // Envia o erro para o Toast do formulário
 
-      const { error } = await supabase.from('leads').update(payload).eq('id', id);
-      
-      if (error) {
-        console.error("Erro do Supabase (updateLead):", error);
-        alert(`Ocorreu um erro ao atualizar o Lead: ${error.message}`);
-        return;
-      }
-
-      setLeads(prev => prev.map(l => l.id === id ? { ...l, ...updates, createdAt: l.createdAt } : l));
-    } catch (err) {
-      console.error("Falha ao atualizar lead:", err);
-    }
+    setLeads(prev => prev.map(l => l.id === id ? { ...l, ...updates } : l));
   };
 
   const deleteLead = async (id: string) => {

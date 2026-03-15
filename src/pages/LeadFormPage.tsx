@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
-import { X, Save, Phone, Mail, User, DollarSign, Loader2, Percent, AlertCircle } from 'lucide-react';
+import { X, Save, Phone, Mail, User, DollarSign, Loader2, Percent, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { useGlobal } from '../context/GlobalContext';
 
 export default function LeadFormPage({ lead, onClose }: { lead?: any, onClose: () => void }) {
   const { addLead, updateLead, darkMode } = useGlobal();
   const [isSubmitting, setIsSubmitting] = useState(false);
   
-  // Substitui o "alert()" nativo por mensagens bonitas dentro do formulário
+  // MENSAGENS SAAS (Toasts elegantes dentro do modal)
   const [toastMessage, setToastMessage] = useState<{ type: 'error' | 'success', text: string } | null>(null);
 
   const theme = {
@@ -25,7 +25,7 @@ export default function LeadFormPage({ lead, onClose }: { lead?: any, onClose: (
     phone: lead?.phone || '',
     status: (lead?.status || 'novo').toLowerCase(), 
     value: lead?.value || '',
-    commission: lead?.commission_rate || lead?.comissao || lead?.commission || 6,
+    commission: lead?.commission_rate || lead?.commission || lead?.comissao || 6,
     source: lead?.source || 'Orgânico',
     notes: lead?.notes || '',
   });
@@ -36,26 +36,38 @@ export default function LeadFormPage({ lead, onClose }: { lead?: any, onClose: (
     setToastMessage(null);
     
     try {
-      // 🛡️ Blindagem de Comissão: Enviamos a variável com os 2 nomes para garantir que o banco de dados aceita
+      // 🚀 PAYLOAD LIMPO: Enviamos estritamente os dados que o Supabase aceita.
       const dataToSave = {
-        ...formData,
+        name: formData.name,
+        email: formData.email,
+        phone: formData.phone,
+        status: formData.status,
         value: Number(formData.value) || 0,
-        commission_rate: Number(formData.commission) || 0,
-        comissao: Number(formData.commission) || 0
+        commission_rate: Number(formData.commission) || 0, // A coluna padrão oficial
+        source: formData.source,
+        notes: formData.notes
       };
-      
-      // Remove o campo raw para não causar erro de schema no Supabase
-      delete (dataToSave as any).commission; 
 
       if (lead && lead.id) {
         await updateLead(lead.id, dataToSave);
+        setToastMessage({ type: 'success', text: 'Lead atualizado com sucesso!' });
       } else {
         await addLead(dataToSave);
+        setToastMessage({ type: 'success', text: 'Lead salvo com sucesso!' });
       }
-      onClose();
-    } catch (error) {
-      console.error(error);
-      setToastMessage({ type: 'error', text: 'Ocorreu um erro ao comunicar com o servidor. Tente novamente.' });
+      
+      // Dá tempo de o utilizador ver a mensagem verde antes de fechar o modal
+      setTimeout(() => {
+        onClose();
+      }, 1200);
+
+    } catch (error: any) {
+      console.error("Erro na Base de Dados:", error);
+      // Aqui o Toast vai exibir o erro EXATO para sabermos o que falhou (se falhar)
+      setToastMessage({ 
+        type: 'error', 
+        text: error?.message || 'Falha ao comunicar com o servidor. Tente novamente.' 
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -79,11 +91,13 @@ export default function LeadFormPage({ lead, onClose }: { lead?: any, onClose: (
           </button>
         </div>
 
-        <div className="p-6 overflow-y-auto custom-scrollbar flex-1">
-          {/* SAAS STANDARD: MENSAGEM DE ERRO/SUCESSO INLINE */}
+        <div className="p-6 overflow-y-auto custom-scrollbar flex-1 relative">
+          
+          {/* SAAS STANDARD: MENSAGEM DE ERRO/SUCESSO INLINE BONITA */}
           {toastMessage && (
-            <div className={`mb-6 p-4 rounded-xl flex items-center gap-3 text-xs font-bold uppercase tracking-widest ${toastMessage.type === 'error' ? 'bg-red-500/10 text-red-500' : 'bg-emerald-500/10 text-emerald-500'}`}>
-              <AlertCircle size={16} /> {toastMessage.text}
+            <div className={`mb-6 p-4 rounded-2xl flex items-center gap-3 text-xs font-black uppercase tracking-widest border animate-in fade-in slide-in-from-top-2 ${toastMessage.type === 'error' ? 'bg-red-500/10 text-red-500 border-red-500/20' : 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'}`}>
+              {toastMessage.type === 'error' ? <AlertCircle size={18} /> : <CheckCircle2 size={18} />} 
+              {toastMessage.text}
             </div>
           )}
 
@@ -159,6 +173,12 @@ export default function LeadFormPage({ lead, onClose }: { lead?: any, onClose: (
             </button>
             <button type="submit" form="lead-form" disabled={isSubmitting} className="flex items-center gap-3 px-8 py-3 bg-[#0217ff] text-white rounded-xl font-black text-[10px] uppercase tracking-widest hover:scale-105 shadow-xl shadow-blue-600/30 transition-all disabled:opacity-50">
               {isSubmitting ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />} 
-              {isSubmitting ? 'Salvando...' : 'Salvar Lead'}
+              {isSubmitting ? 'A Guardar...' : 'Salvar Lead'}
             </button>
           </div>
+        </div>
+
+      </div>
+    </div>
+  );
+}
