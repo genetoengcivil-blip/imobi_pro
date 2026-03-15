@@ -27,7 +27,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   if (loading) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center">
-        <div className="w-8 h-8 border-4 border-[#0217ff] border-t-transparent rounded-full animate-spin"></div>
+        <div className="w-10 h-10 border-4 border-[#0217ff] border-t-transparent rounded-full animate-spin"></div>
       </div>
     );
   }
@@ -40,8 +40,12 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     return (
       <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center p-6 text-center">
         <h1 className="text-4xl font-black mb-4 uppercase italic">Acesso Suspenso</h1>
-        <p className="text-zinc-500 max-w-md mb-8">Identificamos uma pendência na sua assinatura. Regularize o seu pagamento para retomar o acesso.</p>
-        <a href="https://wa.me/5583986667292" className="px-8 py-4 bg-[#0217ff] rounded-2xl font-bold uppercase text-xs">Falar com Suporte</a>
+        <p className="text-zinc-500 max-w-md mb-8 italic">
+          Identificamos uma pendência na sua assinatura. Regularize seu pagamento para retomar o acesso aos seus leads.
+        </p>
+        <a href="https://wa.me/5583986667292" className="px-8 py-4 bg-[#0217ff] rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-lg shadow-blue-600/20">
+          Falar com Suporte
+        </a>
       </div>
     );
   }
@@ -59,6 +63,7 @@ export default function App() {
           <Route path="/terms" element={<TermsPage />} />
           <Route path="/privacy" element={<PrivacyPage />} />
           <Route path="/success" element={<SuccessPage />} />
+          <Route path="/welcome" element={<WelcomePage />} />
           <Route path="/v/:slug" element={<PublicSitePage />} />
           
           <Route path="/app" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
@@ -68,9 +73,14 @@ export default function App() {
             <Route path="pipeline" element={<PipelinePage />} />
             <Route path="whatsapp" element={<WhatsAppPage />} />
             <Route path="properties" element={<PropertiesPage />} />
+            <Route path="contracts" element={<ContractsPage />} />
+            <Route path="calendar" element={<CalendarPage />} />
+            <Route path="financial" element={<FinancialPage />} />
+            <Route path="profile" element={<ProfilePage />} />
             <Route path="settings" element={<SettingsPage />} />
-            {/* ... outras sub-rotas */}
+            <Route path="site" element={<SitePage />} />
           </Route>
+
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Router>
