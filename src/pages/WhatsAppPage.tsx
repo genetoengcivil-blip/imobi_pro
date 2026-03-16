@@ -16,7 +16,7 @@ export default function WhatsAppPage() {
 
   const [isWhatsappConnected, setIsWhatsappConnected] = useState(false);
   
-  // 🔥 SISTEMA DE MENSAGENS BLINDADO NO NAVEGADOR
+  // 🔥 SISTEMA DE MENSAGENS NO NAVEGADOR
   const [localMessages, setLocalMessages] = useState<any[]>(() => {
     try {
       const saved = localStorage.getItem('@ImobiPro:WhatsAppMessages');
@@ -26,7 +26,6 @@ export default function WhatsAppPage() {
     }
   });
 
-  // Salva no navegador apenas se houver mensagens reais (evita limpezas acidentais)
   useEffect(() => {
     if (localMessages.length > 0) {
       localStorage.setItem('@ImobiPro:WhatsAppMessages', JSON.stringify(localMessages));
@@ -81,17 +80,17 @@ export default function WhatsAppPage() {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [selectedLead, activeMessages]);
 
-  // ✅ INTELIGÊNCIA DE NÚMERO (Para enviar sempre para o destino certo)
+  // ✅ LIMPEZA DE NÚMERO DE TELEFONE
   const formatPhoneNumber = (phone: string) => {
     let cleanPhone = phone.replace(/\D/g, '');
-    // Se tiver 10 ou 11 digitos, é BR e falta o 55. Se tiver mais, já tem o DDI.
+    if (cleanPhone.startsWith('0')) cleanPhone = cleanPhone.substring(1);
     if (cleanPhone.length === 10 || cleanPhone.length === 11) {
       cleanPhone = `55${cleanPhone}`;
     }
     return cleanPhone;
   };
 
-  // ✅ RADAR DE MENSAGENS (Busca as respostas na Oracle a cada 5 segundos)
+  // ✅ RADAR DE MENSAGENS COM "SEGURANÇA DE PORTA"
   useEffect(() => {
     if (!isWhatsappConnected || !selectedLead) return;
 
@@ -111,35 +110,33 @@ export default function WhatsAppPage() {
 
         if (res.ok) {
           const data = await res.json();
-          // Lida com as diferentes versões da Evolution API
           let records = [];
           if (Array.isArray(data)) records = data;
           else if (data && data.messages && Array.isArray(data.messages.records)) records = data.messages.records;
 
           if (records.length > 0) {
             records.forEach((msg: any) => {
-              const apiId = msg.key?.id || msg.id;
-              const isFromMe = msg.key?.fromMe || msg.fromMe;
+              const msgJid = msg.key?.remoteJid || msg.remoteJid || '';
               
-              // Extrai o texto (seja mensagem simples, resposta estendida, etc)
-              const textContent = msg.message?.conversation || msg.message?.extendedTextMessage?.text || msg.text || "📷 Áudio/Imagem Recebida";
-              
-              // Só adiciona se o texto não for vazio
-              if (textContent) {
-                addLocalMessage(selectedLead.id, textContent, isFromMe ? 'sent' : 'received', apiId);
+              // 🛡️ O SEGURANÇA: Só entra na tela se a mensagem vier EXATAMENTE do número do cliente!
+              if (msgJid.includes(cleanPhone)) {
+                const apiId = msg.key?.id || msg.id;
+                const isFromMe = msg.key?.fromMe || msg.fromMe;
+                const textContent = msg.message?.conversation || msg.message?.extendedTextMessage?.text || msg.text;
+                
+                if (textContent) {
+                  addLocalMessage(selectedLead.id, textContent, isFromMe ? 'sent' : 'received', apiId);
+                }
               }
             });
           }
         }
       } catch (error) {
-        // Silencioso para não incomodar a consola
+        // Silencioso
       }
     };
 
-    // Puxa histórico assim que seleciona o cliente
     fetchChatHistory();
-
-    // Inicia o Radar Contínuo
     const interval = setInterval(fetchChatHistory, 5000);
     return () => clearInterval(interval);
   }, [isWhatsappConnected, selectedLead]);
@@ -259,6 +256,7 @@ export default function WhatsAppPage() {
     }
   };
 
+  // 🔥 ENVIO DE MENSAGEM COM ENVELOPE UNIVERSAL
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newMessage.trim() || !selectedLead || !selectedLead.phone) return;
@@ -266,25 +264,39 @@ export default function WhatsAppPage() {
     const messageText = newMessage;
     setNewMessage('');
     
-    // Mostra na tela imediatamente (Otimismo UI)
+    // Adiciona na interface imediatamente
     addLocalMessage(selectedLead.id, messageText, 'sent');
 
     try {
       const cleanPhone = formatPhoneNumber(selectedLead.phone);
 
-      await fetch(`${EVO_URL}/message/sendText/${INSTANCE_NAME}`, {
+      // Payload Universal: Cobre versões antigas e novas da API
+      const payload = {
+        number: cleanPhone,
+        text: messageText, 
+        textMessage: { text: messageText },
+        options: { delay: 1000, presence: 'composing' }
+      };
+
+      const res = await fetch(`${EVO_URL}/message/sendText/${INSTANCE_NAME}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'apikey': EVO_GLOBAL_KEY
         },
-        body: JSON.stringify({
-          number: cleanPhone,
-          text: messageText,
-          delay: 1200
-        })
+        body: JSON.stringify(payload)
       });
-    } catch (error) {}
+
+      const resData = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        const errorMsg = resData?.response?.message || resData?.message || resData?.error || "Erro desconhecido";
+        alert(`⚠️ Falha ao enviar!\n\nMotivo: ${errorMsg}\nNúmero: ${cleanPhone}`);
+      }
+
+    } catch (error) {
+      alert("⚠️ Erro de rede: Não foi possível comunicar com o servidor WhatsApp.");
+    }
   };
 
   if (!initialCheckDone) {
