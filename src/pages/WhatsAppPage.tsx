@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useGlobal } from '../context/GlobalContext';
 import { supabase } from '../lib/supabase';
 import {
-  MessageSquare, Send, QrCode, Unplug, User, Loader2, Moon, Sun, CheckCircle2
+  MessageSquare, Send, QrCode, Unplug, User, Loader2, Moon, Sun, CheckCircle2, Search
 } from 'lucide-react';
 
 // 🔒 CONFIGURAÇÕES REAIS
@@ -29,6 +29,18 @@ export default function WhatsAppPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const processedMessagesRef = useRef<Set<string>>(new Set());
 
+  // ✅ CORES CLARAS para garantir visibilidade
+  const colors = {
+    bg: darkMode ? '#111827' : '#f9fafb',
+    card: darkMode ? '#1f2937' : '#ffffff',
+    border: darkMode ? '#374151' : '#e5e7eb',
+    text: darkMode ? '#f9fafb' : '#111827',
+    textMuted: darkMode ? '#9ca3af' : '#6b7280',
+    inputBg: darkMode ? '#374151' : '#ffffff',
+    msgSent: '#10b981',
+    msgReceived: darkMode ? '#374151' : '#f3f4f6'
+  };
+
   // ✅ CARREGAR MENSAGENS
   const loadMessages = useCallback(async (leadId: string) => {
     try {
@@ -39,7 +51,6 @@ export default function WhatsAppPage() {
         .order('created_at', { ascending: true });
       
       if (data) {
-        // Limpa o set de mensagens processadas
         processedMessagesRef.current.clear();
         data.forEach(msg => processedMessagesRef.current.add(msg.id));
         setMessages(data);
@@ -49,7 +60,7 @@ export default function WhatsAppPage() {
     }
   }, []);
 
-  // ✅ REAL TIME - SEM DUPLICAÇÃO
+  // ✅ REAL TIME
   useEffect(() => {
     if (!selectedLead?.id) return;
 
@@ -63,7 +74,6 @@ export default function WhatsAppPage() {
         table: 'whatsapp_messages',
         filter: `lead_id=eq.${selectedLead.id}`
       }, (payload: any) => {
-        // Verifica se já foi processada
         if (!processedMessagesRef.current.has(payload.new.id)) {
           processedMessagesRef.current.add(payload.new.id);
           setMessages(prev => [...prev, payload.new]);
@@ -109,7 +119,6 @@ export default function WhatsAppPage() {
     setLoading(true);
     setQrCode('');
     try {
-      // Primeiro tenta conectar
       const res = await fetch(`${EVO_URL}/instance/connect/${INSTANCE_NAME}`, {
         headers: { 'apikey': EVO_GLOBAL_KEY }
       });
@@ -122,7 +131,6 @@ export default function WhatsAppPage() {
           setIsConnected(true);
         }
       } else {
-        // Se não existir, cria
         const createRes = await fetch(`${EVO_URL}/instance/create`, {
           method: 'POST',
           headers: {
@@ -149,7 +157,7 @@ export default function WhatsAppPage() {
     }
   };
 
-  // ✅ ENVIAR MENSAGEM - VERSÃO CORRIGIDA
+  // ✅ ENVIAR MENSAGEM
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newMessage.trim() || !selectedLead || sending) return;
@@ -161,23 +169,28 @@ export default function WhatsAppPage() {
     setNewMessage('');
     setSending(true);
 
-    // Cria mensagem temporária para feedback imediato
-    const tempId = `temp_${Date.now()}`;
-    const tempMessage = {
-      id: tempId,
-      lead_id: selectedLead.id,
-      content: text,
-      direction: 'sent',
-      created_at: new Date().toISOString()
-    };
-
-    // Adiciona à UI imediatamente
-    processedMessagesRef.current.add(tempId);
-    setMessages(prev => [...prev, tempMessage]);
-
+    // Salva no Supabase primeiro
     try {
+      const { data: savedMsg, error } = await supabase
+        .from('whatsapp_messages')
+        .insert({
+          lead_id: selectedLead.id,
+          content: text,
+          direction: 'sent',
+          created_at: new Date().toISOString()
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      if (savedMsg) {
+        processedMessagesRef.current.add(savedMsg.id);
+        setMessages(prev => [...prev, savedMsg]);
+      }
+
       // Envia via Evolution API
-      const response = await fetch(`${EVO_URL}/message/sendText/${INSTANCE_NAME}`, {
+      await fetch(`${EVO_URL}/message/sendText/${INSTANCE_NAME}`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json', 
@@ -189,35 +202,9 @@ export default function WhatsAppPage() {
         })
       });
 
-      if (!response.ok) {
-        throw new Error('Erro ao enviar');
-      }
-
-      // A mensagem real virá pelo webhook e substituirá a temporária
-      // Por enquanto, vamos salvar no Supabase manualmente
-      const { data: savedMsg } = await supabase
-        .from('whatsapp_messages')
-        .insert({
-          lead_id: selectedLead.id,
-          content: text,
-          direction: 'sent',
-          created_at: new Date().toISOString()
-        })
-        .select()
-        .single();
-
-      if (savedMsg) {
-        // Remove a temporária e adiciona a real
-        setMessages(prev => prev.filter(m => m.id !== tempId));
-        processedMessagesRef.current.add(savedMsg.id);
-        setMessages(prev => [...prev, savedMsg]);
-      }
-
     } catch (e) {
       console.error('Erro ao enviar:', e);
       alert("Falha ao enviar mensagem.");
-      // Remove a mensagem temporária em caso de erro
-      setMessages(prev => prev.filter(m => m.id !== tempId));
     } finally {
       setSending(false);
     }
@@ -229,62 +216,120 @@ export default function WhatsAppPage() {
   );
 
   if (!initialCheckDone) return (
-    <div className="h-screen flex items-center justify-center bg-zinc-950 text-white font-mono">
-      <div className="text-center">
-        <Loader2 className="animate-spin mx-auto mb-4 text-emerald-500" size={32} />
-        <p className="text-[10px] uppercase tracking-[0.2em] opacity-50">Iniciando ImobiPro Chat</p>
+    <div style={{ 
+      height: '100vh', 
+      display: 'flex', 
+      alignItems: 'center', 
+      justifyContent: 'center',
+      backgroundColor: colors.bg,
+      color: colors.text
+    }}>
+      <div style={{ textAlign: 'center' }}>
+        <Loader2 style={{ animation: 'spin 1s linear infinite', margin: '0 auto 16px', color: '#10b981' }} size={32} />
+        <p style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', opacity: 0.5 }}>Iniciando ImobiPro Chat</p>
       </div>
     </div>
   );
 
   return (
-    <div className={`h-[calc(100vh-80px)] flex ${darkMode ? 'bg-zinc-950 text-white' : 'bg-zinc-50 text-zinc-900'} font-sans`}>
-
+    <div style={{ 
+      height: 'calc(100vh - 80px)', 
+      display: 'flex',
+      backgroundColor: colors.bg,
+      color: colors.text
+    }}>
       {/* SIDEBAR */}
-      <div className={`w-80 flex-shrink-0 border-r flex flex-col ${darkMode ? 'border-zinc-800 bg-zinc-900' : 'border-zinc-200 bg-white'}`}>
-        <div className={`p-4 border-b flex justify-between items-center ${darkMode ? 'border-zinc-800' : 'border-zinc-200'}`}>
-          <div className="flex items-center gap-2">
-            <h2 className="font-black italic uppercase tracking-tighter text-sm">WhatsApp</h2>
+      <div style={{ 
+        width: 320, 
+        borderRight: `1px solid ${colors.border}`,
+        backgroundColor: colors.card,
+        display: 'flex',
+        flexDirection: 'column'
+      }}>
+        {/* Header */}
+        <div style={{ 
+          padding: '16px', 
+          borderBottom: `1px solid ${colors.border}`,
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <h2 style={{ fontWeight: 'bold', fontSize: '14px' }}>WHATSAPP</h2>
           </div>
-          <div className="flex items-center gap-2">
-            <button onClick={() => setDarkMode?.(!darkMode)} className="p-2 rounded-lg hover:bg-zinc-800 transition-colors">
-              {darkMode ? <Sun size={14} /> : <Moon size={14} />}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <button onClick={() => setDarkMode?.(!darkMode)} style={{ padding: '8px', background: 'transparent', border: 'none', cursor: 'pointer' }}>
+              {darkMode ? <Sun size={14} color={colors.text} /> : <Moon size={14} color={colors.text} />}
             </button>
             {isConnected ? (
-              <div className="flex items-center gap-1">
-                <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
-                <span className="text-[9px] font-black text-emerald-500 uppercase">Online</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <div style={{ width: 8, height: 8, backgroundColor: '#10b981', borderRadius: '50%', animation: 'pulse 2s infinite' }} />
+                <span style={{ fontSize: '9px', fontWeight: 'bold', color: '#10b981' }}>Online</span>
               </div>
             ) : (
-              <Unplug size={14} className="text-red-500" />
+              <Unplug size={14} color="#ef4444" />
             )}
           </div>
         </div>
 
-        <div className="p-3">
-          <input
-            value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
-            placeholder="Buscar contato..."
-            className={`w-full px-4 py-2 rounded-xl text-xs outline-none ${darkMode ? 'bg-zinc-800 border-zinc-700' : 'bg-zinc-100 border-zinc-200'} border`}
-          />
+        {/* Search */}
+        <div style={{ padding: '12px' }}>
+          <div style={{ position: 'relative' }}>
+            <Search size={16} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: colors.textMuted }} />
+            <input
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              placeholder="Buscar contato..."
+              style={{
+                width: '100%',
+                padding: '8px 8px 8px 36px',
+                borderRadius: '12px',
+                fontSize: '12px',
+                backgroundColor: colors.inputBg,
+                border: `1px solid ${colors.border}`,
+                color: colors.text,
+                outline: 'none'
+              }}
+            />
+          </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto">
+        {/* Leads List */}
+        <div style={{ flex: 1, overflowY: 'auto' }}>
           {filteredLeads.map((lead: any) => (
             <button
               key={lead.id}
               onClick={() => setSelectedLead(lead)}
-              className={`w-full p-4 border-b text-left flex items-center gap-3 transition-all ${
-                darkMode ? 'border-zinc-800 hover:bg-zinc-800' : 'border-zinc-100 hover:bg-zinc-50'
-              } ${selectedLead?.id === lead.id ? (darkMode ? 'bg-zinc-800' : 'bg-zinc-100') : ''}`}
+              style={{
+                width: '100%',
+                padding: '12px',
+                border: 'none',
+                borderBottom: `1px solid ${colors.border}`,
+                backgroundColor: selectedLead?.id === lead.id ? (darkMode ? '#374151' : '#f3f4f6') : 'transparent',
+                color: colors.text,
+                textAlign: 'left',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+                cursor: 'pointer'
+              }}
             >
-              <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold ${darkMode ? 'bg-zinc-800 text-emerald-500' : 'bg-emerald-100 text-emerald-600'}`}>
+              <div style={{
+                width: 40,
+                height: 40,
+                borderRadius: '12px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontWeight: 'bold',
+                backgroundColor: darkMode ? '#374151' : '#e5e7eb',
+                color: '#10b981'
+              }}>
                 {lead.name?.[0] || "?"}
               </div>
-              <div className="min-w-0 flex-1">
-                <p className="font-bold text-sm truncate">{lead.name}</p>
-                <p className="text-[10px] opacity-40 truncate">{lead.phone}</p>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <p style={{ fontWeight: 'bold', fontSize: '14px', margin: 0 }}>{lead.name}</p>
+                <p style={{ fontSize: '10px', color: colors.textMuted, margin: 0 }}>{lead.phone}</p>
               </div>
             </button>
           ))}
@@ -292,21 +337,53 @@ export default function WhatsAppPage() {
       </div>
 
       {/* CHAT AREA */}
-      <div className="flex-1 flex flex-col relative">
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', position: 'relative' }}>
+        {/* Overlay de conexão */}
         {!isConnected && (
-          <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md p-6">
-            <div className="max-w-xs w-full bg-zinc-900 border border-zinc-800 p-8 rounded-[40px] text-center shadow-2xl">
-              <QrCode className="mx-auto text-emerald-500 mb-6" size={56} />
-              <h3 className="text-white font-black uppercase italic mb-6">Conectar WhatsApp</h3>
+          <div style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0,0,0,0.9)',
+            backdropFilter: 'blur(4px)',
+            zIndex: 50,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '24px'
+          }}>
+            <div style={{
+              maxWidth: 320,
+              width: '100%',
+              backgroundColor: colors.card,
+              border: `1px solid ${colors.border}`,
+              padding: '32px',
+              borderRadius: '40px',
+              textAlign: 'center'
+            }}>
+              <QrCode size={56} style={{ margin: '0 auto 24px', color: '#10b981' }} />
+              <h3 style={{ color: colors.text, fontWeight: 'bold', marginBottom: '24px' }}>Conectar WhatsApp</h3>
               {qrCode ? (
-                <div className="bg-white p-4 rounded-3xl mb-4 shadow-xl">
-                  <img src={qrCode} alt="QR" className="w-full h-auto" />
+                <div style={{ backgroundColor: 'white', padding: '16px', borderRadius: '24px', marginBottom: '16px' }}>
+                  <img src={qrCode} alt="QR" style={{ width: '100%', height: 'auto' }} />
                 </div>
               ) : (
                 <button 
                   onClick={handleGenerateQR} 
                   disabled={loading} 
-                  className="w-full py-4 bg-emerald-500 text-white font-black rounded-2xl hover:bg-emerald-600 transition-all disabled:opacity-50"
+                  style={{
+                    width: '100%',
+                    padding: '16px',
+                    backgroundColor: '#10b981',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '16px',
+                    fontWeight: 'bold',
+                    cursor: loading ? 'not-allowed' : 'pointer',
+                    opacity: loading ? 0.5 : 1
+                  }}
                 >
                   {loading ? 'GERANDO...' : 'GERAR QR CODE'}
                 </button>
@@ -315,53 +392,132 @@ export default function WhatsAppPage() {
           </div>
         )}
 
+        {/* Chat Header */}
         {selectedLead ? (
           <>
-            <div className={`h-16 px-6 border-b flex items-center justify-between font-bold shadow-sm ${darkMode ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-zinc-200'}`}>
-              <div className="flex items-center gap-3">
-                <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold ${darkMode ? 'bg-zinc-800 text-emerald-500' : 'bg-emerald-100 text-emerald-600'}`}>
+            <div style={{
+              height: 64,
+              padding: '0 24px',
+              borderBottom: `1px solid ${colors.border}`,
+              backgroundColor: colors.card,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              fontWeight: 'bold'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: '8px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontWeight: 'bold',
+                  backgroundColor: darkMode ? '#374151' : '#e5e7eb',
+                  color: '#10b981'
+                }}>
                   {selectedLead.name?.[0] || "?"}
                 </div>
                 <span>{selectedLead.name}</span>
               </div>
             </div>
-            
-            <div className="flex-1 overflow-y-auto p-6 space-y-4">
-              {messages.map((m: any) => (
-                <div key={m.id} className={`flex ${m.direction === 'sent' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[75%] p-3 rounded-2xl shadow-sm ${
-                    m.direction === 'sent' 
-                      ? 'bg-[#0217ff] text-white rounded-br-sm' 
-                      : darkMode ? 'bg-zinc-800' : 'bg-white border'
-                  }`}>
-                    <p className="text-sm whitespace-pre-wrap">{m.content}</p>
-                  </div>
+
+            {/* Messages Area - CORRIGIDA (VISÍVEL) */}
+            <div style={{
+              flex: 1,
+              overflowY: 'auto',
+              padding: '24px',
+              backgroundColor: colors.bg,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '16px'
+            }}>
+              {messages.length === 0 ? (
+                <div style={{
+                  textAlign: 'center',
+                  color: colors.textMuted,
+                  marginTop: '40px'
+                }}>
+                  Nenhuma mensagem ainda. Envie uma mensagem para começar.
                 </div>
-              ))}
+              ) : (
+                messages.map((m: any) => (
+                  <div key={m.id} style={{
+                    display: 'flex',
+                    justifyContent: m.direction === 'sent' ? 'flex-end' : 'flex-start'
+                  }}>
+                    <div style={{
+                      maxWidth: '75%',
+                      padding: '12px 16px',
+                      borderRadius: '16px',
+                      backgroundColor: m.direction === 'sent' ? '#10b981' : colors.msgReceived,
+                      color: m.direction === 'sent' ? 'white' : colors.text,
+                      boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+                    }}>
+                      <p style={{ margin: 0, fontSize: '14px', whiteSpace: 'pre-wrap' }}>{m.content}</p>
+                    </div>
+                  </div>
+                ))
+              )}
               <div ref={messagesEndRef} />
             </div>
-            
-            <form onSubmit={handleSendMessage} className={`p-4 border-t flex gap-2 ${darkMode ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-zinc-200'}`}>
+
+            {/* Input Area */}
+            <form onSubmit={handleSendMessage} style={{
+              padding: '16px',
+              borderTop: `1px solid ${colors.border}`,
+              backgroundColor: colors.card,
+              display: 'flex',
+              gap: '8px'
+            }}>
               <input 
                 value={newMessage} 
                 onChange={e => setNewMessage(e.target.value)} 
-                placeholder="Mensagem..." 
-                className={`flex-1 p-3 rounded-xl border ${darkMode ? 'bg-zinc-800 border-zinc-700' : 'bg-zinc-100 border-zinc-200'} focus:outline-none focus:border-emerald-500`}
+                placeholder="Digite sua mensagem..." 
+                style={{
+                  flex: 1,
+                  padding: '12px 16px',
+                  borderRadius: '12px',
+                  border: `1px solid ${colors.border}`,
+                  backgroundColor: colors.inputBg,
+                  color: colors.text,
+                  fontSize: '14px',
+                  outline: 'none'
+                }}
                 disabled={sending}
               />
               <button 
                 type="submit" 
                 disabled={!newMessage.trim() || sending}
-                className="p-4 bg-emerald-500 text-white rounded-xl hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{
+                  padding: '12px 20px',
+                  backgroundColor: '#10b981',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '12px',
+                  cursor: sending || !newMessage.trim() ? 'not-allowed' : 'pointer',
+                  opacity: sending || !newMessage.trim() ? 0.5 : 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
               >
-                {sending ? <Loader2 size={20} className="animate-spin" /> : <Send size={20} />}
+                {sending ? <Loader2 size={20} style={{ animation: 'spin 1s linear infinite' }} /> : <Send size={20} />}
               </button>
             </form>
           </>
         ) : (
-          <div className="flex-1 flex flex-col items-center justify-center opacity-30">
-             <MessageSquare size={64} className="mb-4" />
-             <p className="font-black uppercase tracking-widest text-xs">Selecione um cliente</p>
+          <div style={{
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            opacity: 0.3
+          }}>
+            <MessageSquare size={64} style={{ marginBottom: '16px' }} />
+            <p style={{ fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.1em', fontSize: '12px' }}>Selecione um cliente</p>
           </div>
         )}
       </div>
