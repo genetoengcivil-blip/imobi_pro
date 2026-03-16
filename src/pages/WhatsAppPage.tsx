@@ -16,7 +16,7 @@ export default function WhatsAppPage() {
 
   const [isWhatsappConnected, setIsWhatsappConnected] = useState(false);
   
-  // 🔥 SISTEMA DE MENSAGENS NO NAVEGADOR
+  // 🔥 SISTEMA DE MENSAGENS BLINDADO NO NAVEGADOR
   const [localMessages, setLocalMessages] = useState<any[]>(() => {
     try {
       const saved = localStorage.getItem('@ImobiPro:WhatsAppMessages');
@@ -26,10 +26,9 @@ export default function WhatsAppPage() {
     }
   });
 
+  // Salva no navegador sempre que há alteração
   useEffect(() => {
-    if (localMessages.length > 0) {
-      localStorage.setItem('@ImobiPro:WhatsAppMessages', JSON.stringify(localMessages));
-    }
+    localStorage.setItem('@ImobiPro:WhatsAppMessages', JSON.stringify(localMessages));
   }, [localMessages]);
 
   const [selectedLead, setSelectedLead] = useState<any>(null);
@@ -55,20 +54,9 @@ export default function WhatsAppPage() {
     msgReceivedBg: darkMode ? 'bg-zinc-900' : 'bg-white',
   };
 
-  const addLocalMessage = (leadId: string, content: string, direction: 'sent' | 'received', apiId?: string) => {
-    const newMsg = { 
-      id: apiId || Date.now().toString(), 
-      leadId, 
-      content, 
-      direction, 
-      timestamp: new Date().toISOString() 
-    };
-    
-    setLocalMessages(prev => {
-      // Impede mensagens duplicadas
-      if (prev.some(m => m.id === newMsg.id)) return prev;
-      return [...prev, newMsg].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-    });
+  const addLocalMessage = (leadId: string, content: string, direction: 'sent' | 'received') => {
+    const newMsg = { id: Date.now().toString(), leadId, content, direction, timestamp: new Date().toISOString() };
+    setLocalMessages(prev => [...prev, newMsg]);
   };
 
   const activeMessages = useMemo(() => {
@@ -79,68 +67,6 @@ export default function WhatsAppPage() {
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [selectedLead, activeMessages]);
-
-  // ✅ LIMPEZA DE NÚMERO DE TELEFONE
-  const formatPhoneNumber = (phone: string) => {
-    let cleanPhone = phone.replace(/\D/g, '');
-    if (cleanPhone.startsWith('0')) cleanPhone = cleanPhone.substring(1);
-    if (cleanPhone.length === 10 || cleanPhone.length === 11) {
-      cleanPhone = `55${cleanPhone}`;
-    }
-    return cleanPhone;
-  };
-
-  // ✅ RADAR DE MENSAGENS COM "SEGURANÇA DE PORTA"
-  useEffect(() => {
-    if (!isWhatsappConnected || !selectedLead) return;
-
-    const fetchChatHistory = async () => {
-      try {
-        const cleanPhone = formatPhoneNumber(selectedLead.phone);
-        const remoteJid = `${cleanPhone}@s.whatsapp.net`;
-
-        const res = await fetch(`${EVO_URL}/chat/findMessages/${INSTANCE_NAME}`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'apikey': EVO_GLOBAL_KEY
-          },
-          body: JSON.stringify({ where: { remoteJid } })
-        });
-
-        if (res.ok) {
-          const data = await res.json();
-          let records = [];
-          if (Array.isArray(data)) records = data;
-          else if (data && data.messages && Array.isArray(data.messages.records)) records = data.messages.records;
-
-          if (records.length > 0) {
-            records.forEach((msg: any) => {
-              const msgJid = msg.key?.remoteJid || msg.remoteJid || '';
-              
-              // 🛡️ O SEGURANÇA: Só entra na tela se a mensagem vier EXATAMENTE do número do cliente!
-              if (msgJid.includes(cleanPhone)) {
-                const apiId = msg.key?.id || msg.id;
-                const isFromMe = msg.key?.fromMe || msg.fromMe;
-                const textContent = msg.message?.conversation || msg.message?.extendedTextMessage?.text || msg.text;
-                
-                if (textContent) {
-                  addLocalMessage(selectedLead.id, textContent, isFromMe ? 'sent' : 'received', apiId);
-                }
-              }
-            });
-          }
-        }
-      } catch (error) {
-        // Silencioso
-      }
-    };
-
-    fetchChatHistory();
-    const interval = setInterval(fetchChatHistory, 5000);
-    return () => clearInterval(interval);
-  }, [isWhatsappConnected, selectedLead]);
-
 
   // ✅ VERIFICAR STATUS DA INSTÂNCIA
   useEffect(() => {
@@ -159,7 +85,9 @@ export default function WhatsAppPage() {
             setIsWhatsappConnected(false);
           }
         }
-      } catch (error) {} finally {
+      } catch (error) {
+        console.error("Erro na verificação inicial:", error);
+      } finally {
         setInitialCheckDone(true);
       }
     };
@@ -174,6 +102,7 @@ export default function WhatsAppPage() {
           method: 'GET',
           headers: { 'apikey': EVO_GLOBAL_KEY }
         });
+        
         if (res.ok) {
           const data = await res.json();
           if (data.instance?.state === 'open' || data.instance?.status === 'open' || data.state === 'open') {
@@ -221,7 +150,10 @@ export default function WhatsAppPage() {
           body: JSON.stringify({ instanceName: INSTANCE_NAME, qrcode: true })
         });
 
-        if (!createRes.ok) throw new Error("Servidor recusou a criação.");
+        if (!createRes.ok) {
+          const err = await createRes.text();
+          throw new Error(`Servidor recusou: ${err}`);
+        }
         
         const createData = await createRes.json();
         if (createData.qrcode && createData.qrcode.base64) {
@@ -231,19 +163,20 @@ export default function WhatsAppPage() {
         } else if (createData.instance?.state === 'open') {
           setIsWhatsappConnected(true);
         } else {
-          throw new Error("Erro ao obter QR Code.");
+          throw new Error("Erro: A API não devolveu o QR Code.");
         }
       }
     } catch (error: any) {
-      setErrorMessage(error.message || "Erro desconhecido.");
+      setErrorMessage(error.message || "Erro desconhecido de proxy.");
       setConnectionStatus('disconnected');
     } finally {
       setIsLoading(false);
     }
   };
 
+  // 🔥 FORÇAR DESCONEXÃO (Limpa a sessão na Oracle para gerar novo QR Code)
   const handleDisconnect = async () => {
-    if(window.confirm("Deseja forçar a desconexão da instância?")) {
+    if(window.confirm("Deseja forçar a desconexão? Isso vai exigir a leitura do QR Code novamente.")) {
       try {
         await fetch(`${EVO_URL}/instance/logout/${INSTANCE_NAME}`, {
           method: 'DELETE',
@@ -252,11 +185,12 @@ export default function WhatsAppPage() {
         setIsWhatsappConnected(false);
         setConnectionStatus('disconnected');
         setQrCodeBase64(null);
-      } catch (e) {}
+      } catch (e) {
+        console.error('Erro ao desconectar:', e);
+      }
     }
   };
 
-  // 🔥 ENVIO DE MENSAGEM COM ENVELOPE UNIVERSAL
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newMessage.trim() || !selectedLead || !selectedLead.phone) return;
@@ -264,38 +198,37 @@ export default function WhatsAppPage() {
     const messageText = newMessage;
     setNewMessage('');
     
-    // Adiciona na interface imediatamente
+    // Adiciona ao histórico do navegador imediatamente
     addLocalMessage(selectedLead.id, messageText, 'sent');
 
     try {
-      const cleanPhone = formatPhoneNumber(selectedLead.phone);
+      // 🔥 CORREÇÃO DO NÚMERO DE TELEFONE (Evita o erro "5555")
+      let cleanPhone = selectedLead.phone.replace(/\D/g, '');
+      
+      // Se o número não começar por 55, nós adicionamos. Se já tiver, deixamos como está.
+      if (!cleanPhone.startsWith('55')) {
+        cleanPhone = `55${cleanPhone}`;
+      }
 
-      // Payload Universal: Cobre versões antigas e novas da API
-      const payload = {
-        number: cleanPhone,
-        text: messageText, 
-        textMessage: { text: messageText },
-        options: { delay: 1000, presence: 'composing' }
-      };
-
+      // Payload universal simplificado para a v1.8.0
       const res = await fetch(`${EVO_URL}/message/sendText/${INSTANCE_NAME}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'apikey': EVO_GLOBAL_KEY
         },
-        body: JSON.stringify(payload)
+        body: JSON.stringify({
+          number: cleanPhone,
+          text: messageText,
+          delay: 1200
+        })
       });
 
-      const resData = await res.json().catch(() => null);
-
-      if (!res.ok) {
-        const errorMsg = resData?.response?.message || resData?.message || resData?.error || "Erro desconhecido";
-        alert(`⚠️ Falha ao enviar!\n\nMotivo: ${errorMsg}\nNúmero: ${cleanPhone}`);
-      }
+      const resData = await res.json();
+      console.log("Status do Envio:", resData);
 
     } catch (error) {
-      alert("⚠️ Erro de rede: Não foi possível comunicar com o servidor WhatsApp.");
+      console.error("Erro na comunicação com a API:", error);
     }
   };
 
@@ -316,7 +249,11 @@ export default function WhatsAppPage() {
           <div className={`p-6 border-b ${theme.border}`}>
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-xl font-black italic tracking-tighter uppercase">Conversas</h2>
-              <button onClick={handleDisconnect} title="Forçar Desconexão" className="w-8 h-8 rounded-full bg-red-500/10 text-red-500 flex items-center justify-center hover:bg-red-500 hover:text-white transition-all">
+              <button 
+                onClick={handleDisconnect} 
+                title="Forçar Desconexão" 
+                className="w-8 h-8 rounded-full bg-red-500/10 text-red-500 flex items-center justify-center hover:bg-red-500 hover:text-white transition-all"
+              >
                 <Unplug size={16} />
               </button>
             </div>
@@ -372,7 +309,7 @@ export default function WhatsAppPage() {
                 return (
                   <div key={msg.id} className={`flex flex-col ${isSent ? 'items-end' : 'items-start'}`}>
                     <div className={`max-w-[70%] p-4 ${isSent ? `${theme.msgSentBg} text-white rounded-2xl rounded-tr-sm shadow-lg` : `${theme.msgReceivedBg} border ${theme.border} ${theme.textMain} rounded-2xl rounded-tl-sm shadow-sm`}`}>
-                      <p className="text-sm font-medium whitespace-pre-wrap">{msg.content}</p>
+                      <p className="text-sm font-medium">{msg.content}</p>
                     </div>
                   </div>
                 );
@@ -423,6 +360,7 @@ export default function WhatsAppPage() {
             </p>
             {errorMessage && <div className="mt-4 p-4 bg-red-500/10 text-red-500 rounded-2xl text-xs font-mono">{errorMessage}</div>}
             
+            {/* NOVO BOTÃO DE FORÇAR DESCONEXÃO PARA QUANDO A API TRAVA */}
             <button 
               onClick={handleDisconnect}
               className="mt-6 flex items-center gap-2 px-4 py-2 bg-zinc-100 dark:bg-zinc-900 rounded-xl text-xs font-bold hover:bg-red-500/10 hover:text-red-500 transition-colors"
