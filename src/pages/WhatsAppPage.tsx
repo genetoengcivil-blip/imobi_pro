@@ -6,9 +6,9 @@ import {
 } from 'lucide-react';
 import { useGlobal } from '../context/GlobalContext';
 
-// ✅ CONFIGURAÇÕES CORRIGIDAS - NÃO ALTERE ESTAS 3 LINHAS!
+// ✅ A COMBINAÇÃO VENCEDORA: Rota da Vercel + A sua chave real
 const EVO_URL = "/evo-api"; 
-const EVO_GLOBAL_KEY = "minha_chave_simples_123";
+const EVO_GLOBAL_KEY = "minha_chave_simples_123"; 
 const INSTANCE_NAME = "imobipro";
 
 export default function WhatsAppPage() {
@@ -43,7 +43,6 @@ export default function WhatsAppPage() {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [selectedLead, activeMessages, markAsRead]);
 
-  // 👀 WATCHER: Aguarda a leitura do QR Code
   const startConnectionWatcher = () => {
     const interval = setInterval(async () => {
       try {
@@ -105,7 +104,7 @@ export default function WhatsAppPage() {
           })
         });
         
-        if (!createRes.ok) throw new Error("Falha ao criar instância na API. Verifique as credenciais.");
+        if (!createRes.ok) throw new Error("Falha ao criar instância na API.");
         
         const createData = await createRes.json();
         
@@ -120,7 +119,6 @@ export default function WhatsAppPage() {
         }
       }
     } catch (error: any) {
-      console.error("Erro detalhado:", error);
       setErrorMessage(error.message || "Erro ao contactar servidor.");
       setConnectionStatus('disconnected');
     }

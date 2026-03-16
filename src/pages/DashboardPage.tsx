@@ -10,7 +10,6 @@ import {
   Tooltip, ResponsiveContainer 
 } from 'recharts';
 import { useGlobal } from '../context/GlobalContext';
-import { LEAD_STATUSES } from '../types';
 
 type ViewOption = 'mensal' | 'trimestral' | 'semestral' | 'anual';
 
@@ -20,8 +19,12 @@ export default function DashboardPage() {
   const [viewType, setViewType] = useState<ViewOption>('mensal');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   
+  // Atraso de montagem para o CSS do Tailwind calcular os tamanhos reais
   const [isMounted, setIsMounted] = useState(false);
-  useEffect(() => { setIsMounted(true); }, []);
+  useEffect(() => { 
+    const timer = setTimeout(() => setIsMounted(true), 150);
+    return () => clearTimeout(timer);
+  }, []);
 
   const options: { value: ViewOption; label: string }[] = [
     { value: 'mensal', label: 'Visão Mensal' },
@@ -207,7 +210,7 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* 🛡️ CORREÇÃO DEFINITIVA DO GRÁFICO (EVITA WIDTH -1 COM MINWIDTH=0 e MINHEIGHT=0) */}
+            {/* 🛡️ CORREÇÃO DEFINITIVA DO GRÁFICO (minWidth={0} minHeight={0}) */}
             <div className="w-full relative" style={{ height: '350px' }}>
               {isMounted && (
                 <ResponsiveContainer width="100%" height={350} minWidth={0} minHeight={0}>
