@@ -20,13 +20,8 @@ export default function DashboardPage() {
   const [viewType, setViewType] = useState<ViewOption>('mensal');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   
-  // 🛡️ A VACINA DEFINITIVA CONTRA O WIDTH(-1)
   const [isMounted, setIsMounted] = useState(false);
-  useEffect(() => { 
-    // Aguarda 100ms para garantir que o CSS do Tailwind já definiu as larguras reais
-    const timer = setTimeout(() => setIsMounted(true), 100);
-    return () => clearTimeout(timer);
-  }, []);
+  useEffect(() => { setIsMounted(true); }, []);
 
   const options: { value: ViewOption; label: string }[] = [
     { value: 'mensal', label: 'Visão Mensal' },
@@ -212,10 +207,10 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* 🛡️ CONTAINER 100% BLINDADO (Com minWidth e minHeight no ResponsiveContainer) */}
-            <div className="w-full relative" style={{ height: '350px', minHeight: '350px', minWidth: 0 }}>
+            {/* 🛡️ CORREÇÃO DEFINITIVA DO GRÁFICO (EVITA WIDTH -1 COM MINWIDTH=0 e MINHEIGHT=0) */}
+            <div className="w-full relative" style={{ height: '350px' }}>
               {isMounted && (
-                <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
+                <ResponsiveContainer width="100%" height={350} minWidth={0} minHeight={0}>
                   <AreaChart data={chartData}>
                     <defs>
                       <linearGradient id="colorVgv" x1="0" y1="0" x2="0" y2="1">
@@ -314,7 +309,7 @@ export default function DashboardPage() {
                 </span>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-[10px] text-zinc-500 font-black uppercase text-green-600">Comissão Ganhos</span>
+                <span className="text-[10px] text-zinc-500 font-black uppercase text-green-600">Comissão Ganhos (Leads)</span>
                 <span className="font-black text-green-600 text-sm">{formatCurrency(dynamicMetrics.comissoesFechadas)}</span>
               </div>
               <div className="pt-4 border-t border-zinc-100 dark:border-white/5 flex justify-between items-center">
