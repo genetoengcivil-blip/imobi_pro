@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   Users, Target, TrendingUp, Clock, ArrowUpRight, 
@@ -10,6 +10,7 @@ import {
   Tooltip, ResponsiveContainer 
 } from 'recharts';
 import { useGlobal } from '../context/GlobalContext';
+import { LEAD_STATUSES } from '../types';
 
 // Definição dos tipos de visualização
 type ViewOption = 'mensal' | 'trimestral' | 'semestral' | 'anual';
@@ -18,14 +19,6 @@ export default function DashboardPage() {
   const navigate = useNavigate();
   const { leads, transactions, appointments, darkMode } = useGlobal();
   
-  // 🛡️ ESTADO PARA BLINDAGEM DO GRÁFICO
-  const [isMounted, setIsMounted] = useState(false);
-
-  // Garante que o gráfico só renderiza no cliente após a montagem total
-  useEffect(() => {
-    setIsMounted(true);
-  }, []);
-
   // Estados para o Filtro Dropdown
   const [viewType, setViewType] = useState<ViewOption>('mensal');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -42,11 +35,12 @@ export default function DashboardPage() {
   const safeTransactions = useMemo(() => transactions || [], [transactions]);
   const safeAppointments = useMemo(() => appointments || [], [appointments]);
 
-  // 🔢 Cálculos de Métricas Dinâmicas
+  // 🔢 Cálculos de Métricas Dinâmicas (Corrigido para reagir ao viewType)
   const dynamicMetrics = useMemo(() => {
     const now = new Date();
     let startDate = new Date();
 
+    // Sincroniza o período de cálculo com o período exibido no gráfico
     if (viewType === 'mensal') startDate.setMonth(now.getMonth() - 5);
     else if (viewType === 'trimestral' || viewType === 'semestral') startDate.setMonth(now.getMonth() - 11);
     else if (viewType === 'anual') startDate.setFullYear(now.getFullYear() - 2);
@@ -54,20 +48,25 @@ export default function DashboardPage() {
     startDate.setDate(1);
     startDate.setHours(0, 0, 0, 0);
 
+    // Filtra leads e transações do período selecionado
     const leadsNoPeriodo = safeLeads.filter(l => new Date(l.createdAt) >= startDate);
     const transacoesNoPeriodo = safeTransactions.filter(t => new Date(t.date || (t as any).created_at) >= startDate);
 
+    // 1. VGV Ativo (Leads em andamento no período selecionado)
     const vgvAtivo = leadsNoPeriodo
       .filter(l => l.status !== 'fechado' && l.status !== 'perdido')
       .reduce((acc, l) => acc + (Number(l.value) || 0), 0);
     
+    // 2. Previsão de Comissão (VGV Ativo * % de cada lead)
     const previsaoComissao = leadsNoPeriodo
       .filter(l => l.status !== 'fechado' && l.status !== 'perdido')
       .reduce((acc, l) => acc + (Number(l.value) * (Number(l.commission_rate) || 0) / 100), 0);
 
+    // 3. Lucro Líquido (Receitas + Comissões de Leads Fechados - Despesas)
     const receitasFin = transacoesNoPeriodo.filter(t => t.type === 'receita').reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
     const despesasFin = transacoesNoPeriodo.filter(t => t.type === 'despesa').reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
     
+    // Comissão "Ganha" (Leads que foram fechados no período selecionado)
     const comissoesFechadas = leadsNoPeriodo
       .filter(l => l.status === 'fechado')
       .reduce((acc, l) => acc + (Number(l.value) * (Number(l.commission_rate) || 0) / 100), 0);
@@ -83,7 +82,7 @@ export default function DashboardPage() {
     };
   }, [safeLeads, safeTransactions, viewType]);
 
-  // 📈 Lógica Dinâmica do Gráfico
+  // 📈 Lógica Dinâmica do Gráfico (Mantida conforme original)
   const chartData = useMemo(() => {
     const data = [];
     const now = new Date();
@@ -168,7 +167,7 @@ export default function DashboardPage() {
         </button>
       </div>
 
-      {/* Métricas Principais */}
+      {/* Métricas Principais - ATUALIZADOS E DINÂMICOS */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {[
           { label: 'VGV Ativo', val: formatCurrency(dynamicMetrics.vgvAtivo), icon: Briefcase, color: 'text-[#0217ff]', bg: 'bg-[#0217ff]/10' },
@@ -188,7 +187,7 @@ export default function DashboardPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         
-        {/* Painel do Gráfico */}
+        {/* Painel do Gráfico com Dropdown */}
         <div className="lg:col-span-2 space-y-6">
           <div className={cardClass}>
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-8 gap-4">
@@ -238,28 +237,26 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* 🛡️ BLINDAGEM DO GRÁFICO (CORREÇÃO WIDTH -1) */}
-            <div className="w-full overflow-hidden" style={{ height: '350px', minHeight: '350px', position: 'relative' }}>
-              {isMounted && (
-                <ResponsiveContainer width="99%" height="100%" minWidth={0}>
-                  <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                    <defs>
-                      <linearGradient id="colorVgv" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#0217ff" stopOpacity={0.3}/>
-                        <stop offset="95%" stopColor="#0217ff" stopOpacity={0}/>
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={darkMode ? "#333" : "#eee"} />
-                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#888', fontSize: 10, fontWeight: 'bold'}} dy={10} />
-                    <YAxis hide />
-                    <Tooltip 
-                      contentStyle={{ borderRadius: '20px', border: 'none', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)', backgroundColor: darkMode ? '#111' : '#fff' }}
-                      formatter={(value: number) => [formatCurrency(value), 'VGV']}
-                    />
-                    <Area type="monotone" dataKey="vgv" stroke="#0217ff" strokeWidth={4} fillOpacity={1} fill="url(#colorVgv)" isAnimationActive={false} />
-                  </AreaChart>
-                </ResponsiveContainer>
-              )}
+            {/* A BLINDAGEM DO GRÁFICO (Fix "width -1 and height -1") */}
+            <div className="w-full" style={{ height: '350px', minHeight: '350px' }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={chartData}>
+                  <defs>
+                    <linearGradient id="colorVgv" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#0217ff" stopOpacity={0.3}/>
+                      <stop offset="95%" stopColor="#0217ff" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={darkMode ? "#333" : "#eee"} />
+                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#888', fontSize: 10, fontWeight: 'bold'}} dy={10} />
+                  <YAxis hide />
+                  <Tooltip 
+                    contentStyle={{ borderRadius: '20px', border: 'none', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)', backgroundColor: darkMode ? '#111' : '#fff' }}
+                    formatter={(value: number) => [formatCurrency(value), 'VGV']}
+                  />
+                  <Area type="monotone" dataKey="vgv" stroke="#0217ff" strokeWidth={4} fillOpacity={1} fill="url(#colorVgv)" />
+                </AreaChart>
+              </ResponsiveContainer>
             </div>
           </div>
 
@@ -326,7 +323,7 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* Resumo Financeiro */}
+          {/* Resumo Financeiro no Sidebar */}
           <div className={cardClass}>
             <h3 className="font-black text-xs mb-6 flex items-center gap-2 uppercase tracking-widest">
               <DollarSign className="w-4 h-4 text-green-600" /> Fluxo do Período
@@ -337,7 +334,7 @@ export default function DashboardPage() {
                 <span className="font-black text-sm">{formatCurrency(safeTransactions.filter(t => t.type === 'receita' && new Date(t.date || (t as any).created_at) >= new Date(new Date().setMonth(new Date().getMonth() - (viewType === 'mensal' ? 5 : 11)))).reduce((acc, t) => acc + (t.amount || 0), 0))}</span>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-[10px] text-zinc-500 font-black uppercase text-green-600">Comissão Ganhos</span>
+                <span className="text-[10px] text-zinc-500 font-black uppercase text-green-600">Comissão Ganhos (Leads)</span>
                 <span className="font-black text-green-600 text-sm">{formatCurrency(dynamicMetrics.comissoesFechadas)}</span>
               </div>
               <div className="pt-4 border-t border-zinc-100 dark:border-white/5 flex justify-between items-center">
