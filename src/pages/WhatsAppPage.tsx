@@ -6,7 +6,6 @@ import {
 } from 'lucide-react';
 import { useGlobal } from '../context/GlobalContext';
 
-// ✅ A COMBINAÇÃO VENCEDORA: Rota da Vercel + A sua chave real
 const EVO_URL = "/evo-api"; 
 const EVO_GLOBAL_KEY = "minha_chave_simples_123"; 
 const INSTANCE_NAME = "imobipro";
@@ -76,7 +75,7 @@ export default function WhatsAppPage() {
       
       if (!connectRes.ok && connectRes.status !== 404) {
         const errorText = await connectRes.text();
-        throw new Error(`Erro do servidor (${connectRes.status}): ${errorText}`);
+        throw new Error(`Erro ao conectar (${connectRes.status}): ${errorText}`);
       }
 
       let connectData;
@@ -91,6 +90,7 @@ export default function WhatsAppPage() {
       } else if (connectData && (connectData.instance?.status === 'open' || connectData.status === 'open')) {
         setWhatsappConnected(true);
       } else {
+        // 🚨 REMOVIDO o 'integration' para compatibilidade com v1.8.0
         const createRes = await fetch(`${EVO_URL}/instance/create`, {
           method: 'POST',
           headers: {
@@ -99,12 +99,15 @@ export default function WhatsAppPage() {
           },
           body: JSON.stringify({
             instanceName: INSTANCE_NAME,
-            qrcode: true,
-            integration: "WHATSAPP-BAILEYS"
+            qrcode: true
           })
         });
         
-        if (!createRes.ok) throw new Error("Falha ao criar instância na API.");
+        // 🚨 RAIO-X DO ERRO: Se a Oracle rejeitar, mostra o motivo exato
+        if (!createRes.ok) {
+          const errorText = await createRes.text();
+          throw new Error(`A Oracle recusou criar. Motivo: ${errorText}`);
+        }
         
         const createData = await createRes.json();
         
@@ -115,11 +118,12 @@ export default function WhatsAppPage() {
         } else if (createData.instance?.state === 'open') {
            setWhatsappConnected(true);
         } else {
-           throw new Error("API não retornou o QR Code.");
+           throw new Error("A instância foi criada, mas a API não gerou o QR Code.");
         }
       }
     } catch (error: any) {
-      setErrorMessage(error.message || "Erro ao contactar servidor.");
+      console.error("Erro capturado:", error);
+      setErrorMessage(error.message || "Erro desconhecido ao contactar servidor.");
       setConnectionStatus('disconnected');
     }
   };
@@ -176,7 +180,7 @@ export default function WhatsAppPage() {
                 Sincronize o seu WhatsApp com o CRM. Leia o QR Code e centralize o seu atendimento de forma automática.
               </p>
               {errorMessage && (
-                <div className="mt-4 p-4 bg-red-500/10 text-red-500 rounded-2xl text-xs font-bold border border-red-500/20 break-words">
+                <div className="mt-4 p-4 bg-red-500/10 text-red-500 rounded-2xl text-[11px] font-mono border border-red-500/20 break-words">
                   {errorMessage}
                 </div>
               )}
