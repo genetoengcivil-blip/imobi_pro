@@ -25,7 +25,7 @@ export default function WhatsAppPage() {
     loadLeads();
   }, []);
 
-  // ✅ GERENCIAR MENSAGENS COM REALTIME
+  // GERENCIAR MENSAGENS COM REALTIME
   useEffect(() => {
     if (!selectedLead) return;
     
@@ -39,7 +39,6 @@ export default function WhatsAppPage() {
     };
     loadMessages();
 
-    // Ativa escuta em tempo real: o chat atualiza sozinho quando o Webhook insere no banco
     const channel = supabase
       .channel(`chat_${selectedLead.id}`)
       .on('postgres_changes', { 
@@ -62,7 +61,7 @@ export default function WhatsAppPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Verificar status da conexão com a Oracle
+  // Verificar status da conexão
   useEffect(() => {
     const checkStatus = async () => {
       try {
@@ -81,19 +80,60 @@ export default function WhatsAppPage() {
     return () => clearInterval(interval);
   }, []);
 
+  // ✅ FUNÇÃO CORRIGIDA PARA GERAR QR CODE
   const handleGenerateQR = async () => {
     setLoading(true);
     try {
+      console.log('Conectando na instância...');
       const res = await fetch(`${EVO_URL}/instance/connect/${INSTANCE_NAME}`, {
         headers: { 'apikey': EVO_GLOBAL_KEY }
       });
+      
       const data = await res.json();
-      if (data.base64) setQrCode(data.base64);
-      else if (data.status === 'open') setIsConnected(true);
-    } catch (err) {} finally { setLoading(false); }
+      console.log('Resposta da API:', data);
+      
+      // Verifica todos os possíveis lugares onde o QR pode estar
+      if (data.base64) {
+        setQrCode(data.base64);
+      } 
+      else if (data.qrcode?.base64) {
+        setQrCode(data.qrcode.base64);
+      }
+      else if (data.code) {
+        setQrCode(`data:image/png;base64,${data.code}`);
+      }
+      else if (data.status === 'open' || data.instance?.status === 'open') {
+        setIsConnected(true);
+      }
+      else {
+        console.log('QR não encontrado, tentando criar instância...');
+        const createRes = await fetch(`${EVO_URL}/instance/create`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': EVO_GLOBAL_KEY
+          },
+          body: JSON.stringify({
+            instanceName: INSTANCE_NAME,
+            qrcode: true
+          })
+        });
+        
+        const createData = await createRes.json();
+        console.log('Resposta da criação:', createData);
+        
+        if (createData.qrcode?.base64) {
+          setQrCode(createData.qrcode.base64);
+        }
+      }
+    } catch (err) {
+      console.error('Erro:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  // ✅ ENVIAR MENSAGEM (O Webhook se encarrega de atualizar a tela)
+  // ENVIAR MENSAGEM
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newMessage.trim() || !selectedLead) return;
@@ -105,7 +145,6 @@ export default function WhatsAppPage() {
       const phone = selectedLead.phone?.replace(/\D/g, '');
       const cleanPhone = phone?.startsWith('55') ? phone : `55${phone}`;
       
-      // Payload corrigido para a Evolution API v1.8+
       await fetch(`${EVO_URL}/message/sendText/${INSTANCE_NAME}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'apikey': EVO_GLOBAL_KEY },
