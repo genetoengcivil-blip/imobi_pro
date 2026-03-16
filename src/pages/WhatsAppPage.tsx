@@ -12,12 +12,12 @@ const EVO_GLOBAL_KEY = "minha_chave_simples_123";
 const INSTANCE_NAME = "imobipro";
 
 export default function WhatsAppPage() {
-  const globalCtx = useGlobal() as any;
-  
-  // 🛡️ PROTEÇÃO MÁXIMA CONTRA ERROS DE MAIÚSCULAS/MINÚSCULAS NO CONTEXTO
-  const setConnected = globalCtx.setWhatsappConnected || globalCtx.setWhatsAppConnected;
-  const isConnected = globalCtx.whatsappConnected || globalCtx.whatsAppConnected;
-  const { user, leads, messages, addMessage, markAsRead, darkMode } = globalCtx;
+  // 1. Puxamos apenas o que REALMENTE existe no seu GlobalContext
+  const { user, leads, darkMode } = useGlobal();
+
+  // 2. 🔥 CRIAMOS OS ESTADOS QUE FALTAVAM AQUI DENTRO! (Adeus "is not a function")
+  const [isWhatsappConnected, setIsWhatsappConnected] = useState(false);
+  const [localMessages, setLocalMessages] = useState<any[]>([]);
 
   const [selectedLead, setSelectedLead] = useState<any>(null);
   const [newMessage, setNewMessage] = useState('');
@@ -42,49 +42,43 @@ export default function WhatsAppPage() {
     msgReceivedBg: darkMode ? 'bg-zinc-900' : 'bg-white',
   };
 
+  // 3. Função local para adicionar mensagens à tela
+  const addLocalMessage = (leadId: string, content: string, direction: 'sent' | 'received') => {
+    const newMsg = { id: Date.now().toString(), leadId, content, direction, timestamp: new Date().toISOString() };
+    setLocalMessages(prev => [...prev, newMsg]);
+  };
+
   const activeMessages = useMemo(() => {
     if (!selectedLead) return [];
-    return (messages || []).filter((m: any) => m.leadId === selectedLead.id);
-  }, [messages, selectedLead]);
+    return localMessages.filter((m: any) => m.leadId === selectedLead.id);
+  }, [localMessages, selectedLead]);
 
   useEffect(() => {
-    if (selectedLead && typeof markAsRead === 'function') markAsRead(selectedLead.id);
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [selectedLead, activeMessages, markAsRead]);
-
-  // Função segura para alterar o estado sem crashar a aplicação
-  const safeSetConnected = (status: boolean) => {
-    if (typeof setConnected === 'function') {
-      setConnected(status);
-    } else {
-      console.error("ERRO: setWhatsappConnected não foi encontrado no GlobalContext!");
-    }
-  };
+  }, [selectedLead, activeMessages]);
 
   // ✅ VERIFICAR STATUS DA INSTÂNCIA AO CARREGAR
   useEffect(() => {
     const checkInstance = async () => {
       try {
-        console.log('Verificando instância via proxy...');
-        const res = await fetch(`${EVO_URL}/instance/fetchInstances`, {
+        console.log('Verificando status da API...');
+        const res = await fetch(`${EVO_URL}/instance/connectionState/${INSTANCE_NAME}`, {
           method: 'GET',
           headers: { 'apikey': EVO_GLOBAL_KEY }
         });
         
         if (res.ok) {
-          const instances = await res.json();
-          const instance = instances.find((i: any) => i.instance?.instanceName === INSTANCE_NAME);
-          
-          if (instance?.instance?.status === 'open' || instance?.instance?.state === 'open') {
-            console.log('✅ Instância já está conectada!');
-            safeSetConnected(true);
+          const data = await res.json();
+          if (data.instance?.state === 'open' || data.instance?.status === 'open' || data.state === 'open') {
+            console.log('✅ Instância já está conectada na Oracle!');
+            setIsWhatsappConnected(true);
           } else {
-            console.log('Instância existe mas não está conectada');
-            safeSetConnected(false);
+            console.log('A instância não está conectada ao telemóvel.');
+            setIsWhatsappConnected(false);
           }
         }
       } catch (error) {
-        console.error('Erro ao verificar instância:', error);
+        console.error('Aguardando servidor...');
       } finally {
         setInitialCheckDone(true);
       }
@@ -93,9 +87,8 @@ export default function WhatsAppPage() {
     checkInstance();
   }, []);
 
-  // ✅ MONITORAR CONEXÃO
+  // ✅ MONITORAR CONEXÃO DO QR CODE
   const startConnectionWatcher = () => {
-    console.log('Iniciando monitoramento...');
     const interval = setInterval(async () => {
       try {
         const res = await fetch(`${EVO_URL}/instance/connectionState/${INSTANCE_NAME}`, {
@@ -106,9 +99,9 @@ export default function WhatsAppPage() {
         if (res.ok) {
           const data = await res.json();
           if (data.instance?.state === 'open' || data.instance?.status === 'open' || data.state === 'open') {
-            console.log('✅ WhatsApp conectado!');
+            console.log('✅ WhatsApp ligado com sucesso!');
             clearInterval(interval);
-            safeSetConnected(true);
+            setIsWhatsappConnected(true);
             setConnectionStatus('disconnected');
           }
         }
@@ -118,7 +111,7 @@ export default function WhatsAppPage() {
     setTimeout(() => clearInterval(interval), 120000);
   };
 
-  // ✅ GERAR QR CODE (Sem Loop Infinito)
+  // ✅ GERAR QR CODE (Sem loop infinito)
   const handleGenerateQR = async () => {
     setConnectionStatus('generating');
     setErrorMessage(null);
@@ -126,34 +119,28 @@ export default function WhatsAppPage() {
     setIsLoading(true);
 
     try {
-      console.log('Tentando conectar na instância:', INSTANCE_NAME);
-      
+      console.log('Tentando conectar...');
       const connectRes = await fetch(`${EVO_URL}/instance/connect/${INSTANCE_NAME}`, {
         method: 'GET',
         headers: { 'apikey': EVO_GLOBAL_KEY }
       });
       
       let connectData = null;
-      if (connectRes.ok) {
-        connectData = await connectRes.json();
-      }
+      if (connectRes.ok) connectData = await connectRes.json();
 
-      // 1. JÁ ESTÁ LIGADO
+      // 1. JÁ ESTÁ CONECTADO
       if (connectData && (connectData.status === 'open' || connectData.instance?.status === 'open' || connectData.instance?.state === 'open')) {
-        console.log('WhatsApp já está conectado!');
-        safeSetConnected(true);
+        setIsWhatsappConnected(true);
         setConnectionStatus('disconnected');
       } 
       // 2. TEM QR CODE PRONTO
       else if (connectData && connectData.base64) {
-        console.log('QR Code gerado com sucesso!');
         setQrCodeBase64(connectData.base64);
         setConnectionStatus('waiting_scan');
         startConnectionWatcher();
       } 
-      // 3. SE A INSTÂNCIA NÃO EXISTIR (404), VAMOS CRIAR (Substitui o loop infinito)
+      // 3. PRECISA CRIAR A INSTÂNCIA DO ZERO
       else if (connectRes.status === 404 || !connectRes.ok) {
-        console.log('Instância não encontrada. A criar nova...');
         const createRes = await fetch(`${EVO_URL}/instance/create`, {
           method: 'POST',
           headers: {
@@ -166,7 +153,10 @@ export default function WhatsAppPage() {
           })
         });
 
-        if (!createRes.ok) throw new Error("A Oracle recusou a criação da instância.");
+        if (!createRes.ok) {
+          const err = await createRes.text();
+          throw new Error(`Servidor recusou: ${err}`);
+        }
         
         const createData = await createRes.json();
         if (createData.qrcode && createData.qrcode.base64) {
@@ -174,15 +164,14 @@ export default function WhatsAppPage() {
           setConnectionStatus('waiting_scan');
           startConnectionWatcher();
         } else if (createData.instance?.state === 'open') {
-          safeSetConnected(true);
+          setIsWhatsappConnected(true);
         } else {
-          throw new Error("Não foi possível gerar o QR Code. Tente novamente.");
+          throw new Error("Erro: A API não devolveu o QR Code.");
         }
       }
       
     } catch (error: any) {
-      console.error("Erro detalhado:", error);
-      setErrorMessage(error.message || "Erro desconhecido. Verifique o servidor.");
+      setErrorMessage(error.message || "Erro desconhecido de proxy.");
       setConnectionStatus('disconnected');
     } finally {
       setIsLoading(false);
@@ -196,7 +185,7 @@ export default function WhatsAppPage() {
           method: 'DELETE',
           headers: { 'apikey': EVO_GLOBAL_KEY }
         });
-        safeSetConnected(false);
+        setIsWhatsappConnected(false);
         setConnectionStatus('disconnected');
         setQrCodeBase64(null);
       } catch (e) {
@@ -207,11 +196,13 @@ export default function WhatsAppPage() {
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newMessage.trim() || !selectedLead || !selectedLead.phone || typeof addMessage !== 'function') return;
+    if (!newMessage.trim() || !selectedLead || !selectedLead.phone) return;
 
     const messageText = newMessage;
     setNewMessage('');
-    addMessage(selectedLead.id, messageText, 'sent');
+    
+    // Adiciona visualmente na tela de imediato
+    addLocalMessage(selectedLead.id, messageText, 'sent');
 
     try {
       const cleanPhone = selectedLead.phone.replace(/\D/g, '');
@@ -227,25 +218,23 @@ export default function WhatsAppPage() {
           delay: 1200
         })
       });
-    } catch (error) {
-      console.error('Erro ao enviar mensagem:', error);
-    }
+    } catch (error) {}
   };
 
-  // ✅ Mostrar loading enquanto verifica
+  // ✅ ECRÃ DE LOADING
   if (!initialCheckDone) {
     return (
-      <div className={`min-h-screen flex items-center justify-center ${theme.bgApp}`}>
-        <Loader2 size={48} className="text-emerald-500 animate-spin" />
+      <div className={`min-h-[calc(100vh-80px)] flex flex-col items-center justify-center ${theme.bgApp}`}>
+        <Loader2 size={48} className="text-emerald-500 animate-spin mb-4" />
+        <p className="text-[10px] font-black tracking-widest uppercase text-zinc-500">Conectando ao CRM...</p>
       </div>
     );
   }
 
-  // ✅ SE JÁ ESTIVER CONECTADO, MOSTRA O CHAT
-  if (isConnected) {
+  // ✅ SE ESTIVER CONECTADO, MOSTRA O CHAT
+  if (isWhatsappConnected) {
     return (
       <div className={`h-[calc(100vh-80px)] flex animate-fade-in font-sans ${theme.textMain}`}>
-        {/* Sidebar de conversas */}
         <div className={`w-80 border-r ${theme.border} ${theme.bgSidebar} flex flex-col`}>
           <div className={`p-6 border-b ${theme.border}`}>
             <div className="flex items-center justify-between mb-6">
@@ -268,7 +257,7 @@ export default function WhatsAppPage() {
 
           <div className="flex-1 overflow-y-auto custom-scrollbar">
             {(leads || []).map((lead: any) => {
-              const leadMsgs = (messages || []).filter((m: any) => m.leadId === lead.id);
+              const leadMsgs = localMessages.filter((m: any) => m.leadId === lead.id);
               const lastMsg = leadMsgs[leadMsgs.length - 1];
               return (
                 <button 
@@ -295,7 +284,6 @@ export default function WhatsAppPage() {
           </div>
         </div>
 
-        {/* Área do chat */}
         {selectedLead ? (
           <div className={`flex-1 flex flex-col ${theme.bgApp}`}>
             <div className={`h-20 border-b ${theme.border} ${theme.bgCard} flex items-center justify-between px-6`}>
@@ -368,7 +356,7 @@ export default function WhatsAppPage() {
     );
   }
 
-  // ✅ SE NÃO ESTIVER CONECTADO, MOSTRA TELA DE QR CODE
+  // ✅ SE NÃO ESTIVER CONECTADO, MOSTRA O ECRÃ PARA LER O QR CODE
   return (
     <div className={`p-8 pb-32 min-h-[calc(100vh-80px)] flex flex-col items-center justify-center animate-fade-in font-sans ${theme.textMain}`}>
       <div className={`w-full max-w-4xl flex flex-col md:flex-row items-center gap-12 ${theme.bgCard} p-12 rounded-[48px] border ${theme.border} shadow-2xl`}>
@@ -382,14 +370,8 @@ export default function WhatsAppPage() {
               Sincronize o seu WhatsApp com o CRM. Leia o QR Code e centralize o seu atendimento de forma automática.
             </p>
             {errorMessage && (
-              <div className="mt-4 p-4 bg-red-500/10 text-red-500 rounded-2xl text-xs">
+              <div className="mt-4 p-4 bg-red-500/10 text-red-500 rounded-2xl text-xs font-mono">
                 {errorMessage}
-                <button 
-                  onClick={handleGenerateQR}
-                  className="block mt-2 text-white bg-red-500 px-4 py-2 rounded-xl text-xs hover:bg-red-600 transition-colors"
-                >
-                  Tentar Novamente
-                </button>
               </div>
             )}
           </div>
@@ -412,7 +394,7 @@ export default function WhatsAppPage() {
           {connectionStatus === 'generating' && (
             <div className="text-center space-y-4">
               <Loader2 size={48} className="text-emerald-500 animate-spin mx-auto" />
-              <p className="font-black text-[10px] animate-pulse">Obtendo QR Code...</p>
+              <p className="font-black text-[10px] animate-pulse uppercase tracking-widest">Obtendo QR Code...</p>
             </div>
           )}
 
@@ -421,7 +403,7 @@ export default function WhatsAppPage() {
               <div className="bg-white p-4 rounded-2xl shadow-xl">
                 <img src={qrCodeBase64} alt="QR Code" className="w-56 h-56" />
               </div>
-              <p className="text-emerald-500 font-black text-[10px]">Aguardando Leitura...</p>
+              <p className="text-emerald-500 font-black text-[10px] uppercase tracking-widest animate-pulse">Aguardando Leitura...</p>
             </div>
           )}
         </div>
