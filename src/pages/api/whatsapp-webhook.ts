@@ -3,30 +3,25 @@ import { createClient } from '@supabase/supabase-js';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY! 
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') return res.status(200).send('OK');
 
   try {
-    const payload = req.body;
+    const { event, data } = req.body;
     
-    // Captura mensagens novas e confirmações de envio
-    if (payload.event === 'messages.upsert' || payload.event === 'messages.send') {
-      const msg = payload.data;
-      if (!msg) return res.status(200).send('OK');
-
+    if (event === 'messages.upsert' || event === 'messages.send') {
+      const msg = data;
       const remoteJid = msg.key?.remoteJid || '';
       const phone = remoteJid.split('@')[0];
       const isFromMe = msg.key?.fromMe || false;
-      const messageId = msg.key?.id;
-      
-      let content = msg.message?.conversation || 
-                    msg.message?.extendedTextMessage?.text || 
-                    "📎 Arquivo de mídia";
+      const content = msg.message?.conversation || 
+                      msg.message?.extendedTextMessage?.text || 
+                      "📎 Mídia/Arquivo";
 
-      // 1. Localiza o Lead
+      // Busca o Lead
       const { data: lead } = await supabase
         .from('leads')
         .select('id')
@@ -34,9 +29,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         .single();
 
       if (lead) {
-        // 2. Salva no banco. O 'onConflict' impede a duplicação na tela.
+        // UPSERT evita a duplicação
         await supabase.from('whatsapp_messages').upsert({
-          message_id: messageId,
+          message_id: msg.key?.id,
           lead_id: lead.id,
           content: content,
           direction: isFromMe ? 'sent' : 'received',
@@ -44,9 +39,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }, { onConflict: 'message_id' });
       }
     }
-
     return res.status(200).json({ success: true });
-  } catch (error: any) {
+  } catch (e) {
     return res.status(200).send('OK');
   }
 }
