@@ -6,9 +6,10 @@ import {
 } from 'lucide-react';
 import { useGlobal } from '../context/GlobalContext';
 
-// 🔒 CONFIGURAÇÕES DO SERVIDOR ORACLE - CORRIGIDAS
-const EVO_URL = "https://api.imobi-pro.com"; // IP da Oracle + porta
-const EVO_GLOBAL_KEY = "minha_chave_simples_123"; // Chave configurada no servidor
+// 🔒 CONFIGURAÇÕES DO SERVIDOR ORACLE - VERSÃO FINAL
+const EVO_URL = "https://api.imobi-pro.com";
+const EVO_GLOBAL_KEY = "minha_chave_simples_123";
+const INSTANCE_NAME = "imobipro"; // Nome fixo da instância
 
 export default function WhatsAppPage() {
   const { user, leads, messages, addMessage, markAsRead, whatsappConnected, setWhatsappConnected, darkMode } = useGlobal();
@@ -20,8 +21,6 @@ export default function WhatsAppPage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isCheckingInstance, setIsCheckingInstance] = useState(false);
   
-  // Instância única por usuário
-  const instanceName = useMemo(() => `imobipro_user_${user?.id?.split('-')[0] || 'corretor'}`, [user]);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   // Theme configurations
@@ -47,47 +46,11 @@ export default function WhatsAppPage() {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [selectedLead, activeMessages, markAsRead]);
 
-  // ✅ TESTE DE CONEXÃO - Para debug
-  const testConnection = async () => {
-    try {
-      console.log('Testando conexão com:', EVO_URL);
-      const response = await fetch(`${EVO_URL}/instance/fetchInstances`, {
-        method: 'GET',
-        headers: { 
-          'apikey': EVO_GLOBAL_KEY,
-          'Content-Type': 'application/json'
-        }
-      });
-      console.log('Status da conexão:', response.status);
-      if (response.ok) {
-        const data = await response.json();
-        console.log('Instâncias encontradas:', data);
-        return true;
-      } else {
-        console.error('Erro na resposta:', await response.text());
-        return false;
-      }
-    } catch (error) {
-      console.error('Erro de conexão:', error);
-      return false;
-    }
-  };
-
   // ✅ VERIFICAR INSTÂNCIA AO CARREGAR
   useEffect(() => {
     const checkExistingInstance = async () => {
-      if (!user?.id) return;
-      
       setIsCheckingInstance(true);
       try {
-        // Testa conexão primeiro
-        const connected = await testConnection();
-        if (!connected) {
-          setErrorMessage("Não foi possível conectar ao servidor Evolution API. Verifique se o servidor está rodando.");
-          setIsCheckingInstance(false);
-          return;
-        }
-
         const response = await fetch(`${EVO_URL}/instance/fetchInstances`, {
           method: 'GET',
           headers: { 
@@ -98,51 +61,40 @@ export default function WhatsAppPage() {
 
         if (response.ok) {
           const instances = await response.json();
-          console.log('Instâncias carregadas:', instances);
+          console.log('Instâncias encontradas:', instances);
           
-          // Verifica se nossa instância já existe
+          // Verifica se a instância imobipro existe e está conectada
           const existingInstance = instances.find((inst: any) => 
-            inst.instance?.instanceName === instanceName || 
-            inst.instanceName === instanceName
+            inst.instance?.instanceName === INSTANCE_NAME
           );
 
           if (existingInstance) {
-            console.log('Instância encontrada:', existingInstance);
-            // Verifica se já está conectada
-            if (existingInstance.instance?.status === 'open' || existingInstance.status === 'open') {
+            if (existingInstance.instance?.status === 'open') {
               setWhatsappConnected(true);
             }
           }
         }
       } catch (error) {
         console.error("Erro ao verificar instância:", error);
-        setErrorMessage("Erro ao conectar com a Evolution API");
       } finally {
         setIsCheckingInstance(false);
       }
     };
 
     checkExistingInstance();
-  }, [user, instanceName, setWhatsappConnected]);
+  }, [setWhatsappConnected]);
 
-  // Reset connection state
-  const resetConnectionState = () => {
-    setConnectionStatus('disconnected');
-    setQrCodeBase64(null);
-    setErrorMessage(null);
-  };
-
-  // ✅ FUNÇÃO PARA GERAR QR CODE - CORRIGIDA
+  // ✅ FUNÇÃO PARA GERAR QR CODE
   const handleGenerateQR = async () => {
     setConnectionStatus('generating');
     setQrCodeBase64(null);
     setErrorMessage(null);
 
     try {
-      console.log('Gerando QR Code para instância:', instanceName);
+      console.log('Conectando à instância:', INSTANCE_NAME);
       
-      // Primeiro tenta conectar se a instância já existe
-      const connectResponse = await fetch(`${EVO_URL}/instance/connect/${instanceName}`, {
+      // Tenta conectar na instância existente
+      const connectResponse = await fetch(`${EVO_URL}/instance/connect/${INSTANCE_NAME}`, {
         method: 'GET',
         headers: { 
           'apikey': EVO_GLOBAL_KEY,
@@ -158,44 +110,17 @@ export default function WhatsAppPage() {
           setQrCodeBase64(connectData.base64);
           setConnectionStatus('waiting_scan');
           startConnectionWatcher();
-          return;
         } else if (connectData.status === "open") {
           setWhatsappConnected(true);
           setConnectionStatus('disconnected');
-          return;
+        } else {
+          setErrorMessage("Resposta inesperada do servidor");
+          setConnectionStatus('disconnected');
         }
-      }
-
-      // Se não conseguiu conectar, cria nova instância
-      console.log('Criando nova instância...');
-      const createResponse = await fetch(`${EVO_URL}/instance/create`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': EVO_GLOBAL_KEY
-        },
-        body: JSON.stringify({
-          instanceName: instanceName,
-          qrcode: true,
-          integration: "WHATSAPP-BAILEYS"
-        })
-      });
-
-      if (!createResponse.ok) {
-        const errorText = await createResponse.text();
-        console.error('Erro na criação:', errorText);
-        throw new Error(`Erro HTTP: ${createResponse.status} - ${errorText}`);
-      }
-
-      const createData = await createResponse.json();
-      console.log('Resposta da criação:', createData);
-      
-      if (createData.qrcode?.base64) {
-        setQrCodeBase64(createData.qrcode.base64);
-        setConnectionStatus('waiting_scan');
-        startConnectionWatcher();
       } else {
-        setErrorMessage("QR Code não gerado. Tente novamente.");
+        const errorText = await connectResponse.text();
+        console.error('Erro na conexão:', errorText);
+        setErrorMessage(`Erro HTTP: ${connectResponse.status}`);
         setConnectionStatus('disconnected');
       }
     } catch (error: any) {
@@ -210,7 +135,7 @@ export default function WhatsAppPage() {
     console.log('Iniciando monitoramento de conexão...');
     const interval = setInterval(async () => {
       try {
-        const res = await fetch(`${EVO_URL}/instance/connectionState/${instanceName}`, {
+        const res = await fetch(`${EVO_URL}/instance/connectionState/${INSTANCE_NAME}`, {
           method: 'GET',
           headers: { 
             'apikey': EVO_GLOBAL_KEY,
@@ -243,7 +168,7 @@ export default function WhatsAppPage() {
   const handleDisconnect = async () => {
     if(window.confirm("Tem a certeza que deseja desconectar o seu WhatsApp?")) {
       try {
-        await fetch(`${EVO_URL}/instance/logout/${instanceName}`, {
+        await fetch(`${EVO_URL}/instance/logout/${INSTANCE_NAME}`, {
           method: 'DELETE',
           headers: { 
             'apikey': EVO_GLOBAL_KEY,
@@ -255,7 +180,8 @@ export default function WhatsAppPage() {
         console.error('Erro ao desconectar:', e);
       }
       setWhatsappConnected(false);
-      resetConnectionState();
+      setConnectionStatus('disconnected');
+      setQrCodeBase64(null);
     }
   };
 
@@ -271,7 +197,7 @@ export default function WhatsAppPage() {
       const cleanPhone = selectedLead.phone.replace(/\D/g, '');
       console.log(`Enviando mensagem para: 55${cleanPhone}`);
       
-      const response = await fetch(`${EVO_URL}/message/sendText/${instanceName}`, {
+      const response = await fetch(`${EVO_URL}/message/sendText/${INSTANCE_NAME}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -320,12 +246,6 @@ export default function WhatsAppPage() {
               {errorMessage && (
                 <div className="mt-4 p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-500 text-xs font-bold">
                   {errorMessage}
-                  <button 
-                    onClick={testConnection}
-                    className="ml-2 underline hover:no-underline"
-                  >
-                    Testar conexão
-                  </button>
                 </div>
               )}
             </div>
