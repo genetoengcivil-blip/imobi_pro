@@ -2,7 +2,7 @@
   "rewrites": [
     {
       "source": "/evo-api/:path*",
-      "destination": "http://137.131.136.246:8080/:path*"
+      "destination": "https://api.imobi-pro.com"
     },
     {
       "source": "/index.html",

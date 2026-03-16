@@ -17,11 +17,10 @@ type ViewOption = 'mensal' | 'trimestral' | 'semestral' | 'anual';
 export default function DashboardPage() {
   const navigate = useNavigate();
   const { leads, transactions, appointments, darkMode } = useGlobal();
-  
   const [viewType, setViewType] = useState<ViewOption>('mensal');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   
-  // 🛡️ BLINDAGEM DO GRÁFICO (Evita o erro width -1)
+  // 🛡️ VACINA CONTRA O ERRO DE WIDTH(-1)
   const [isMounted, setIsMounted] = useState(false);
   useEffect(() => { setIsMounted(true); }, []);
 
@@ -50,30 +49,14 @@ export default function DashboardPage() {
     const leadsNoPeriodo = safeLeads.filter(l => new Date(l.createdAt) >= startDate);
     const transacoesNoPeriodo = safeTransactions.filter(t => new Date(t.date || (t as any).created_at) >= startDate);
 
-    const vgvAtivo = leadsNoPeriodo
-      .filter(l => l.status !== 'fechado' && l.status !== 'perdido')
-      .reduce((acc, l) => acc + (Number(l.value) || 0), 0);
-    
-    const previsaoComissao = leadsNoPeriodo
-      .filter(l => l.status !== 'fechado' && l.status !== 'perdido')
-      .reduce((acc, l) => acc + (Number(l.value) * (Number(l.commission_rate) || 0) / 100), 0);
-
+    const vgvAtivo = leadsNoPeriodo.filter(l => l.status !== 'fechado' && l.status !== 'perdido').reduce((acc, l) => acc + (Number(l.value) || 0), 0);
+    const previsaoComissao = leadsNoPeriodo.filter(l => l.status !== 'fechado' && l.status !== 'perdido').reduce((acc, l) => acc + (Number(l.value) * (Number(l.commission_rate) || 0) / 100), 0);
     const receitasFin = transacoesNoPeriodo.filter(t => t.type === 'receita').reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
     const despesasFin = transacoesNoPeriodo.filter(t => t.type === 'despesa').reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
-    
-    const comissoesFechadas = leadsNoPeriodo
-      .filter(l => l.status === 'fechado')
-      .reduce((acc, l) => acc + (Number(l.value) * (Number(l.commission_rate) || 0) / 100), 0);
-
+    const comissoesFechadas = leadsNoPeriodo.filter(l => l.status === 'fechado').reduce((acc, l) => acc + (Number(l.value) * (Number(l.commission_rate) || 0) / 100), 0);
     const lucroLiquido = (receitasFin + comissoesFechadas) - despesasFin;
 
-    return { 
-      vgvAtivo, 
-      previsaoComissao, 
-      lucroLiquido, 
-      totalLeads: leadsNoPeriodo.length,
-      comissoesFechadas 
-    };
+    return { vgvAtivo, previsaoComissao, lucroLiquido, totalLeads: leadsNoPeriodo.length, comissoesFechadas };
   }, [safeLeads, safeTransactions, viewType]);
 
   const chartData = useMemo(() => {
@@ -93,7 +76,45 @@ export default function DashboardPage() {
         data.push({ name: label, vgv: value });
       }
     } 
-    // ... restante da lógica do gráfico original
+    else if (viewType === 'trimestral') {
+      for (let i = 3; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth() - (i * 3), 1);
+        const quarter = Math.floor(d.getMonth() / 3) + 1;
+        const label = `${quarter}º TRI`;
+        const value = safeLeads
+          .filter(l => {
+            const date = new Date(l.createdAt);
+            const lQuarter = Math.floor(date.getMonth() / 3) + 1;
+            return lQuarter === quarter && date.getFullYear() === d.getFullYear();
+          })
+          .reduce((sum, l) => sum + (Number(l.value) || 0), 0);
+        data.push({ name: label, vgv: value });
+      }
+    }
+    else if (viewType === 'semestral') {
+      for (let i = 1; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth() - (i * 6), 1);
+        const semester = d.getMonth() < 6 ? 1 : 2;
+        const label = `${semester}º SEM`;
+        const value = safeLeads
+          .filter(l => {
+            const date = new Date(l.createdAt);
+            const lSemester = date.getMonth() < 6 ? 1 : 2;
+            return lSemester === semester && date.getFullYear() === d.getFullYear();
+          })
+          .reduce((sum, l) => sum + (Number(l.value) || 0), 0);
+        data.push({ name: label, vgv: value });
+      }
+    }
+    else if (viewType === 'anual') {
+      for (let i = 2; i >= 0; i--) {
+        const year = now.getFullYear() - i;
+        const value = safeLeads
+          .filter(l => new Date(l.createdAt).getFullYear() === year)
+          .reduce((sum, l) => sum + (Number(l.value) || 0), 0);
+        data.push({ name: year.toString(), vgv: value });
+      }
+    }
     return data;
   }, [safeLeads, viewType]);
 
@@ -106,7 +127,7 @@ export default function DashboardPage() {
   }`;
 
   return (
-    <div className="space-y-8 animate-fade-in pb-20 font-sans">
+    <div className="space-y-8 animate-fade-in pb-20 font-sans p-6">
       
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -164,7 +185,9 @@ export default function DashboardPage() {
                 {isDropdownOpen && (
                   <>
                     <div className="fixed inset-0 z-40" onClick={() => setIsDropdownOpen(false)} />
-                    <div className={`absolute right-0 mt-2 w-48 rounded-2xl shadow-2xl z-50 overflow-hidden border ${darkMode ? 'bg-zinc-900 border-white/10' : 'bg-white border-zinc-100'}`}>
+                    <div className={`absolute right-0 mt-2 w-48 rounded-2xl shadow-2xl z-50 overflow-hidden border animate-in fade-in zoom-in duration-200 ${
+                      darkMode ? 'bg-zinc-900 border-white/10' : 'bg-white border-zinc-100'
+                    }`}>
                       {options.map((option) => (
                         <button
                           key={option.value}
@@ -187,7 +210,7 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* 🛡️ CORREÇÃO DEFINITIVA DO GRÁFICO (EVITA WIDTH -1) */}
+            {/* 🛡️ AQUI O GRÁFICO SÓ RENDERIZA DEPOIS DO LAYOUT ESTAR PRONTO */}
             <div className="w-full relative" style={{ height: '350px', minHeight: '350px' }}>
               {isMounted && (
                 <ResponsiveContainer width="99%" height="100%">
@@ -212,6 +235,7 @@ export default function DashboardPage() {
             </div>
           </div>
 
+          {/* Últimos Leads */}
           <div className="space-y-4">
             <h2 className="text-xl font-bold flex items-center gap-3 italic px-2">
               <Users className="w-6 h-6 text-[#0217ff]" /> Últimas Capturas
@@ -243,6 +267,7 @@ export default function DashboardPage() {
           </div>
         </div>
 
+        {/* Sidebar Lateral */}
         <div className="space-y-8">
           <div className="space-y-4">
             <h2 className="text-xl font-bold flex items-center gap-3 italic px-2">
@@ -273,6 +298,7 @@ export default function DashboardPage() {
             </div>
           </div>
 
+          {/* Resumo Financeiro */}
           <div className={cardClass}>
             <h3 className="font-black text-xs mb-6 flex items-center gap-2 uppercase tracking-widest">
               <DollarSign className="w-4 h-4 text-green-600" /> Fluxo do Período
@@ -280,7 +306,13 @@ export default function DashboardPage() {
             <div className="space-y-4">
               <div className="flex justify-between items-center">
                 <span className="text-[10px] text-zinc-500 font-black uppercase">Receitas (Financeiro)</span>
-                <span className="font-black text-sm">{formatCurrency(safeTransactions.filter(t => t.type === 'receita' && new Date(t.date || (t as any).created_at) >= new Date(new Date().setMonth(new Date().getMonth() - (viewType === 'mensal' ? 5 : 11)))).reduce((acc, t) => acc + (t.amount || 0), 0))}</span>
+                <span className="font-black text-sm">
+                  {formatCurrency(
+                    safeTransactions
+                      .filter(t => t.type === 'receita' && new Date(t.date || (t as any).created_at) >= new Date(new Date().setMonth(new Date().getMonth() - (viewType === 'mensal' ? 5 : 11))))
+                      .reduce((acc, t) => acc + (t.amount || 0), 0)
+                  )}
+                </span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-[10px] text-zinc-500 font-black uppercase text-green-600">Comissão Ganhos (Leads)</span>
