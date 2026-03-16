@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { useGlobal } from '../context/GlobalContext';
 
+// 🔗 Túnel Seguro da Vercel (Elimina o erro Failed to fetch e CORS)
 const EVO_URL = "/evo-api"; 
 const EVO_GLOBAL_KEY = "minha_chave_simples_123";
 const INSTANCE_NAME = "imobipro";
@@ -14,8 +15,11 @@ export default function WhatsAppPage() {
   const { user, leads, messages, addMessage, markAsRead, whatsappConnected, setWhatsappConnected, darkMode } = useGlobal();
   const [selectedLead, setSelectedLead] = useState<any>(null);
   const [newMessage, setNewMessage] = useState('');
+  
   const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'generating' | 'waiting_scan'>('disconnected');
   const [qrCodeBase64, setQrCodeBase64] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   const theme = {
@@ -35,74 +39,166 @@ export default function WhatsAppPage() {
     return (messages || []).filter((m: any) => m.leadId === selectedLead.id);
   }, [messages, selectedLead]);
 
-  // 👀 WATCHER: Monitora a conexão para mudar de ecrã após o scan
+  useEffect(() => {
+    if (selectedLead) markAsRead(selectedLead.id);
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [selectedLead, activeMessages, markAsRead]);
+
+  // 👀 WATCHER: Fica verificando se o usuário leu o QR Code no celular
   const startConnectionWatcher = () => {
     const interval = setInterval(async () => {
       try {
         const res = await fetch(`${EVO_URL}/instance/connectionState/${INSTANCE_NAME}`, {
+          method: 'GET',
           headers: { 'apikey': EVO_GLOBAL_KEY }
         });
         const data = await res.json();
-        if (data.instance?.state === 'open' || data.instance?.status === 'open') {
+        
+        // Se a API confirmar que o celular está logado, muda a tela na hora
+        if (data.instance?.state === 'open' || data.instance?.status === 'open' || data.state === 'open') {
           clearInterval(interval);
           setWhatsappConnected(true);
           setConnectionStatus('disconnected');
         }
-      } catch (e) {}
-    }, 4000);
+      } catch (e) {
+        // Ignora erros silenciosos durante a verificação
+      }
+    }, 3000);
+
+    // Para de verificar após 2 minutos para não travar o servidor
+    setTimeout(() => clearInterval(interval), 120000);
   };
 
   const handleGenerateQR = async () => {
     setConnectionStatus('generating');
+    setErrorMessage(null);
+    setQrCodeBase64(null);
+
     try {
-      const res = await fetch(`${EVO_URL}/instance/connect/${INSTANCE_NAME}`, {
+      const connectRes = await fetch(`${EVO_URL}/instance/connect/${INSTANCE_NAME}`, {
+        method: 'GET',
         headers: { 'apikey': EVO_GLOBAL_KEY }
       });
-      const data = await res.json();
-      if (data.base64) {
-        setQrCodeBase64(data.base64);
+      const connectData = await connectRes.json();
+
+      if (connectData.base64) {
+        setQrCodeBase64(connectData.base64);
         setConnectionStatus('waiting_scan');
-        startConnectionWatcher(); // Começa a vigiar a conexão
+        startConnectionWatcher(); // Inicia a verificação de leitura
+      } else if (connectData.instance?.status === 'open' || connectData.status === 'open') {
+        setWhatsappConnected(true);
       } else {
         await fetch(`${EVO_URL}/instance/create`, {
           method: 'POST',
-          headers: { 'apikey': EVO_GLOBAL_KEY, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ instanceName: INSTANCE_NAME, qrcode: true })
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': EVO_GLOBAL_KEY
+          },
+          body: JSON.stringify({
+            instanceName: INSTANCE_NAME,
+            qrcode: true,
+            integration: "WHATSAPP-BAILEYS"
+          })
         });
         handleGenerateQR();
       }
-    } catch (err) {
+    } catch (error: any) {
+      setErrorMessage("Erro de proxy. Verifique se o vercel.json está ativo na Vercel.");
+      setConnectionStatus('disconnected');
+    }
+  };
+
+  const handleDisconnect = async () => {
+    if(window.confirm("Desconectar o WhatsApp?")) {
+      try {
+        await fetch(`${EVO_URL}/instance/logout/${INSTANCE_NAME}`, {
+          method: 'DELETE',
+          headers: { 'apikey': EVO_GLOBAL_KEY }
+        });
+      } catch (e) {}
+      setWhatsappConnected(false);
       setConnectionStatus('disconnected');
     }
   };
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newMessage.trim() || !selectedLead?.phone) return;
-    const msg = newMessage;
+    if (!newMessage.trim() || !selectedLead || !selectedLead.phone) return;
+
+    const messageText = newMessage;
     setNewMessage('');
-    addMessage(selectedLead.id, msg, 'sent');
+    addMessage(selectedLead.id, messageText, 'sent');
+
     try {
+      const cleanPhone = selectedLead.phone.replace(/\D/g, '');
       await fetch(`${EVO_URL}/message/sendText/${INSTANCE_NAME}`, {
         method: 'POST',
-        headers: { 'apikey': EVO_GLOBAL_KEY, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ number: `55${selectedLead.phone.replace(/\D/g, '')}`, textMessage: { text: msg } })
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': EVO_GLOBAL_KEY
+        },
+        body: JSON.stringify({
+          number: `55${cleanPhone}`,
+          options: { delay: 1200, presence: 'composing' },
+          textMessage: { text: messageText }
+        })
       });
-    } catch (e) {}
+    } catch (error) {}
   };
 
   if (!whatsappConnected) {
     return (
-      <div className={`p-8 min-h-[80vh] flex items-center justify-center ${theme.bgApp}`}>
-        <div className={`max-w-4xl w-full flex flex-col md:flex-row gap-12 ${theme.bgCard} p-12 rounded-[48px] border ${theme.border} shadow-2xl`}>
+      <div className={`p-8 pb-32 min-h-[calc(100vh-80px)] flex flex-col items-center justify-center animate-fade-in font-sans ${theme.textMain}`}>
+        <div className={`w-full max-w-4xl flex flex-col md:flex-row items-center gap-12 ${theme.bgCard} p-12 rounded-[48px] border ${theme.border} shadow-2xl`}>
           <div className="flex-1 space-y-8">
-            <h1 className="text-4xl font-black italic uppercase italic tracking-tighter">Conectar <span className="text-emerald-500">WhatsApp</span></h1>
-            <p className={theme.textMuted}>Sincronize o telemóvel para gerenciar os seus leads.</p>
+            <div className="w-20 h-20 bg-emerald-500/10 rounded-3xl flex items-center justify-center border border-emerald-500/20">
+              <MessageSquare className="text-emerald-500" size={40} />
+            </div>
+            <div>
+              <h1 className="text-4xl font-black italic uppercase tracking-tighter mb-4">Conecte o <span className="text-emerald-500">WhatsApp</span></h1>
+              <p className={`${theme.textMuted} font-medium text-lg leading-relaxed`}>
+                Sincronize o seu WhatsApp com o CRM. Leia o QR Code e centralize o seu atendimento de forma automática.
+              </p>
+              {errorMessage && (
+                <div className="mt-4 p-4 bg-red-500/10 text-red-500 rounded-2xl text-xs font-bold border border-red-500/20">
+                  {errorMessage}
+                </div>
+              )}
+            </div>
           </div>
-          <div className="w-[350px] aspect-square flex items-center justify-center border-2 border-dashed rounded-[32px] border-zinc-200">
-            {connectionStatus === 'disconnected' && <button onClick={handleGenerateQR} className="px-8 py-4 bg-emerald-500 text-white rounded-2xl font-black uppercase">Gerar QR Code</button>}
-            {connectionStatus === 'generating' && <Loader2 className="animate-spin text-emerald-500" size={48} />}
-            {qrCodeBase64 && <img src={qrCodeBase64} className="w-64 h-64 rounded-xl" alt="Scan" />}
+
+          <div className={`w-full md:w-[400px] aspect-square rounded-[32px] border-2 border-dashed ${connectionStatus === 'waiting_scan' ? 'border-emerald-500/50 bg-emerald-500/5' : theme.border} flex flex-col items-center justify-center p-8 relative transition-all`}>
+            {connectionStatus === 'disconnected' && (
+              <div className="text-center space-y-6">
+                <QrCode size={64} className={`${theme.textMuted} mx-auto opacity-50`} />
+                <button onClick={handleGenerateQR} className="px-8 py-4 bg-emerald-500 text-white rounded-2xl font-black uppercase tracking-widest text-xs hover:scale-105 shadow-xl shadow-emerald-500/20 transition-all">
+                  Gerar QR Code
+                </button>
+              </div>
+            )}
+
+            {connectionStatus === 'generating' && (
+              <div className="text-center space-y-4">
+                <Loader2 size={48} className="text-emerald-500 animate-spin mx-auto" />
+                <p className="font-black uppercase tracking-widest text-[10px] animate-pulse">Consultando servidor...</p>
+              </div>
+            )}
+
+            {connectionStatus === 'waiting_scan' && qrCodeBase64 && (
+              <div className="text-center space-y-4 animate-in zoom-in duration-500">
+                <div className="bg-white p-4 rounded-2xl shadow-xl inline-block">
+                  <img src={qrCodeBase64} alt="QR Code" className="w-56 h-56" />
+                </div>
+                <div className="flex items-center justify-center gap-2 text-emerald-500">
+                  <Loader2 size={16} className="animate-spin" />
+                  <p className="font-black uppercase tracking-widest text-[10px]">Aguardando Leitura...</p>
+                </div>
+              </div>
+            )}
+
+            <div className={`absolute -bottom-4 bg-zinc-900 text-white px-6 py-2 rounded-full flex items-center gap-2 text-[10px] font-black uppercase tracking-widest shadow-xl border border-white/10`}>
+              <Shield size={14} className="text-emerald-500" /> End-to-End Encryption
+            </div>
           </div>
         </div>
       </div>
@@ -110,43 +206,93 @@ export default function WhatsAppPage() {
   }
 
   return (
-    <div className={`h-[calc(100vh-80px)] flex animate-fade-in ${theme.textMain}`}>
+    <div className={`h-[calc(100vh-80px)] flex animate-fade-in font-sans ${theme.textMain}`}>
       <div className={`w-80 border-r ${theme.border} ${theme.bgSidebar} flex flex-col`}>
-        <div className="p-6 border-b border-zinc-200 dark:border-white/5">
-          <h2 className="text-xl font-black italic tracking-tighter uppercase mb-4 text-emerald-500">Conversas</h2>
+        <div className={`p-6 border-b ${theme.border}`}>
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-xl font-black italic tracking-tighter uppercase">Conversas</h2>
+            <button onClick={handleDisconnect} title="Desconectar WhatsApp" className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse cursor-pointer hover:scale-150 transition-all" />
+          </div>
           <div className="relative">
             <Search className={`absolute left-4 top-1/2 -translate-y-1/2 ${theme.textMuted}`} size={16} />
-            <input type="text" placeholder="Procurar lead..." className={`w-full ${theme.inputBg} border ${theme.border} rounded-xl py-3 pl-10 text-sm`} />
+            <input type="text" placeholder="Procurar lead..." className={`w-full ${theme.inputBg} border ${theme.border} rounded-xl py-3 pl-10 pr-4 text-sm focus:outline-none focus:border-emerald-500 transition-colors ${theme.textMain}`} />
           </div>
         </div>
-        <div className="flex-1 overflow-y-auto">
-          {leads.map(lead => (
-            <button key={lead.id} onClick={() => setSelectedLead(lead)} className={`w-full p-4 border-b ${theme.border} text-left flex items-center gap-4 hover:bg-zinc-100 dark:hover:bg-white/5 transition-colors ${selectedLead?.id === lead.id ? 'bg-zinc-100 dark:bg-white/5' : ''}`}>
-              <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center font-black">{lead.name.charAt(0)}</div>
-              <div className="flex-1 truncate">
-                <div className="font-bold text-sm truncate">{lead.name}</div>
-                <div className="text-xs opacity-50 truncate">{lead.phone}</div>
-              </div>
-            </button>
-          ))}
+
+        <div className="flex-1 overflow-y-auto custom-scrollbar">
+          {(leads || []).map((lead: any) => {
+            const leadMsgs = (messages || []).filter((m: any) => m.leadId === lead.id);
+            const lastMsg = leadMsgs[leadMsgs.length - 1];
+            return (
+              <button key={lead.id} onClick={() => setSelectedLead(lead)} className={`w-full p-4 border-b ${theme.border} flex items-start gap-4 transition-colors ${selectedLead?.id === lead.id ? (darkMode ? 'bg-zinc-900' : 'bg-zinc-100') : theme.bgHover}`}>
+                <div className="relative">
+                  <div className="w-12 h-12 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center font-black text-lg">
+                    {lead.name.charAt(0).toUpperCase()}
+                  </div>
+                </div>
+                <div className="flex-1 text-left overflow-hidden">
+                  <div className="flex justify-between items-center mb-1">
+                    <span className={`font-bold text-sm ${theme.textMain} truncate`}>{lead.name}</span>
+                  </div>
+                  <p className={`text-xs ${theme.textMuted} truncate`}>{lastMsg ? lastMsg.content : 'Iniciar conversa...'}</p>
+                </div>
+              </button>
+            );
+          })}
         </div>
       </div>
-      <div className="flex-1 flex flex-col bg-white dark:bg-zinc-950">
-        <div className="flex-1 p-6 overflow-y-auto space-y-4">
-          {activeMessages.map((msg, i) => (
-            <div key={i} className={`flex ${msg.direction === 'sent' ? 'justify-end' : 'justify-start'}`}>
-              <div className={`p-4 rounded-2xl max-w-[70%] text-sm font-medium ${msg.direction === 'sent' ? 'bg-[#0217ff] text-white rounded-tr-none shadow-lg' : 'bg-zinc-100 dark:bg-zinc-800 rounded-tl-none shadow-sm'}`}>
-                {msg.content}
+
+      {selectedLead ? (
+        <div className={`flex-1 flex flex-col ${theme.bgApp}`}>
+          <div className={`h-20 border-b ${theme.border} ${theme.bgCard} flex items-center justify-between px-6`}>
+            <div className="flex items-center gap-4">
+              <button onClick={() => setSelectedLead(null)} className={`lg:hidden p-2 -ml-2 ${theme.textMuted}`}><ChevronLeft size={24} /></button>
+              <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center font-black">
+                {selectedLead.name.charAt(0).toUpperCase()}
+              </div>
+              <div>
+                <h3 className={`font-bold ${theme.textMain}`}>{selectedLead.name}</h3>
+                <p className={`text-[10px] font-black ${theme.textMuted} uppercase tracking-widest`}>{selectedLead.phone || 'Sem número'}</p>
               </div>
             </div>
-          ))}
-          <div ref={chatEndRef} />
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-6 space-y-6">
+            {activeMessages.map((msg: any) => {
+              const isSent = msg.direction === 'sent';
+              return (
+                <div key={msg.id} className={`flex flex-col ${isSent ? 'items-end' : 'items-start'}`}>
+                  <div className={`max-w-[70%] p-4 ${isSent ? `${theme.msgSentBg} text-white rounded-2xl rounded-tr-sm` : `${theme.msgReceivedBg} border ${theme.border} ${theme.textMain} rounded-2xl rounded-tl-sm`}`}>
+                    <p className="text-sm font-medium">{msg.content}</p>
+                  </div>
+                </div>
+              );
+            })}
+            <div ref={chatEndRef} />
+          </div>
+
+          <div className={`p-4 ${theme.bgCard} border-t ${theme.border}`}>
+            <form onSubmit={handleSendMessage} className="flex gap-3">
+              <input 
+                type="text" placeholder="Escreva uma mensagem..." 
+                className={`flex-1 ${theme.inputBg} border ${theme.border} rounded-2xl px-6 focus:outline-none focus:border-emerald-500 transition-colors ${theme.textMain} text-sm font-medium`}
+                value={newMessage} onChange={e => setNewMessage(e.target.value)}
+              />
+              <button type="submit" disabled={!newMessage.trim()} className="p-4 bg-[#0217ff] text-white rounded-2xl disabled:opacity-50 hover:scale-105 transition-all shadow-lg shadow-[#0217ff]/20">
+                <Send size={20} className="ml-1" />
+              </button>
+            </form>
+          </div>
         </div>
-        <form onSubmit={handleSendMessage} className="p-4 border-t flex gap-3">
-          <input value={newMessage} onChange={e => setNewMessage(e.target.value)} className="flex-1 bg-zinc-100 dark:bg-zinc-900 border-none rounded-2xl px-6 text-sm" placeholder="Digite sua mensagem..." />
-          <button type="submit" className="p-4 bg-[#0217ff] text-white rounded-2xl hover:scale-105 transition-all shadow-lg shadow-[#0217ff]/20"><Send size={20}/></button>
-        </form>
-      </div>
+      ) : (
+        <div className={`flex-1 flex flex-col items-center justify-center ${theme.bgApp}`}>
+          <div className={`w-24 h-24 rounded-full ${theme.bgCard} border ${theme.border} flex items-center justify-center mb-6 shadow-2xl`}>
+            <Smartphone size={40} className="text-emerald-500" />
+          </div>
+          <h2 className="text-2xl font-black italic uppercase tracking-tighter mb-2">ImobiPro <span className="text-emerald-500">Chat</span></h2>
+          <p className={`${theme.textMuted} font-medium`}>Selecione um cliente ao lado para conversar.</p>
+        </div>
+      )}
     </div>
   );
 }
