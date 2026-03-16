@@ -44,69 +44,44 @@ export default function WhatsAppPage() {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [selectedLead, activeMessages, markAsRead]);
 
-  // ✅ FUNÇÃO PARA TESTAR O PROXY
-  const testProxy = async () => {
-    try {
-      console.log('Testando proxy...');
-      const res = await fetch(`${EVO_URL}/instance/fetchInstances`, {
-        method: 'GET',
-        headers: { 'apikey': EVO_GLOBAL_KEY }
-      });
-      
-      console.log('Status da resposta:', res.status);
-      const text = await res.text();
-      console.log('Resposta (primeiros 100 caracteres):', text.substring(0, 100));
-      
-      try {
-        const data = JSON.parse(text);
-        console.log('Proxy funcionando! Instâncias:', data);
-        return data;
-      } catch (e) {
-        console.error('Resposta não é JSON:', text);
-        return null;
-      }
-    } catch (error) {
-      console.error('Erro no teste:', error);
-    }
-  };
-
-  // ✅ VERIFICAR STATUS DA INSTÂNCIA
+  // ✅ VERIFICAR STATUS DA INSTÂNCIA AO CARREGAR
   useEffect(() => {
-    testProxy();
-    
     const checkInstance = async () => {
       try {
+        console.log('Verificando instância via proxy...');
         const res = await fetch(`${EVO_URL}/instance/fetchInstances`, {
           method: 'GET',
           headers: { 'apikey': EVO_GLOBAL_KEY }
         });
         
         if (res.ok) {
-          const text = await res.text();
-          try {
-            const instances = JSON.parse(text);
-            console.log('Instâncias:', instances);
-            
-            const instance = instances.find((i: any) => 
-              i.instance?.instanceName === INSTANCE_NAME
-            );
-            
-            if (instance?.instance?.status === 'open') {
-              setWhatsappConnected(true);
-            }
-          } catch (e) {
-            console.error('Resposta não é JSON:', text);
+          const instances = await res.json();
+          console.log('Instâncias encontradas:', instances);
+          
+          // Procura nossa instância
+          const instance = instances.find((i: any) => 
+            i.instance?.instanceName === INSTANCE_NAME
+          );
+          
+          // Se a instância existe e está com status 'open', já está conectada
+          if (instance?.instance?.status === 'open') {
+            console.log('✅ Instância já está conectada!');
+            setWhatsappConnected(true);
+          } else {
+            console.log('Instância existe mas não está conectada');
           }
         }
       } catch (error) {
-        console.error('Erro:', error);
+        console.error('Erro ao verificar instância:', error);
       }
     };
     
     checkInstance();
-  }, []);
+  }, [setWhatsappConnected]);
 
+  // ✅ MONITORAR CONEXÃO
   const startConnectionWatcher = () => {
+    console.log('Iniciando monitoramento...');
     const interval = setInterval(async () => {
       try {
         const res = await fetch(`${EVO_URL}/instance/connectionState/${INSTANCE_NAME}`, {
@@ -116,18 +91,25 @@ export default function WhatsAppPage() {
         
         if (res.ok) {
           const data = await res.json();
+          console.log('Status:', data);
+          
+          // Verifica se conectou
           if (data.instance?.state === 'open' || data.instance?.status === 'open') {
+            console.log('✅ WhatsApp conectado!');
             clearInterval(interval);
             setWhatsappConnected(true);
             setConnectionStatus('disconnected');
           }
         }
-      } catch (e) {}
+      } catch (e) {
+        console.error('Erro no monitoramento:', e);
+      }
     }, 3000);
     
     setTimeout(() => clearInterval(interval), 120000);
   };
 
+  // ✅ GERAR QR CODE (se necessário)
   const handleGenerateQR = async () => {
     setConnectionStatus('generating');
     setErrorMessage(null);
@@ -135,46 +117,54 @@ export default function WhatsAppPage() {
     setIsLoading(true);
 
     try {
-      console.log('Tentando conectar...');
+      console.log('Tentando conectar na instância:', INSTANCE_NAME);
       
       const connectRes = await fetch(`${EVO_URL}/instance/connect/${INSTANCE_NAME}`, {
         method: 'GET',
         headers: { 'apikey': EVO_GLOBAL_KEY }
       });
       
-      const responseText = await connectRes.text();
-      console.log('Resposta bruta:', responseText);
-      
       if (connectRes.ok) {
-        try {
-          const connectData = JSON.parse(responseText);
-          
-          if (connectData.base64) {
-            setQrCodeBase64(connectData.base64);
-            setConnectionStatus('waiting_scan');
-            startConnectionWatcher();
-          } else if (connectData.status === 'open') {
-            setWhatsappConnected(true);
-          } else {
-            setErrorMessage('Instância existe mas não gerou QR Code');
-          }
-        } catch (e) {
-          setErrorMessage('Resposta inválida do servidor');
+        const connectData = await connectRes.json();
+        console.log('Resposta do connect:', connectData);
+        
+        // ✅ CASO 1: Tem QR Code
+        if (connectData.base64) {
+          console.log('QR Code gerado!');
+          setQrCodeBase64(connectData.base64);
+          setConnectionStatus('waiting_scan');
+          startConnectionWatcher();
+        } 
+        // ✅ CASO 2: Já está conectado
+        else if (connectData.status === 'open' || connectData.instance?.status === 'open') {
+          console.log('WhatsApp já está conectado!');
+          setWhatsappConnected(true);
+        }
+        // ✅ CASO 3: Instância existe mas precisa de QR Code
+        else {
+          console.log('Aguardando QR Code...');
+          setErrorMessage('Escaneie o QR Code no WhatsApp para conectar');
+          // Tenta de novo em 2 segundos
+          setTimeout(handleGenerateQR, 2000);
         }
       } else {
-        setErrorMessage(`Erro ${connectRes.status}: Servidor não respondeu`);
+        const errorText = await connectRes.text();
+        console.error('Erro na conexão:', errorText);
+        setErrorMessage(`Erro ${connectRes.status}`);
+        setConnectionStatus('disconnected');
       }
       
     } catch (error: any) {
-      console.error("Erro:", error);
+      console.error("Erro detalhado:", error);
       setErrorMessage(error.message);
+      setConnectionStatus('disconnected');
     } finally {
       setIsLoading(false);
     }
   };
 
   const handleDisconnect = async () => {
-    if(window.confirm("Desconectar WhatsApp?")) {
+    if(window.confirm("Desconectar o WhatsApp?")) {
       try {
         await fetch(`${EVO_URL}/instance/logout/${INSTANCE_NAME}`, {
           method: 'DELETE',
@@ -212,66 +202,185 @@ export default function WhatsAppPage() {
     } catch (error) {}
   };
 
-  if (!whatsappConnected) {
+  // ✅ SE JÁ ESTIVER CONECTADO, MOSTRA O CHAT
+  if (whatsappConnected) {
     return (
-      <div className={`p-8 pb-32 min-h-[calc(100vh-80px)] flex flex-col items-center justify-center animate-fade-in font-sans ${theme.textMain}`}>
-        <div className={`w-full max-w-4xl flex flex-col md:flex-row items-center gap-12 ${theme.bgCard} p-12 rounded-[48px] border ${theme.border} shadow-2xl`}>
-          <div className="flex-1 space-y-8">
-            <div className="w-20 h-20 bg-emerald-500/10 rounded-3xl flex items-center justify-center border border-emerald-500/20">
-              <MessageSquare className="text-emerald-500" size={40} />
+      <div className={`h-[calc(100vh-80px)] flex animate-fade-in font-sans ${theme.textMain}`}>
+        {/* Sidebar de conversas */}
+        <div className={`w-80 border-r ${theme.border} ${theme.bgSidebar} flex flex-col`}>
+          <div className={`p-6 border-b ${theme.border}`}>
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-black italic tracking-tighter uppercase">Conversas</h2>
+              <button 
+                onClick={handleDisconnect} 
+                title="Desconectar WhatsApp" 
+                className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse cursor-pointer hover:scale-150 transition-all"
+              />
             </div>
-            <div>
-              <h1 className="text-4xl font-black italic uppercase tracking-tighter mb-4">Conecte o <span className="text-emerald-500">WhatsApp</span></h1>
-              <p className={`${theme.textMuted} font-medium text-lg leading-relaxed`}>
-                Sincronize o seu WhatsApp com o CRM.
-              </p>
-              {errorMessage && (
-                <div className="mt-4 p-4 bg-red-500/10 text-red-500 rounded-2xl text-xs">
-                  {errorMessage}
-                </div>
-              )}
+            <div className="relative">
+              <Search className={`absolute left-4 top-1/2 -translate-y-1/2 ${theme.textMuted}`} size={16} />
+              <input 
+                type="text" 
+                placeholder="Procurar lead..." 
+                className={`w-full ${theme.inputBg} border ${theme.border} rounded-xl py-3 pl-10 pr-4 text-sm focus:outline-none focus:border-emerald-500 transition-colors ${theme.textMain}`} 
+              />
             </div>
           </div>
 
-          <div className={`w-full md:w-[400px] aspect-square rounded-[32px] border-2 border-dashed ${connectionStatus === 'waiting_scan' ? 'border-emerald-500/50 bg-emerald-500/5' : theme.border} flex flex-col items-center justify-center p-8 relative`}>
-            {connectionStatus === 'disconnected' && (
-              <div className="text-center space-y-6">
-                <QrCode size={64} className={`${theme.textMuted} mx-auto opacity-50`} />
+          <div className="flex-1 overflow-y-auto custom-scrollbar">
+            {(leads || []).map((lead: any) => {
+              const leadMsgs = (messages || []).filter((m: any) => m.leadId === lead.id);
+              const lastMsg = leadMsgs[leadMsgs.length - 1];
+              return (
                 <button 
-                  onClick={handleGenerateQR} 
-                  disabled={isLoading}
-                  className="px-8 py-4 bg-emerald-500 text-white rounded-2xl font-black text-xs hover:scale-105 transition-all disabled:opacity-50"
+                  key={lead.id} 
+                  onClick={() => setSelectedLead(lead)} 
+                  className={`w-full p-4 border-b ${theme.border} flex items-start gap-4 transition-colors ${
+                    selectedLead?.id === lead.id 
+                      ? (darkMode ? 'bg-zinc-900' : 'bg-zinc-100') 
+                      : darkMode ? 'hover:bg-zinc-900/50' : 'hover:bg-zinc-100'
+                  }`}
                 >
-                  {isLoading ? 'Conectando...' : 'Gerar QR Code'}
+                  <div className="w-12 h-12 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center font-black text-lg">
+                    {lead.name?.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="flex-1 text-left overflow-hidden">
+                    <span className={`font-bold text-sm ${theme.textMain} truncate block`}>{lead.name}</span>
+                    <p className={`text-xs ${theme.textMuted} truncate`}>
+                      {lastMsg ? lastMsg.content : 'Iniciar conversa...'}
+                    </p>
+                  </div>
                 </button>
-              </div>
-            )}
-
-            {connectionStatus === 'generating' && (
-              <div className="text-center space-y-4">
-                <Loader2 size={48} className="text-emerald-500 animate-spin mx-auto" />
-                <p className="font-black text-[10px] animate-pulse">Obtendo QR Code...</p>
-              </div>
-            )}
-
-            {connectionStatus === 'waiting_scan' && qrCodeBase64 && (
-              <div className="text-center space-y-4">
-                <div className="bg-white p-4 rounded-2xl shadow-xl">
-                  <img src={qrCodeBase64} alt="QR Code" className="w-56 h-56" />
-                </div>
-                <p className="text-emerald-500 font-black text-[10px]">Aguardando Leitura...</p>
-              </div>
-            )}
+              );
+            })}
           </div>
         </div>
+
+        {/* Área do chat */}
+        {selectedLead ? (
+          <div className={`flex-1 flex flex-col ${theme.bgApp}`}>
+            <div className={`h-20 border-b ${theme.border} ${theme.bgCard} flex items-center justify-between px-6`}>
+              <div className="flex items-center gap-4">
+                <button 
+                  onClick={() => setSelectedLead(null)} 
+                  className={`lg:hidden p-2 -ml-2 ${theme.textMuted}`}
+                >
+                  <ChevronLeft size={24} />
+                </button>
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center font-black">
+                  {selectedLead.name?.charAt(0).toUpperCase()}
+                </div>
+                <div>
+                  <h3 className={`font-bold ${theme.textMain}`}>{selectedLead.name}</h3>
+                  <p className={`text-[10px] font-black ${theme.textMuted} uppercase tracking-widest`}>
+                    {selectedLead.phone || 'Sem número'}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+              {activeMessages.map((msg: any) => {
+                const isSent = msg.direction === 'sent';
+                return (
+                  <div key={msg.id} className={`flex flex-col ${isSent ? 'items-end' : 'items-start'}`}>
+                    <div className={`max-w-[70%] p-4 ${
+                      isSent 
+                        ? `${theme.msgSentBg} text-white rounded-2xl rounded-tr-sm shadow-lg` 
+                        : `${theme.msgReceivedBg} border ${theme.border} ${theme.textMain} rounded-2xl rounded-tl-sm shadow-sm`
+                    }`}>
+                      <p className="text-sm font-medium">{msg.content}</p>
+                    </div>
+                  </div>
+                );
+              })}
+              <div ref={chatEndRef} />
+            </div>
+
+            <div className={`p-4 ${theme.bgCard} border-t ${theme.border}`}>
+              <form onSubmit={handleSendMessage} className="flex gap-3">
+                <input 
+                  type="text" 
+                  placeholder="Escreva uma mensagem..." 
+                  className={`flex-1 ${theme.inputBg} border ${theme.border} rounded-2xl px-6 focus:outline-none focus:border-emerald-500 transition-colors ${theme.textMain} text-sm font-medium`}
+                  value={newMessage} 
+                  onChange={e => setNewMessage(e.target.value)}
+                />
+                <button 
+                  type="submit" 
+                  disabled={!newMessage.trim()} 
+                  className="p-4 bg-[#0217ff] text-white rounded-2xl disabled:opacity-50 hover:scale-105 transition-all shadow-lg shadow-[#0217ff]/20"
+                >
+                  <Send size={20} className="ml-1" />
+                </button>
+              </form>
+            </div>
+          </div>
+        ) : (
+          <div className={`flex-1 flex flex-col items-center justify-center ${theme.bgApp}`}>
+            <div className={`w-24 h-24 rounded-full ${theme.bgCard} border ${theme.border} flex items-center justify-center mb-6 shadow-2xl`}>
+              <Smartphone size={40} className="text-emerald-500" />
+            </div>
+            <h2 className="text-2xl font-black italic uppercase tracking-tighter mb-2">ImobiPro <span className="text-emerald-500">Chat</span></h2>
+            <p className={`${theme.textMuted} font-medium`}>Selecione um cliente ao lado para conversar.</p>
+          </div>
+        )}
       </div>
     );
   }
 
-  // Resto do código do chat (igual ao anterior)
+  // ✅ SE NÃO ESTIVER CONECTADO, MOSTRA TELA DE QR CODE
   return (
-    <div className={`h-[calc(100vh-80px)] flex animate-fade-in font-sans ${theme.textMain}`}>
-      {/* ... (manter o código do chat igual) ... */}
+    <div className={`p-8 pb-32 min-h-[calc(100vh-80px)] flex flex-col items-center justify-center animate-fade-in font-sans ${theme.textMain}`}>
+      <div className={`w-full max-w-4xl flex flex-col md:flex-row items-center gap-12 ${theme.bgCard} p-12 rounded-[48px] border ${theme.border} shadow-2xl`}>
+        <div className="flex-1 space-y-8">
+          <div className="w-20 h-20 bg-emerald-500/10 rounded-3xl flex items-center justify-center border border-emerald-500/20">
+            <MessageSquare className="text-emerald-500" size={40} />
+          </div>
+          <div>
+            <h1 className="text-4xl font-black italic uppercase tracking-tighter mb-4">Conecte o <span className="text-emerald-500">WhatsApp</span></h1>
+            <p className={`${theme.textMuted} font-medium text-lg leading-relaxed`}>
+              Sincronize o seu WhatsApp com o CRM.
+            </p>
+            {errorMessage && (
+              <div className="mt-4 p-4 bg-red-500/10 text-red-500 rounded-2xl text-xs">
+                {errorMessage}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className={`w-full md:w-[400px] aspect-square rounded-[32px] border-2 border-dashed ${connectionStatus === 'waiting_scan' ? 'border-emerald-500/50 bg-emerald-500/5' : theme.border} flex flex-col items-center justify-center p-8 relative`}>
+          {connectionStatus === 'disconnected' && (
+            <div className="text-center space-y-6">
+              <QrCode size={64} className={`${theme.textMuted} mx-auto opacity-50`} />
+              <button 
+                onClick={handleGenerateQR} 
+                disabled={isLoading}
+                className="px-8 py-4 bg-emerald-500 text-white rounded-2xl font-black text-xs hover:scale-105 transition-all disabled:opacity-50"
+              >
+                {isLoading ? 'Conectando...' : 'Gerar QR Code'}
+              </button>
+            </div>
+          )}
+
+          {connectionStatus === 'generating' && (
+            <div className="text-center space-y-4">
+              <Loader2 size={48} className="text-emerald-500 animate-spin mx-auto" />
+              <p className="font-black text-[10px] animate-pulse">Obtendo QR Code...</p>
+            </div>
+          )}
+
+          {connectionStatus === 'waiting_scan' && qrCodeBase64 && (
+            <div className="text-center space-y-4">
+              <div className="bg-white p-4 rounded-2xl shadow-xl">
+                <img src={qrCodeBase64} alt="QR Code" className="w-56 h-56" />
+              </div>
+              <p className="text-emerald-500 font-black text-[10px]">Aguardando Leitura...</p>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
