@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { useGlobal } from '../context/GlobalContext';
 
-// 🔗 CONFIGURAÇÃO CORRIGIDA - NÃO ALTERE ESTAS LINHAS
+// ✅ CONFIGURAÇÕES CORRIGIDAS - NÃO ALTERE ESTAS 3 LINHAS!
 const EVO_URL = "/evo-api"; 
 const EVO_GLOBAL_KEY = "MIIEowIBAAKCAQEAuI+VrfEFvd8JKK7JVftIwUmTgS3ezht3TFdHuMjp1EH/z5UPVuOwmLb0eYsY0vSqRGXUqeWgN4JcNtKgBI9nGuW6yyj47Jga3HglqQJsneVQdRu/KZMhrz1qVtaLuAsxieVyGetpgz45WlTpavADoybeQpopESH4QhXkKEogjBbgSSXPRiOtfgTtcFC7ji4H9ZqNLWO9cdxR6I9WOgILONUz6PDfvzxGPuRXr61JVzMVjUDtZ/qsP1IPm8Mg+D8+yCK0D7O1UUa3Ih6PK3NRRYf2p+zxoCTjUp+caGB6o4LlrgmhEvJnHkGDrmyucKV46o4HKv3txyC1AINXV+5uPQIDAQABAoIBAAQkfOiVk1pqqir2mWBLrptgCmaI4ApiRXA6OUrlf5IbFSHUp658l9clrCEaRSlfAn9chcR2ef0k+OrmGV9g1KCe7W1n8wZkd53hOH8tpcB5iC/Iuqa1PblQOJXQZPxxi+AbfU8loI2olOL5KvASiRJdafm2uhs/VvIsyZ055LcgNpBISnmAIAQlzv4meYMu0K2ABgN38c8KSBUuMSVCWIeLtSqPwLZLK6KYlpqJg+sR3RC2vEkChXq4mfRLIiB5YiB5DPuPcgPe+81c5rPF5BHaA+LW+gK0ELnupSIu3LkfQg3IYPHni1TWOUz+1h42I+OzF38J+uTA5B16uYeiyUECgYEA3JcEVLt/+ywmprb6SWn602KW6FrOmdM3XP9d5lUPotHe6cDOjCf/xUM2IwtB/Ghi9W8VScMu3HkSeP+vVDkxlcyaNMKZzY5PiVWUTig0pQwRMZkXfyAiim4NPU+rOvcQkGev0UcRp+cSh35T9a8wWMifKJsSRuBvqHepjMFFfBECgYEA1i/7D1/lvQ/w34fU2exz+CFsfsxTIg5bUe/uufQAiof8mtxFQlqFFle0QxClWQNi+/4u8i0Ypfb2jTrz4QCTCZhN8YiLnyKu1rkZpPacgMLvEi3V0kXemJa3FKQbmG6rNfEsnGhrwcJ8Z7N3X/3NKvNLxJvYhS95Yb7UC/Yl620CgYA6Naew7GGTWE1CxRo68Tp9OZD087F9Kh177u9KbrvXjWYzbOuUVKHL3jaU/M2G28zxU0Tc2CKvj0tunpoXsZgCHaG7tnZ7pcgbR3gBP97UhuCqo+ltZH945B2eRj27K6M1WAcvRH/GPNXI528kb/xkEVzejD1Acs1EOX+GYyIA4QKBgCJeSJbK+H5B1JDJpung+yrRkis2dhB85UJckZ3c/Uk9UNc4iRSAmeJf6Fjqjt2doYB15OqPOelHm4BF+WQdR3q+qaMcGetLEWr7AJZry+kNXnc4S5sWAwXRCUeSnarz9x0Mue/PAZtxraymK32HqChAKeQ+bZvRZlS83iGdObBxAoGBANH4GiJM+DBK6ktrzoCxY1fuHcU554MdhpWpu+QSohDLnlJcvvCVF2JwIc2qXBLqMIEjzMU2+4j8PTXyAQtavTriiCjH4ORoHZtwfWxFIMVBnCGZ4s2EyMmpjPoG/tHgUrPRxTEgmr4UAXK14yMu8XdBa7MTB5kgnphJ4KZXruiA";
 const INSTANCE_NAME = "imobipro";
@@ -105,7 +105,7 @@ export default function WhatsAppPage() {
           })
         });
         
-        if (!createRes.ok) throw new Error("Falha ao criar instância na API.");
+        if (!createRes.ok) throw new Error("Falha ao criar instância na API. Verifique as credenciais.");
         
         const createData = await createRes.json();
         
