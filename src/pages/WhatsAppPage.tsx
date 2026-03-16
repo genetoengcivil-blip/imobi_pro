@@ -10,7 +10,7 @@ const INSTANCE_NAME = "imobipro";
 export default function WhatsAppPage() {
   const { user, darkMode } = useGlobal() as any;
   
-  // Estados
+  // Estados básicos
   const [isConnected, setIsConnected] = useState(false);
   const [qrCode, setQrCode] = useState('');
   const [loading, setLoading] = useState(false);
@@ -19,17 +19,22 @@ export default function WhatsAppPage() {
   const [messages, setMessages] = useState<any[]>([]);
   const [selectedLead, setSelectedLead] = useState<any>(null);
   const [newMessage, setNewMessage] = useState('');
-  const [loadingMessages, setLoadingMessages] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // ✅ CORES (simplificado)
-  const bgColor = darkMode ? '#111' : '#f5f5f5';
-  const cardColor = darkMode ? '#000' : '#fff';
-  const textColor = darkMode ? '#fff' : '#000';
-  const borderColor = darkMode ? '#333' : '#ddd';
+  // ✅ DETECTAR MOBILE
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
-  // ✅ CARREGAR LEADS DO SUPABASE
+  // ✅ CARREGAR LEADS
   useEffect(() => {
     loadLeads();
   }, []);
@@ -43,7 +48,7 @@ export default function WhatsAppPage() {
     if (data) setLeads(data);
   };
 
-  // ✅ CARREGAR MENSAGENS DO LEAD SELECIONADO
+  // ✅ CARREGAR MENSAGENS QUANDO SELECIONAR LEAD
   useEffect(() => {
     if (selectedLead) {
       loadMessages(selectedLead.id);
@@ -51,7 +56,6 @@ export default function WhatsAppPage() {
   }, [selectedLead]);
 
   const loadMessages = async (leadId: string) => {
-    setLoadingMessages(true);
     const { data } = await supabase
       .from('whatsapp_messages')
       .select('*')
@@ -59,24 +63,16 @@ export default function WhatsAppPage() {
       .order('created_at', { ascending: true });
     
     if (data) setMessages(data);
-    setLoadingMessages(false);
   };
 
-  // ✅ SCROLL PARA ÚLTIMA MENSAGEM
+  // ✅ RECEBER MENSAGENS EM TEMPO REAL
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
-
-  // ✅ VERIFICAR CONEXÃO WHATSAPP
-  useEffect(() => {
-    checkConnection();
-    
-    // Escutar novas mensagens em tempo real
     const subscription = supabase
       .channel('whatsapp_messages')
       .on('postgres_changes', 
         { event: 'INSERT', schema: 'public', table: 'whatsapp_messages' },
         (payload) => {
+          // Só adiciona se for do lead selecionado
           if (selectedLead && payload.new.lead_id === selectedLead.id) {
             setMessages(prev => [...prev, payload.new]);
           }
@@ -88,6 +84,16 @@ export default function WhatsAppPage() {
       subscription.unsubscribe();
     };
   }, [selectedLead]);
+
+  // ✅ SCROLL PARA ÚLTIMA MENSAGEM
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  // ✅ VERIFICAR CONEXÃO WHATSAPP
+  useEffect(() => {
+    checkConnection();
+  }, []);
 
   const checkConnection = async () => {
     try {
@@ -112,6 +118,7 @@ export default function WhatsAppPage() {
     setError('');
     
     try {
+      // Tenta conectar
       const res = await fetch(`${EVO_URL}/instance/connect/${INSTANCE_NAME}`, {
         headers: { 'apikey': EVO_GLOBAL_KEY }
       });
@@ -126,7 +133,7 @@ export default function WhatsAppPage() {
           setIsConnected(true);
         }
       } else {
-        // Criar nova instância
+        // Cria nova instância
         const createRes = await fetch(`${EVO_URL}/instance/create`, {
           method: 'POST',
           headers: {
@@ -191,8 +198,8 @@ export default function WhatsAppPage() {
     setNewMessage('');
 
     try {
-      // Salvar no Supabase
-      const { data: savedMsg } = await supabase
+      // 1. Salva no Supabase
+      const { data: savedMsg, error: saveError } = await supabase
         .from('whatsapp_messages')
         .insert({
           lead_id: selectedLead.id,
@@ -203,37 +210,61 @@ export default function WhatsAppPage() {
         .select()
         .single();
 
+      if (saveError) {
+        console.error('Erro ao salvar:', saveError);
+        return;
+      }
+
+      // 2. Adiciona à lista local
       if (savedMsg) {
         setMessages(prev => [...prev, savedMsg]);
       }
 
-      // Enviar via Evolution API
+      // 3. Envia via Evolution API
       const cleanPhone = selectedLead.phone.replace(/\D/g, '');
-      await fetch(`${EVO_URL}/message/sendText/${INSTANCE_NAME}`, {
+      const finalNumber = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
+
+      const sendRes = await fetch(`${EVO_URL}/message/sendText/${INSTANCE_NAME}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'apikey': EVO_GLOBAL_KEY
         },
         body: JSON.stringify({
-          number: `55${cleanPhone}`,
+          number: finalNumber,
           text: messageText,
           delay: 1200
         })
       });
+
+      if (!sendRes.ok) {
+        console.error('Erro ao enviar para WhatsApp');
+      }
 
     } catch (error) {
       console.error('Erro ao enviar:', error);
     }
   };
 
-  // ✅ TELA DE CONEXÃO (QR CODE)
+  // ✅ CORES
+  const theme = {
+    bgApp: darkMode ? '#111' : '#f5f5f5',
+    bgCard: darkMode ? '#000' : '#fff',
+    border: darkMode ? '#333' : '#e5e5e5',
+    text: darkMode ? '#fff' : '#000',
+    textMuted: darkMode ? '#666' : '#999',
+    inputBg: darkMode ? '#222' : '#fff',
+    msgSent: '#10b981',
+    msgReceived: darkMode ? '#222' : '#f0f0f0'
+  };
+
+  // ✅ TELA DE CONEXÃO
   if (!isConnected) {
     return (
       <div style={{
         minHeight: '100vh',
-        background: bgColor,
-        color: textColor,
+        background: theme.bgApp,
+        color: theme.text,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -242,21 +273,21 @@ export default function WhatsAppPage() {
         <div style={{
           maxWidth: 400,
           width: '100%',
-          background: cardColor,
+          background: theme.bgCard,
           borderRadius: 16,
           padding: 32,
-          border: `1px solid ${borderColor}`
+          border: `1px solid ${theme.border}`
         }}>
           <h1 style={{ fontSize: 24, fontWeight: 'bold', marginBottom: 8, textAlign: 'center' }}>
             Conectar WhatsApp
           </h1>
-          <p style={{ color: '#666', marginBottom: 24, textAlign: 'center' }}>
+          <p style={{ color: theme.textMuted, marginBottom: 24, textAlign: 'center' }}>
             Escaneie o QR Code com seu WhatsApp
           </p>
 
           <div style={{
             aspectRatio: '1/1',
-            border: `2px dashed ${borderColor}`,
+            border: `2px dashed ${theme.border}`,
             borderRadius: 12,
             display: 'flex',
             alignItems: 'center',
@@ -311,79 +342,123 @@ export default function WhatsAppPage() {
     <div style={{
       height: '100vh',
       display: 'flex',
-      background: bgColor,
-      color: textColor
+      background: theme.bgApp,
+      color: theme.text
     }}>
-      {/* SIDEBAR - LEADS */}
+      {/* Sidebar - versão mobile/desktop */}
       <div style={{
-        width: 300,
-        borderRight: `1px solid ${borderColor}`,
-        background: cardColor,
-        display: 'flex',
-        flexDirection: 'column'
+        width: isMobile ? (sidebarOpen ? '100%' : '0') : 300,
+        position: isMobile ? 'fixed' : 'relative',
+        left: 0,
+        top: 0,
+        height: '100%',
+        background: theme.bgCard,
+        borderRight: `1px solid ${theme.border}`,
+        transition: 'width 0.3s',
+        overflow: 'hidden',
+        zIndex: 50
       }}>
         <div style={{
           padding: 16,
-          borderBottom: `1px solid ${borderColor}`,
+          borderBottom: `1px solid ${theme.border}`,
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center'
         }}>
           <h2 style={{ fontSize: 18, fontWeight: 'bold' }}>Conversas</h2>
-          <button
-            onClick={handleDisconnect}
-            style={{
-              padding: '6px 12px',
-              background: '#ef4444',
-              color: 'white',
-              border: 'none',
-              borderRadius: 6,
-              fontSize: 12,
-              cursor: 'pointer'
-            }}
-          >
-            Desconectar
-          </button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              onClick={handleDisconnect}
+              style={{
+                padding: '6px 12px',
+                background: '#ef4444',
+                color: 'white',
+                border: 'none',
+                borderRadius: 6,
+                fontSize: 12,
+                cursor: 'pointer'
+              }}
+            >
+              Sair
+            </button>
+            {isMobile && (
+              <button
+                onClick={() => setSidebarOpen(false)}
+                style={{
+                  padding: '6px 12px',
+                  background: theme.border,
+                  color: theme.text,
+                  border: 'none',
+                  borderRadius: 6,
+                  cursor: 'pointer'
+                }}
+              >
+                X
+              </button>
+            )}
+          </div>
         </div>
 
-        <div style={{ flex: 1, overflowY: 'auto' }}>
+        <div style={{ overflowY: 'auto', height: 'calc(100% - 70px)' }}>
           {leads.map(lead => (
             <button
               key={lead.id}
-              onClick={() => setSelectedLead(lead)}
+              onClick={() => {
+                setSelectedLead(lead);
+                if (isMobile) setSidebarOpen(false);
+              }}
               style={{
                 width: '100%',
                 padding: 12,
                 border: 'none',
-                borderBottom: `1px solid ${borderColor}`,
+                borderBottom: `1px solid ${theme.border}`,
                 background: selectedLead?.id === lead.id ? (darkMode ? '#222' : '#e5e5e5') : 'transparent',
-                color: textColor,
+                color: theme.text,
                 textAlign: 'left',
                 cursor: 'pointer'
               }}
             >
               <div style={{ fontWeight: 'bold' }}>{lead.name}</div>
-              <div style={{ fontSize: 12, color: '#666' }}>{lead.phone}</div>
+              <div style={{ fontSize: 12, color: theme.textMuted }}>{lead.phone}</div>
             </button>
           ))}
         </div>
       </div>
 
-      {/* CHAT AREA */}
+      {/* Main Content */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
         {selectedLead ? (
           <>
-            {/* HEADER */}
+            {/* Header */}
             <div style={{
               padding: 16,
-              borderBottom: `1px solid ${borderColor}`,
-              background: cardColor
+              borderBottom: `1px solid ${theme.border}`,
+              background: theme.bgCard,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12
             }}>
-              <h3 style={{ fontSize: 18, fontWeight: 'bold' }}>{selectedLead.name}</h3>
-              <p style={{ fontSize: 12, color: '#666' }}>{selectedLead.phone}</p>
+              {isMobile && (
+                <button
+                  onClick={() => setSidebarOpen(true)}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: theme.text,
+                    cursor: 'pointer',
+                    fontSize: 20
+                  }}
+                >
+                  ☰
+                </button>
+              )}
+              <div>
+                <h3 style={{ fontSize: 18, fontWeight: 'bold' }}>{selectedLead.name}</h3>
+                <p style={{ fontSize: 12, color: theme.textMuted }}>{selectedLead.phone}</p>
+              </div>
             </div>
 
-            {/* MESSAGES */}
+            {/* Messages */}
             <div style={{
               flex: 1,
               overflowY: 'auto',
@@ -392,38 +467,35 @@ export default function WhatsAppPage() {
               flexDirection: 'column',
               gap: 8
             }}>
-              {loadingMessages ? (
-                <div style={{ textAlign: 'center', color: '#666' }}>Carregando...</div>
-              ) : (
-                messages.map(msg => (
-                  <div
-                    key={msg.id}
-                    style={{
-                      display: 'flex',
-                      justifyContent: msg.direction === 'sent' ? 'flex-end' : 'flex-start'
-                    }}
-                  >
-                    <div style={{
-                      maxWidth: '70%',
-                      padding: '8px 12px',
-                      background: msg.direction === 'sent' ? '#10b981' : cardColor,
-                      color: msg.direction === 'sent' ? 'white' : textColor,
-                      borderRadius: 12,
-                      border: msg.direction === 'sent' ? 'none' : `1px solid ${borderColor}`
-                    }}>
-                      {msg.content}
-                    </div>
+              {messages.map(msg => (
+                <div
+                  key={msg.id}
+                  style={{
+                    display: 'flex',
+                    justifyContent: msg.direction === 'sent' ? 'flex-end' : 'flex-start'
+                  }}
+                >
+                  <div style={{
+                    maxWidth: '70%',
+                    padding: '8px 12px',
+                    background: msg.direction === 'sent' ? theme.msgSent : theme.msgReceived,
+                    color: msg.direction === 'sent' ? 'white' : theme.text,
+                    borderRadius: 12,
+                    border: msg.direction === 'sent' ? 'none' : `1px solid ${theme.border}`,
+                    wordBreak: 'break-word'
+                  }}>
+                    {msg.content}
                   </div>
-                ))
-              )}
+                </div>
+              ))}
               <div ref={messagesEndRef} />
             </div>
 
-            {/* INPUT */}
+            {/* Input */}
             <div style={{
               padding: 16,
-              borderTop: `1px solid ${borderColor}`,
-              background: cardColor
+              borderTop: `1px solid ${theme.border}`,
+              background: theme.bgCard
             }}>
               <form onSubmit={handleSendMessage} style={{ display: 'flex', gap: 8 }}>
                 <input
@@ -434,10 +506,11 @@ export default function WhatsAppPage() {
                   style={{
                     flex: 1,
                     padding: '10px 12px',
-                    border: `1px solid ${borderColor}`,
+                    border: `1px solid ${theme.border}`,
                     borderRadius: 8,
-                    background: bgColor,
-                    color: textColor
+                    background: theme.inputBg,
+                    color: theme.text,
+                    outline: 'none'
                   }}
                 />
                 <button
@@ -464,9 +537,28 @@ export default function WhatsAppPage() {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            color: '#666'
+            color: theme.textMuted,
+            padding: 20,
+            textAlign: 'center'
           }}>
-            Selecione uma conversa
+            {isMobile && (
+              <button
+                onClick={() => setSidebarOpen(true)}
+                style={{
+                  position: 'absolute',
+                  top: 16,
+                  left: 16,
+                  background: 'none',
+                  border: 'none',
+                  color: theme.text,
+                  cursor: 'pointer',
+                  fontSize: 20
+                }}
+              >
+                ☰
+              </button>
+            )}
+            <p>Selecione uma conversa para começar</p>
           </div>
         )}
       </div>
