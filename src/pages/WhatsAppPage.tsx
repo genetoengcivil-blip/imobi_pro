@@ -1,169 +1,103 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useGlobal } from '../context/GlobalContext';
 import { supabase } from '../lib/supabase';
-import {
-  MessageSquare, Send, QrCode, Unplug, User, Loader2, Moon, Sun, CheckCircle2, Search
-} from 'lucide-react';
 
-// 🔒 CONFIGURAÇÕES REAIS
+// Configurações
 const EVO_URL = "/evo-api";
 const EVO_GLOBAL_KEY = "minha_chave_simples_123";
 const INSTANCE_NAME = "imobipro";
 
 export default function WhatsAppPage() {
-  const context = useGlobal() as any;
-  const leads = context?.leads || [];
-  const darkMode = context?.darkMode ?? true;
-  const setDarkMode = context?.setDarkMode;
-
+  const { user, darkMode } = useGlobal() as any;
+  
+  // Estados
   const [isConnected, setIsConnected] = useState(false);
   const [qrCode, setQrCode] = useState('');
   const [loading, setLoading] = useState(false);
+  const [leads, setLeads] = useState<any[]>([]);
   const [messages, setMessages] = useState<any[]>([]);
   const [selectedLead, setSelectedLead] = useState<any>(null);
   const [newMessage, setNewMessage] = useState('');
-  const [initialCheckDone, setInitialCheckDone] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [sending, setSending] = useState(false);
+  const [error, setError] = useState('');
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const processedMessagesRef = useRef<Set<string>>(new Set());
 
-  // ✅ CORES
-  const colors = {
-    bg: darkMode ? '#111827' : '#f9fafb',
-    card: darkMode ? '#1f2937' : '#ffffff',
-    border: darkMode ? '#374151' : '#e5e7eb',
-    text: darkMode ? '#f9fafb' : '#111827',
-    textMuted: darkMode ? '#9ca3af' : '#6b7280',
-    inputBg: darkMode ? '#374151' : '#ffffff',
-    msgSent: '#10b981',
-    msgReceived: darkMode ? '#374151' : '#f3f4f6'
-  };
+  // Buscar leads
+  useEffect(() => {
+    const loadLeads = async () => {
+      const { data } = await supabase.from('leads').select('*');
+      if (data) setLeads(data);
+    };
+    loadLeads();
+  }, []);
 
-  // ✅ ALERTA PARA DEBUG
-  const showAlert = (msg: string) => {
-    alert(`🔍 DEBUG: ${msg}`);
-  };
-
-  // ✅ CARREGAR MENSAGENS
-  const loadMessages = useCallback(async (leadId: string) => {
-    try {
+  // Buscar mensagens do lead selecionado
+  useEffect(() => {
+    if (!selectedLead) return;
+    
+    const loadMessages = async () => {
       const { data } = await supabase
         .from('whatsapp_messages')
         .select('*')
-        .eq('lead_id', leadId)
-        .order('created_at', { ascending: true });
-      
-      if (data) {
-        processedMessagesRef.current.clear();
-        data.forEach(msg => processedMessagesRef.current.add(msg.id));
-        setMessages(data);
-      }
-    } catch (e) {
-      console.error("Erro ao carregar mensagens:", e);
-    }
-  }, []);
-
-  // ✅ REAL TIME
-  useEffect(() => {
-    if (!selectedLead?.id) return;
-
-    loadMessages(selectedLead.id);
-
-    const channel = supabase
-      .channel(`chat_${selectedLead.id}`)
-      .on('postgres_changes', {
-        event: 'INSERT', 
-        schema: 'public', 
-        table: 'whatsapp_messages',
-        filter: `lead_id=eq.${selectedLead.id}`
-      }, (payload: any) => {
-        if (!processedMessagesRef.current.has(payload.new.id)) {
-          processedMessagesRef.current.add(payload.new.id);
-          setMessages(prev => [...prev, payload.new]);
-        }
-      })
-      .subscribe();
-
-    return () => { 
-      supabase.removeChannel(channel); 
+        .eq('lead_id', selectedLead.id)
+        .order('created_at');
+      if (data) setMessages(data);
     };
-  }, [selectedLead, loadMessages]);
+    
+    loadMessages();
+  }, [selectedLead]);
 
-  // ✅ SCROLL
+  // Scroll automático
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // ✅ VERIFICAR STATUS
-  const checkStatus = async () => {
-    try {
-      const res = await fetch(`${EVO_URL}/instance/connectionState/${INSTANCE_NAME}`, {
-        headers: { 'apikey': EVO_GLOBAL_KEY }
-      });
-      
-      if (!res.ok) {
-        setIsConnected(false);
-        return;
-      }
-      
-      const data = await res.json();
-      const state = data.instance?.state || data.state || data.status;
-      setIsConnected(state === 'open');
-    } catch (e) {
-      setIsConnected(false);
-    } finally {
-      setInitialCheckDone(true);
-    }
-  };
-
+  // Verificar status da conexão
   useEffect(() => {
+    const checkStatus = async () => {
+      try {
+        const res = await fetch(`${EVO_URL}/instance/connectionState/${INSTANCE_NAME}`, {
+          headers: { 'apikey': EVO_GLOBAL_KEY }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const state = data.instance?.state || data.state;
+          setIsConnected(state === 'open');
+        }
+      } catch (e) {
+        console.log('Erro ao verificar status');
+      }
+    };
     checkStatus();
-    const interval = setInterval(checkStatus, 20000);
+    const interval = setInterval(checkStatus, 5000);
     return () => clearInterval(interval);
   }, []);
 
-  // ✅ GERAR QR CODE
+  // Gerar QR Code
   const handleGenerateQR = async () => {
     setLoading(true);
-    setQrCode('');
-    
+    setError('');
     try {
-      showAlert('1. Tentando conectar na instância...');
-      
       const res = await fetch(`${EVO_URL}/instance/connect/${INSTANCE_NAME}`, {
         headers: { 'apikey': EVO_GLOBAL_KEY }
       });
       
-      showAlert(`2. Resposta do connect: ${res.status}`);
-      
       if (res.ok) {
         const data = await res.json();
-        showAlert(`3. Dados recebidos: ${JSON.stringify(data).substring(0, 100)}`);
-        
         if (data.base64) {
           setQrCode(data.base64);
         } else if (data.status === 'open') {
           setIsConnected(true);
         }
       } else {
-        showAlert('4. Criando nova instância...');
-        
         const createRes = await fetch(`${EVO_URL}/instance/create`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'apikey': EVO_GLOBAL_KEY
           },
-          body: JSON.stringify({ 
-            instanceName: INSTANCE_NAME, 
-            qrcode: true 
-          })
+          body: JSON.stringify({ instanceName: INSTANCE_NAME, qrcode: true })
         });
-        
-        showAlert(`5. Resposta da criação: ${createRes.status}`);
-        
         if (createRes.ok) {
           const createData = await createRes.json();
           if (createData.qrcode?.base64) {
@@ -171,32 +105,24 @@ export default function WhatsAppPage() {
           }
         }
       }
-    } catch (e: any) {
-      showAlert(`❌ ERRO: ${e.message}`);
+    } catch (err: any) {
+      setError(err.message);
     } finally {
       setLoading(false);
     }
   };
 
-  // ✅ ENVIAR MENSAGEM - COM ALERTAS
+  // Enviar mensagem
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newMessage.trim() || !selectedLead || sending) return;
+    if (!newMessage.trim() || !selectedLead) return;
 
-    const text = newMessage.trim();
-    const phone = selectedLead.phone?.replace(/\D/g, '');
-    const cleanPhone = phone?.startsWith('55') ? phone : `55${phone}`;
-    
-    showAlert(`1. Enviando mensagem para ${cleanPhone}: "${text}"`);
-    
+    const text = newMessage;
     setNewMessage('');
-    setSending(true);
 
     try {
-      // 1. Salva no Supabase
-      showAlert('2. Salvando no Supabase...');
-      
-      const { data: savedMsg, error: dbError } = await supabase
+      // Salvar no Supabase
+      const { data: savedMsg } = await supabase
         .from('whatsapp_messages')
         .insert({
           lead_id: selectedLead.id,
@@ -207,359 +133,140 @@ export default function WhatsAppPage() {
         .select()
         .single();
 
-      if (dbError) {
-        showAlert(`❌ Erro no Supabase: ${dbError.message}`);
-        throw dbError;
-      }
-
-      showAlert(`3. Mensagem salva no Supabase com ID: ${savedMsg.id}`);
-
       if (savedMsg) {
-        processedMessagesRef.current.add(savedMsg.id);
         setMessages(prev => [...prev, savedMsg]);
       }
 
-      // 2. Envia via Evolution API
-      showAlert('4. Enviando para Evolution API...');
+      // Enviar via Evolution
+      const phone = selectedLead.phone?.replace(/\D/g, '');
+      const cleanPhone = phone?.startsWith('55') ? phone : `55${phone}`;
       
-      const response = await fetch(`${EVO_URL}/message/sendText/${INSTANCE_NAME}`, {
+      await fetch(`${EVO_URL}/message/sendText/${INSTANCE_NAME}`, {
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json', 
-          'apikey': EVO_GLOBAL_KEY 
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': EVO_GLOBAL_KEY
         },
-        body: JSON.stringify({ 
-          number: cleanPhone, 
+        body: JSON.stringify({
+          number: cleanPhone,
           text: text
         })
       });
-
-      showAlert(`5. Resposta da Evolution: ${response.status}`);
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        showAlert(`❌ Erro na Evolution: ${errorText}`);
-        throw new Error(`Erro ${response.status}`);
-      }
-
-      const responseData = await response.json();
-      showAlert(`6. Sucesso! Resposta: ${JSON.stringify(responseData)}`);
-
-    } catch (e: any) {
-      showAlert(`❌ ERRO FINAL: ${e.message}`);
-    } finally {
-      setSending(false);
+    } catch (err) {
+      console.error('Erro ao enviar mensagem:', err);
     }
   };
 
-  const filteredLeads = leads.filter((lead: any) =>
-    lead.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    lead.phone?.includes(searchTerm)
-  );
-
-  if (!initialCheckDone) return (
-    <div style={{ 
-      height: '100vh', 
-      display: 'flex', 
-      alignItems: 'center', 
-      justifyContent: 'center',
-      backgroundColor: colors.bg,
-      color: colors.text
-    }}>
-      <div style={{ textAlign: 'center' }}>
-        <Loader2 style={{ animation: 'spin 1s linear infinite', margin: '0 auto 16px', color: '#10b981' }} size={32} />
-        <p style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.2em', opacity: 0.5 }}>Iniciando ImobiPro Chat</p>
-      </div>
-    </div>
-  );
-
-  return (
-    <div style={{ 
-      height: 'calc(100vh - 80px)', 
-      display: 'flex',
-      backgroundColor: colors.bg,
-      color: colors.text
-    }}>
-      {/* SIDEBAR */}
-      <div style={{ 
-        width: 320, 
-        borderRight: `1px solid ${colors.border}`,
-        backgroundColor: colors.card,
-        display: 'flex',
-        flexDirection: 'column'
-      }}>
-        {/* Header */}
-        <div style={{ 
-          padding: '16px', 
-          borderBottom: `1px solid ${colors.border}`,
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <h2 style={{ fontWeight: 'bold', fontSize: '14px' }}>WHATSAPP</h2>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <button onClick={() => setDarkMode?.(!darkMode)} style={{ padding: '8px', background: 'transparent', border: 'none', cursor: 'pointer' }}>
-              {darkMode ? <Sun size={14} color={colors.text} /> : <Moon size={14} color={colors.text} />}
-            </button>
-            {isConnected ? (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <div style={{ width: 8, height: 8, backgroundColor: '#10b981', borderRadius: '50%', animation: 'pulse 2s infinite' }} />
-                <span style={{ fontSize: '9px', fontWeight: 'bold', color: '#10b981' }}>Online</span>
-              </div>
+  // Tela de conexão
+  if (!isConnected) {
+    return (
+      <div className={`min-h-screen flex items-center justify-center p-4 ${darkMode ? 'bg-black text-white' : 'bg-gray-50 text-black'}`}>
+        <div className="max-w-md w-full bg-white dark:bg-gray-900 rounded-2xl shadow-xl p-8">
+          <h1 className="text-2xl font-bold text-center mb-6">Conectar WhatsApp</h1>
+          
+          <div className="aspect-square border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-xl flex items-center justify-center mb-6 bg-gray-50 dark:bg-gray-800">
+            {qrCode ? (
+              <img src={qrCode} alt="QR Code" className="w-64 h-64" />
             ) : (
-              <Unplug size={14} color="#ef4444" />
+              <button
+                onClick={handleGenerateQR}
+                disabled={loading}
+                className="px-6 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:opacity-50"
+              >
+                {loading ? 'Gerando...' : 'Gerar QR Code'}
+              </button>
             )}
           </div>
+          
+          {error && (
+            <div className="p-3 bg-red-100 text-red-700 rounded-lg text-sm">
+              {error}
+            </div>
+          )}
         </div>
+      </div>
+    );
+  }
 
-        {/* Search */}
-        <div style={{ padding: '12px' }}>
-          <div style={{ position: 'relative' }}>
-            <Search size={16} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: colors.textMuted }} />
-            <input
-              value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value)}
-              placeholder="Buscar contato..."
-              style={{
-                width: '100%',
-                padding: '8px 8px 8px 36px',
-                borderRadius: '12px',
-                fontSize: '12px',
-                backgroundColor: colors.inputBg,
-                border: `1px solid ${colors.border}`,
-                color: colors.text,
-                outline: 'none'
-              }}
-            />
-          </div>
+  // Tela do chat
+  return (
+    <div className={`h-[calc(100vh-80px)] flex ${darkMode ? 'bg-gray-900 text-white' : 'bg-gray-50 text-black'}`}>
+      {/* Sidebar */}
+      <div className="w-80 border-r border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+        <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+          <h2 className="font-bold">Conversas</h2>
         </div>
-
-        {/* Leads List */}
-        <div style={{ flex: 1, overflowY: 'auto' }}>
-          {filteredLeads.map((lead: any) => (
+        
+        <div className="overflow-y-auto h-[calc(100%-65px)]">
+          {leads.map(lead => (
             <button
               key={lead.id}
               onClick={() => setSelectedLead(lead)}
-              style={{
-                width: '100%',
-                padding: '12px',
-                border: 'none',
-                borderBottom: `1px solid ${colors.border}`,
-                backgroundColor: selectedLead?.id === lead.id ? (darkMode ? '#374151' : '#f3f4f6') : 'transparent',
-                color: colors.text,
-                textAlign: 'left',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '12px',
-                cursor: 'pointer'
-              }}
+              className={`w-full p-4 text-left border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 ${
+                selectedLead?.id === lead.id ? 'bg-gray-100 dark:bg-gray-700' : ''
+              }`}
             >
-              <div style={{
-                width: 40,
-                height: 40,
-                borderRadius: '12px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontWeight: 'bold',
-                backgroundColor: darkMode ? '#374151' : '#e5e7eb',
-                color: '#10b981'
-              }}>
-                {lead.name?.[0] || "?"}
-              </div>
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <p style={{ fontWeight: 'bold', fontSize: '14px', margin: 0 }}>{lead.name}</p>
-                <p style={{ fontSize: '10px', color: colors.textMuted, margin: 0 }}>{lead.phone}</p>
-              </div>
+              <div className="font-medium">{lead.name}</div>
+              <div className="text-sm text-gray-500">{lead.phone}</div>
             </button>
           ))}
         </div>
       </div>
 
-      {/* CHAT AREA */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', position: 'relative' }}>
-        {/* Overlay de conexão */}
-        {!isConnected && (
-          <div style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'rgba(0,0,0,0.9)',
-            backdropFilter: 'blur(4px)',
-            zIndex: 50,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '24px'
-          }}>
-            <div style={{
-              maxWidth: 320,
-              width: '100%',
-              backgroundColor: colors.card,
-              border: `1px solid ${colors.border}`,
-              padding: '32px',
-              borderRadius: '40px',
-              textAlign: 'center'
-            }}>
-              <QrCode size={56} style={{ margin: '0 auto 24px', color: '#10b981' }} />
-              <h3 style={{ color: colors.text, fontWeight: 'bold', marginBottom: '24px' }}>Conectar WhatsApp</h3>
-              {qrCode ? (
-                <div style={{ backgroundColor: 'white', padding: '16px', borderRadius: '24px', marginBottom: '16px' }}>
-                  <img src={qrCode} alt="QR" style={{ width: '100%', height: 'auto' }} />
-                </div>
-              ) : (
-                <button 
-                  onClick={handleGenerateQR} 
-                  disabled={loading} 
-                  style={{
-                    width: '100%',
-                    padding: '16px',
-                    backgroundColor: '#10b981',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '16px',
-                    fontWeight: 'bold',
-                    cursor: loading ? 'not-allowed' : 'pointer',
-                    opacity: loading ? 0.5 : 1
-                  }}
-                >
-                  {loading ? 'GERANDO...' : 'GERAR QR CODE'}
-                </button>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Chat Header */}
+      {/* Chat */}
+      <div className="flex-1 flex flex-col">
         {selectedLead ? (
           <>
-            <div style={{
-              height: 64,
-              padding: '0 24px',
-              borderBottom: `1px solid ${colors.border}`,
-              backgroundColor: colors.card,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              fontWeight: 'bold'
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <div style={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: '8px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontWeight: 'bold',
-                  backgroundColor: darkMode ? '#374151' : '#e5e7eb',
-                  color: '#10b981'
-                }}>
-                  {selectedLead.name?.[0] || "?"}
-                </div>
-                <span>{selectedLead.name}</span>
-              </div>
+            {/* Header */}
+            <div className="p-4 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+              <h3 className="font-bold">{selectedLead.name}</h3>
+              <p className="text-sm text-gray-500">{selectedLead.phone}</p>
             </div>
 
-            {/* Messages Area */}
-            <div style={{
-              flex: 1,
-              overflowY: 'auto',
-              padding: '24px',
-              backgroundColor: colors.bg,
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '16px'
-            }}>
-              {messages.length === 0 ? (
-                <div style={{
-                  textAlign: 'center',
-                  color: colors.textMuted,
-                  marginTop: '40px'
-                }}>
-                  Nenhuma mensagem ainda. Envie uma mensagem para começar.
-                </div>
-              ) : (
-                messages.map((m: any) => (
-                  <div key={m.id} style={{
-                    display: 'flex',
-                    justifyContent: m.direction === 'sent' ? 'flex-end' : 'flex-start'
-                  }}>
-                    <div style={{
-                      maxWidth: '75%',
-                      padding: '12px 16px',
-                      borderRadius: '16px',
-                      backgroundColor: m.direction === 'sent' ? '#10b981' : colors.msgReceived,
-                      color: m.direction === 'sent' ? 'white' : colors.text,
-                      boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
-                    }}>
-                      <p style={{ margin: 0, fontSize: '14px', whiteSpace: 'pre-wrap' }}>{m.content}</p>
-                    </div>
+            {/* Messages */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              {messages.map(msg => (
+                <div
+                  key={msg.id}
+                  className={`flex ${msg.direction === 'sent' ? 'justify-end' : 'justify-start'}`}
+                >
+                  <div
+                    className={`max-w-[70%] p-3 rounded-lg ${
+                      msg.direction === 'sent'
+                        ? 'bg-green-500 text-white'
+                        : 'bg-gray-200 dark:bg-gray-700 text-black dark:text-white'
+                    }`}
+                  >
+                    {msg.content}
                   </div>
-                ))
-              )}
+                </div>
+              ))}
               <div ref={messagesEndRef} />
             </div>
 
-            {/* Input Area */}
-            <form onSubmit={handleSendMessage} style={{
-              padding: '16px',
-              borderTop: `1px solid ${colors.border}`,
-              backgroundColor: colors.card,
-              display: 'flex',
-              gap: '8px'
-            }}>
-              <input 
-                value={newMessage} 
-                onChange={e => setNewMessage(e.target.value)} 
-                placeholder="Digite sua mensagem..." 
-                style={{
-                  flex: 1,
-                  padding: '12px 16px',
-                  borderRadius: '12px',
-                  border: `1px solid ${colors.border}`,
-                  backgroundColor: colors.inputBg,
-                  color: colors.text,
-                  fontSize: '14px',
-                  outline: 'none'
-                }}
-                disabled={sending}
-              />
-              <button 
-                type="submit" 
-                disabled={!newMessage.trim() || sending}
-                style={{
-                  padding: '12px 20px',
-                  backgroundColor: '#10b981',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '12px',
-                  cursor: sending || !newMessage.trim() ? 'not-allowed' : 'pointer',
-                  opacity: sending || !newMessage.trim() ? 0.5 : 1,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}
-              >
-                {sending ? <Loader2 size={20} style={{ animation: 'spin 1s linear infinite' }} /> : <Send size={20} />}
-              </button>
-            </form>
+            {/* Input */}
+            <div className="p-4 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+              <form onSubmit={handleSendMessage} className="flex gap-2">
+                <input
+                  type="text"
+                  value={newMessage}
+                  onChange={e => setNewMessage(e.target.value)}
+                  placeholder="Digite sua mensagem..."
+                  className="flex-1 p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-black dark:text-white"
+                />
+                <button
+                  type="submit"
+                  disabled={!newMessage.trim()}
+                  className="px-4 py-2 bg-green-500 text-white rounded-lg disabled:opacity-50"
+                >
+                  Enviar
+                </button>
+              </form>
+            </div>
           </>
         ) : (
-          <div style={{
-            flex: 1,
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            opacity: 0.3
-          }}>
-            <MessageSquare size={64} style={{ marginBottom: '16px' }} />
-            <p style={{ fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.1em', fontSize: '12px' }}>Selecione um cliente</p>
+          <div className="flex-1 flex items-center justify-center text-gray-500">
+            Selecione uma conversa
           </div>
         )}
       </div>
