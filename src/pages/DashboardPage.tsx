@@ -35,12 +35,11 @@ export default function DashboardPage() {
   const safeTransactions = useMemo(() => transactions || [], [transactions]);
   const safeAppointments = useMemo(() => appointments || [], [appointments]);
 
-  // 🔢 Cálculos de Métricas Dinâmicas (Corrigido para reagir ao viewType)
+  // 🔢 Cálculos de Métricas Dinâmicas
   const dynamicMetrics = useMemo(() => {
     const now = new Date();
     let startDate = new Date();
 
-    // Sincroniza o período de cálculo com o período exibido no gráfico
     if (viewType === 'mensal') startDate.setMonth(now.getMonth() - 5);
     else if (viewType === 'trimestral' || viewType === 'semestral') startDate.setMonth(now.getMonth() - 11);
     else if (viewType === 'anual') startDate.setFullYear(now.getFullYear() - 2);
@@ -48,25 +47,20 @@ export default function DashboardPage() {
     startDate.setDate(1);
     startDate.setHours(0, 0, 0, 0);
 
-    // Filtra leads e transações do período selecionado
     const leadsNoPeriodo = safeLeads.filter(l => new Date(l.createdAt) >= startDate);
     const transacoesNoPeriodo = safeTransactions.filter(t => new Date(t.date || (t as any).created_at) >= startDate);
 
-    // 1. VGV Ativo (Leads em andamento no período selecionado)
     const vgvAtivo = leadsNoPeriodo
       .filter(l => l.status !== 'fechado' && l.status !== 'perdido')
       .reduce((acc, l) => acc + (Number(l.value) || 0), 0);
     
-    // 2. Previsão de Comissão (VGV Ativo * % de cada lead)
     const previsaoComissao = leadsNoPeriodo
       .filter(l => l.status !== 'fechado' && l.status !== 'perdido')
       .reduce((acc, l) => acc + (Number(l.value) * (Number(l.commission_rate) || 0) / 100), 0);
 
-    // 3. Lucro Líquido (Receitas + Comissões de Leads Fechados - Despesas)
     const receitasFin = transacoesNoPeriodo.filter(t => t.type === 'receita').reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
     const despesasFin = transacoesNoPeriodo.filter(t => t.type === 'despesa').reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
     
-    // Comissão "Ganha" (Leads que foram fechados no período selecionado)
     const comissoesFechadas = leadsNoPeriodo
       .filter(l => l.status === 'fechado')
       .reduce((acc, l) => acc + (Number(l.value) * (Number(l.commission_rate) || 0) / 100), 0);
@@ -82,7 +76,7 @@ export default function DashboardPage() {
     };
   }, [safeLeads, safeTransactions, viewType]);
 
-  // 📈 Lógica Dinâmica do Gráfico (Mantida conforme original)
+  // 📈 Lógica Dinâmica do Gráfico
   const chartData = useMemo(() => {
     const data = [];
     const now = new Date();
@@ -167,7 +161,7 @@ export default function DashboardPage() {
         </button>
       </div>
 
-      {/* Métricas Principais - ATUALIZADOS E DINÂMICOS */}
+      {/* Métricas Principais */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {[
           { label: 'VGV Ativo', val: formatCurrency(dynamicMetrics.vgvAtivo), icon: Briefcase, color: 'text-[#0217ff]', bg: 'bg-[#0217ff]/10' },
@@ -237,26 +231,61 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* A BLINDAGEM DO GRÁFICO (Fix "width -1 and height -1") */}
-            <div className="w-full" style={{ height: '350px', minHeight: '350px' }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={chartData}>
-                  <defs>
-                    <linearGradient id="colorVgv" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#0217ff" stopOpacity={0.3}/>
-                      <stop offset="95%" stopColor="#0217ff" stopOpacity={0}/>
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={darkMode ? "#333" : "#eee"} />
-                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#888', fontSize: 10, fontWeight: 'bold'}} dy={10} />
-                  <YAxis hide />
-                  <Tooltip 
-                    contentStyle={{ borderRadius: '20px', border: 'none', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)', backgroundColor: darkMode ? '#111' : '#fff' }}
-                    formatter={(value: number) => [formatCurrency(value), 'VGV']}
-                  />
-                  <Area type="monotone" dataKey="vgv" stroke="#0217ff" strokeWidth={4} fillOpacity={1} fill="url(#colorVgv)" />
-                </AreaChart>
-              </ResponsiveContainer>
+            {/* 🟢 GRÁFICO CORRIGIDO - Agora com dimensões adequadas */}
+            <div className="w-full" style={{ height: '350px', minHeight: '350px', position: 'relative' }}>
+              {chartData && chartData.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%" debounce={1}>
+                  <AreaChart
+                    data={chartData}
+                    margin={{ top: 10, right: 10, left: 10, bottom: 10 }}
+                  >
+                    <defs>
+                      <linearGradient id="colorVgv" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#0217ff" stopOpacity={0.3}/>
+                        <stop offset="95%" stopColor="#0217ff" stopOpacity={0}/>
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid 
+                      strokeDasharray="3 3" 
+                      vertical={false} 
+                      stroke={darkMode ? "#333" : "#eee"} 
+                    />
+                    <XAxis 
+                      dataKey="name" 
+                      axisLine={false} 
+                      tickLine={false} 
+                      tick={{fill: '#888', fontSize: 10, fontWeight: 'bold'}} 
+                      dy={10} 
+                    />
+                    <YAxis 
+                      hide 
+                      domain={['auto', 'auto']}
+                    />
+                    <Tooltip 
+                      contentStyle={{ 
+                        borderRadius: '20px', 
+                        border: 'none', 
+                        boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)', 
+                        backgroundColor: darkMode ? '#111' : '#fff',
+                        color: darkMode ? '#fff' : '#000'
+                      }}
+                      formatter={(value: number) => [formatCurrency(value), 'VGV']}
+                    />
+                    <Area 
+                      type="monotone" 
+                      dataKey="vgv" 
+                      stroke="#0217ff" 
+                      strokeWidth={4} 
+                      fillOpacity={1} 
+                      fill="url(#colorVgv)" 
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-full flex items-center justify-center text-zinc-500 font-medium">
+                  Sem dados para exibir no período selecionado
+                </div>
+              )}
             </div>
           </div>
 
@@ -331,7 +360,13 @@ export default function DashboardPage() {
             <div className="space-y-4">
               <div className="flex justify-between items-center">
                 <span className="text-[10px] text-zinc-500 font-black uppercase">Receitas (Financeiro)</span>
-                <span className="font-black text-sm">{formatCurrency(safeTransactions.filter(t => t.type === 'receita' && new Date(t.date || (t as any).created_at) >= new Date(new Date().setMonth(new Date().getMonth() - (viewType === 'mensal' ? 5 : 11)))).reduce((acc, t) => acc + (t.amount || 0), 0))}</span>
+                <span className="font-black text-sm">
+                  {formatCurrency(
+                    safeTransactions
+                      .filter(t => t.type === 'receita' && new Date(t.date || (t as any).created_at) >= new Date(new Date().setMonth(new Date().getMonth() - (viewType === 'mensal' ? 5 : 11))))
+                      .reduce((acc, t) => acc + (t.amount || 0), 0)
+                  )}
+                </span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-[10px] text-zinc-500 font-black uppercase text-green-600">Comissão Ganhos (Leads)</span>
