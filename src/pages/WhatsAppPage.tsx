@@ -1,6 +1,17 @@
 import { useState, useEffect, useRef } from 'react';
 import { useGlobal } from '../context/GlobalContext';
 import { supabase } from '../lib/supabase';
+// ✅ IMPORTAÇÃO DOS ÍCONES CORRIGIDA
+import { 
+  MessageSquare, 
+  Send, 
+  QrCode, 
+  Unplug, 
+  Smartphone, 
+  Search, 
+  RefreshCw,
+  Loader2 
+} from 'lucide-react';
 
 // 🔒 CONFIGURAÇÕES
 const EVO_URL = "/evo-api";
@@ -19,6 +30,7 @@ export default function WhatsAppPage() {
   const [isMobile, setIsMobile] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // Detetar Mobile
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 768);
     checkMobile();
@@ -26,6 +38,7 @@ export default function WhatsAppPage() {
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
+  // Carregar Leads
   useEffect(() => {
     const init = async () => {
       const { data } = await supabase.from('leads').select('*').order('name', { ascending: true });
@@ -35,7 +48,7 @@ export default function WhatsAppPage() {
     init();
   }, []);
 
-  // ✅ GERENCIAR MENSAGENS (Realtime com Filtro Anti-Duplicação)
+  // ✅ GERENCIAR MENSAGENS (Realtime Anti-Duplicidade)
   useEffect(() => {
     if (!selectedLead) return;
 
@@ -55,7 +68,7 @@ export default function WhatsAppPage() {
         { event: 'INSERT', schema: 'public', table: 'whatsapp_messages', filter: `lead_id=eq.${selectedLead.id}` },
         (payload) => {
           setMessages(prev => {
-            // 🛡️ FILTRO ANTI-DUPLICIDADE: Verifica se o ID já existe na tela
+            // 🛡️ Filtro para evitar duplicados na tela
             const exists = prev.some(m => m.id === payload.new.id || (m.message_id && m.message_id === payload.new.message_id));
             if (exists) return prev;
             return [...prev, payload.new];
@@ -78,7 +91,7 @@ export default function WhatsAppPage() {
       });
       const data = await res.json();
       if (data.instance?.state === 'open' || data.state === 'open') setIsConnected(true);
-    } catch (err) { console.log('Sem conexão...'); }
+    } catch (err) { console.log('Buscando conexão...'); }
   };
 
   const handleSendMessage = async (e: React.FormEvent) => {
@@ -91,9 +104,7 @@ export default function WhatsAppPage() {
     setNewMessage('');
 
     try {
-      // 🚀 APENAS ENVIAMOS PARA A API. 
-      // Não salvamos no banco aqui para evitar duplicatas. 
-      // O Webhook fará o salvamento e o Realtime mostrará na tela.
+      // 🚀 APENAS ENVIAMOS. O Webhook salvará no banco e o Realtime mostrará na tela.
       await fetch(`${EVO_URL}/message/sendText/${INSTANCE_NAME}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'apikey': EVO_GLOBAL_KEY },
@@ -185,7 +196,10 @@ export default function WhatsAppPage() {
             </form>
           </>
         ) : (
-          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0.3 }}>Selecione um cliente</div>
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', opacity: 0.3 }}>
+            <MessageSquare size={48} style={{ marginBottom: 12 }} />
+            <p>Selecione um cliente</p>
+          </div>
         )}
       </div>
     </div>
