@@ -6,10 +6,9 @@ import {
 } from 'lucide-react';
 import { useGlobal } from '../context/GlobalContext';
 
-// 🔒 CONFIGURAÇÕES DO SERVIDOR (CORRIGIDO)
-// ⚠️ IMPORTANTE: Substitua pela URL da sua Oracle Cloud
-const EVO_URL = process.env.REACT_APP_EVO_API_URL || "/evo-api"; 
-const EVO_GLOBAL_KEY = "MIIEowIBAAKCAQEAuI+VrfEFvd8JKK7JVftIwUmTgS3ezht3TFdHuMjp1EH/z5UPVuOwmLb0eYsY0vSqRGXUqeWgN4JcNtKgBI9nGuW6yyj47Jga3HglqQJsneVQdRu/KZMhrz1qVtaLuAsxieVyGetpgz45WlTpavADoybeQpopESH4QhXkKEogjBbgSSXPRiOtfgTtcFC7ji4H9ZqNLWO9cdxR6I9WOgILONUz6PDfvzxGPuRXr61JVzMVjUDtZ/qsP1IPm8Mg+D8+yCK0D7O1UUa3Ih6PK3NRRYf2p+zxoCTjUp+caGB6o4LlrgmhEvJnHkGDrmyucKV46o4HKv3txyC1AINXV+5uPQIDAQABAoIBAAQkfOiVk1pqqir2mWBLrptgCmaI4ApiRXA6OUrlf5IbFSHUp658l9clrCEaRSlfAn9chcR2ef0k+OrmGV9g1KCe7W1n8wZkd53hOH8tpcB5iC/Iuqa1PblQOJXQZPxxi+AbfU8loI2olOL5KvASiRJdafm2uhs/VvIsyZ055LcgNpBISnmAIAQlzv4meYMu0K2ABgN38c8KSBUuMSVCWIeLtSqPwLZLK6KYlpqJg+sR3RC2vEkChXq4mfRLIiB5YiB5DPuPcgPe+81c5rPF5BHaA+LW+gK0ELnupSIu3LkfQg3IYPHni1TWOUz+1h42I+OzF38J+uTA5B16uYeiyUECgYEA3JcEVLt/+ywmprb6SWn602KW6FrOmdM3XP9d5lUPotHe6cDOjCf/xUM2IwtB/Ghi9W8VScMu3HkSeP+vVDkxlcyaNMKZzY5PiVWUTig0pQwRMZkXfyAiim4NPU+rOvcQkGev0UcRp+cSh35T9a8wWMifKJsSRuBvqHepjMFFfBECgYEA1i/7D1/lvQ/w34fU2exz+CFsfsxTIg5bUe/uufQAiof8mtxFQlqFFle0QxClWQNi+/4u8i0Ypfb2jTrz4QCTCZhN8YiLnyKu1rkZpPacgMLvEi3V0kXemJa3FKQbmG6rNfEsnGhrwcJ8Z7N3X/3NKvNLxJvYhS95Yb7UC/Yl620CgYA6Naew7GGTWE1CxRo68Tp9OZD087F9Kh177u9KbrvXjWYzbOuUVKHL3jaU/M2G28zxU0Tc2CKvj0tunpoXsZgCHaG7tnZ7pcgbR3gBP97UhuCqo+ltZH945B2eRj27K6M1WAcvRH/GPNXI528kb/xkEVzejD1Acs1EOX+GYyIA4QKBgCJeSJbK+H5B1JDJpung+yrRkis2dhB85UJckZ3c/Uk9UNc4iRSAmeJf6Fjqjt2doYB15OqPOelHm4BF+WQdR3q+qaMcGetLEWr7AJZry+kNXnc4S5sWAwXRCUeSnarz9x0Mue/PAZtxraymK32HqChAKeQ+bZvRZlS83iGdObBxAoGBANH4GiJM+DBK6ktrzoCxY1fuHcU554MdhpWpu+QSohDLnlJcvvCVF2JwIc2qXBLqMIEjzMU2+4j8PTXyAQtavTriiCjH4ORoHZtwfWxFIMVBnCGZ4s2EyMmpjPoG/tHgUrPRxTEgmr4UAXK14yMu8XdBa7MTB5kgnphJ4KZXruiA";
+// 🔒 CONFIGURAÇÕES DO SERVIDOR ORACLE
+const EVO_URL = "http://137.131.136.246:8080"; // IP da Oracle + porta
+const EVO_GLOBAL_KEY = "minha_chave_simples_123"; // Chave configurada no servidor
 
 export default function WhatsAppPage() {
   const { user, leads, messages, addMessage, markAsRead, whatsappConnected, setWhatsappConnected, darkMode } = useGlobal();
@@ -66,26 +65,18 @@ export default function WhatsAppPage() {
         if (response.ok) {
           const instances = await response.json();
           const existingInstance = instances.find((inst: any) => 
-            inst.instance?.instanceName === instanceName || inst.name === instanceName
+            inst.instance?.instanceName === instanceName || inst.instanceName === instanceName
           );
 
           if (existingInstance) {
             // Verifica se já está conectada
-            const stateResponse = await fetch(`${EVO_URL}/instance/connectionState/${instanceName}`, {
-              headers: { 'apikey': EVO_GLOBAL_KEY }
-            });
-            
-            if (stateResponse.ok) {
-              const stateData = await stateResponse.json();
-              if (stateData.instance?.state === 'open' || stateData.status === 'open') {
-                setWhatsappConnected(true);
-              }
+            if (existingInstance.instance?.status === 'open' || existingInstance.status === 'open') {
+              setWhatsappConnected(true);
             }
           }
         }
       } catch (error) {
         console.error("Erro ao verificar instância:", error);
-        setErrorMessage("Não foi possível conectar à Evolution API. Verifique se o servidor está rodando.");
       } finally {
         setIsCheckingInstance(false);
       }
@@ -101,7 +92,7 @@ export default function WhatsAppPage() {
     setErrorMessage(null);
   };
 
-  // ✅ FUNÇÃO CORRIGIDA PARA GERAR QR CODE
+  // ✅ FUNÇÃO PARA GERAR QR CODE
   const handleGenerateQR = async () => {
     setConnectionStatus('generating');
     setQrCodeBase64(null);
@@ -157,17 +148,17 @@ export default function WhatsAppPage() {
         setConnectionStatus('waiting_scan');
         startConnectionWatcher();
       } else {
-        setErrorMessage("QR Code não gerado. Verifique a Evolution API.");
+        setErrorMessage("QR Code não gerado. Tente novamente.");
         setConnectionStatus('disconnected');
       }
     } catch (error: any) {
       console.error("Erro detalhado:", error);
-      setErrorMessage(`Erro de conexão: ${error.message}. Verifique se a Evolution API está rodando na Oracle Cloud.`);
+      setErrorMessage(`Erro de conexão: ${error.message}`);
       setConnectionStatus('disconnected');
     }
   };
 
-  // ✅ FUNÇÃO CORRIGIDA PARA VERIFICAR STATUS
+  // ✅ FUNÇÃO PARA VERIFICAR STATUS DA CONEXÃO
   const startConnectionWatcher = () => {
     const interval = setInterval(async () => {
       try {

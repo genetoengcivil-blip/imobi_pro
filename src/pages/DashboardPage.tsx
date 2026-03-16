@@ -231,7 +231,7 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* 🟢 GRÁFICO CORRIGIDO - Agora com dimensões adequadas */}
+            {/* 🟢 GRÁFICO CORRIGIDO */}
             <div className="w-full" style={{ height: '350px', minHeight: '350px', position: 'relative' }}>
               {chartData && chartData.length > 0 ? (
                 <ResponsiveContainer width="100%" height="100%" debounce={1}>
