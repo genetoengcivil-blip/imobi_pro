@@ -1,26 +1,32 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { createClient } from '@supabase/supabase-js';
 
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY! 
+);
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') return res.status(200).send('OK');
 
   try {
-    const { event, data } = req.body;
+    const payload = req.body;
+    
+    // Captura mensagens novas e confirmações de envio
+    if (payload.event === 'messages.upsert' || payload.event === 'messages.send') {
+      const msg = payload.data;
+      if (!msg) return res.status(200).send('OK');
 
-    if (event === 'messages.upsert' || event === 'messages.send' || event === 'send.message') {
-      const remoteJid = data.key?.remoteJid || data.remoteJid || '';
+      const remoteJid = msg.key?.remoteJid || '';
       const phone = remoteJid.split('@')[0];
-      const messageId = data.key?.id || data.id;
-      const isFromMe = data.key?.fromMe || data.fromMe || false;
+      const isFromMe = msg.key?.fromMe || false;
+      const messageId = msg.key?.id;
+      
+      let content = msg.message?.conversation || 
+                    msg.message?.extendedTextMessage?.text || 
+                    "📎 Arquivo de mídia";
 
-      // Conteúdo da mensagem
-      let content = data.message?.conversation || 
-                    data.message?.extendedTextMessage?.text || 
-                    data.content || "📎 Mídia";
-
-      // Busca o lead pelo telefone (últimos 8 dígitos)
+      // 1. Localiza o Lead
       const { data: lead } = await supabase
         .from('leads')
         .select('id')
@@ -28,6 +34,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         .single();
 
       if (lead) {
+        // 2. Salva no banco. O 'onConflict' impede a duplicação na tela.
         await supabase.from('whatsapp_messages').upsert({
           message_id: messageId,
           lead_id: lead.id,
@@ -37,8 +44,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }, { onConflict: 'message_id' });
       }
     }
+
     return res.status(200).json({ success: true });
-  } catch (e) {
+  } catch (error: any) {
     return res.status(200).send('OK');
   }
 }
