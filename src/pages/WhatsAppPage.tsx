@@ -20,6 +20,7 @@ export default function WhatsAppPage() {
   const [qrCodeBase64, setQrCodeBase64] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [initialCheckDone, setInitialCheckDone] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   const theme = {
@@ -63,16 +64,19 @@ export default function WhatsAppPage() {
             i.instance?.instanceName === INSTANCE_NAME
           );
           
-          // Se a instância existe e está com status 'open', já está conectada
+          // ✅ Verifica se já está conectada
           if (instance?.instance?.status === 'open') {
             console.log('✅ Instância já está conectada!');
             setWhatsappConnected(true);
           } else {
             console.log('Instância existe mas não está conectada');
+            setWhatsappConnected(false);
           }
         }
       } catch (error) {
         console.error('Erro ao verificar instância:', error);
+      } finally {
+        setInitialCheckDone(true);
       }
     };
     
@@ -109,7 +113,7 @@ export default function WhatsAppPage() {
     setTimeout(() => clearInterval(interval), 120000);
   };
 
-  // ✅ GERAR QR CODE (se necessário)
+  // ✅ GERAR QR CODE
   const handleGenerateQR = async () => {
     setConnectionStatus('generating');
     setErrorMessage(null);
@@ -128,29 +132,34 @@ export default function WhatsAppPage() {
         const connectData = await connectRes.json();
         console.log('Resposta do connect:', connectData);
         
-        // ✅ CASO 1: Tem QR Code
+        // ✅ CASO 1: JÁ ESTÁ CONECTADO
+        if (connectData.status === 'open' || connectData.instance?.status === 'open') {
+          console.log('WhatsApp já está conectado!');
+          setWhatsappConnected(true);
+          setConnectionStatus('disconnected');
+          return;
+        }
+        
+        // ✅ CASO 2: TEM QR CODE
         if (connectData.base64) {
           console.log('QR Code gerado!');
           setQrCodeBase64(connectData.base64);
           setConnectionStatus('waiting_scan');
           startConnectionWatcher();
-        } 
-        // ✅ CASO 2: Já está conectado
-        else if (connectData.status === 'open' || connectData.instance?.status === 'open') {
-          console.log('WhatsApp já está conectado!');
-          setWhatsappConnected(true);
+          return;
         }
-        // ✅ CASO 3: Instância existe mas precisa de QR Code
-        else {
-          console.log('Aguardando QR Code...');
-          setErrorMessage('Escaneie o QR Code no WhatsApp para conectar');
-          // Tenta de novo em 2 segundos
-          setTimeout(handleGenerateQR, 2000);
-        }
+        
+        // ✅ CASO 3: AGUARDANDO QR CODE
+        console.log('Aguardando QR Code...');
+        setErrorMessage('Escaneie o QR Code no WhatsApp para conectar');
+        setTimeout(() => {
+          handleGenerateQR(); // Tenta novamente
+        }, 2000);
+        
       } else {
         const errorText = await connectRes.text();
         console.error('Erro na conexão:', errorText);
-        setErrorMessage(`Erro ${connectRes.status}`);
+        setErrorMessage(`Erro ${connectRes.status}: Não foi possível conectar`);
         setConnectionStatus('disconnected');
       }
       
@@ -173,7 +182,9 @@ export default function WhatsAppPage() {
         setWhatsappConnected(false);
         setConnectionStatus('disconnected');
         setQrCodeBase64(null);
-      } catch (e) {}
+      } catch (e) {
+        console.error('Erro ao desconectar:', e);
+      }
     }
   };
 
@@ -199,8 +210,19 @@ export default function WhatsAppPage() {
           delay: 1200
         })
       });
-    } catch (error) {}
+    } catch (error) {
+      console.error('Erro ao enviar mensagem:', error);
+    }
   };
+
+  // ✅ Mostrar loading enquanto verifica
+  if (!initialCheckDone) {
+    return (
+      <div className={`min-h-screen flex items-center justify-center ${theme.bgApp}`}>
+        <Loader2 size={48} className="text-emerald-500 animate-spin" />
+      </div>
+    );
+  }
 
   // ✅ SE JÁ ESTIVER CONECTADO, MOSTRA O CHAT
   if (whatsappConnected) {
@@ -340,11 +362,17 @@ export default function WhatsAppPage() {
           <div>
             <h1 className="text-4xl font-black italic uppercase tracking-tighter mb-4">Conecte o <span className="text-emerald-500">WhatsApp</span></h1>
             <p className={`${theme.textMuted} font-medium text-lg leading-relaxed`}>
-              Sincronize o seu WhatsApp com o CRM.
+              Sincronize o seu WhatsApp com o CRM. Leia o QR Code e centralize o seu atendimento de forma automática.
             </p>
             {errorMessage && (
               <div className="mt-4 p-4 bg-red-500/10 text-red-500 rounded-2xl text-xs">
                 {errorMessage}
+                <button 
+                  onClick={handleGenerateQR}
+                  className="block mt-2 text-white bg-red-500 px-4 py-2 rounded-xl text-xs hover:bg-red-600 transition-colors"
+                >
+                  Tentar Novamente
+                </button>
               </div>
             )}
           </div>
