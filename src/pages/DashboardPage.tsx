@@ -16,102 +16,141 @@ type ViewOption = 'mensal' | 'trimestral' | 'semestral' | 'anual';
 export default function DashboardPage() {
   const navigate = useNavigate();
   const { leads, transactions, appointments, darkMode } = useGlobal();
-  const [isMounted, setIsMounted] = useState(false);
   const [viewType, setViewType] = useState<ViewOption>('mensal');
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [isMounted, setIsMounted] = useState(false);
 
-  // 🛡️ Blindagem contra erro de ResponsiveContainer
   useEffect(() => {
     setIsMounted(true);
   }, []);
 
-  const safeLeads = useMemo(() => leads || [], [leads]);
-  const safeTransactions = useMemo(() => transactions || [], [transactions]);
-
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(value || 0);
-  };
-
-  const dynamicMetrics = useMemo(() => {
-    const vgvAtivo = safeLeads.filter(l => l.status !== 'fechado' && l.status !== 'perdido').reduce((acc, l) => acc + (Number(l.value) || 0), 0);
-    const totalLeads = safeLeads.length;
-    return { vgvAtivo, totalLeads };
-  }, [safeLeads]);
-
-  const chartData = [
-    { name: 'JAN', vgv: 400000 },
-    { name: 'FEV', vgv: 300000 },
-    { name: 'MAR', vgv: 500000 },
-    { name: 'ABR', vgv: 450000 },
-    { name: 'MAI', vgv: 600000 },
-    { name: 'JUN', vgv: 550000 },
+  const options: { value: ViewOption; label: string }[] = [
+    { value: 'mensal', label: 'Visão Mensal' },
+    { value: 'trimestral', label: 'Visão Trimestral' },
+    { value: 'semestral', label: 'Visão Semestral' },
+    { value: 'anual', label: 'Visão Anual' },
   ];
 
-  const cardClass = `p-6 rounded-[32px] border transition-all duration-300 ${
-    darkMode ? 'bg-zinc-950 border-white/5 text-white' : 'bg-white border-zinc-200 shadow-sm'
-  }`;
+  const safeLeads = useMemo(() => leads || [], [leads]);
+  const safeTransactions = useMemo(() => transactions || [], [transactions]);
+  const safeAppointments = useMemo(() => appointments || [], [appointments]);
+
+  const dynamicMetrics = useMemo(() => {
+    const now = new Date();
+    let startDate = new Date();
+    if (viewType === 'mensal') startDate.setMonth(now.getMonth() - 5);
+    else if (viewType === 'trimestral' || viewType === 'semestral') startDate.setMonth(now.getMonth() - 11);
+    else if (viewType === 'anual') startDate.setFullYear(now.getFullYear() - 2);
+    startDate.setDate(1);
+    startDate.setHours(0, 0, 0, 0);
+
+    const leadsNoPeriodo = safeLeads.filter(l => new Date(l.createdAt) >= startDate);
+    const transacoesNoPeriodo = safeTransactions.filter(t => new Date(t.date || (t as any).created_at) >= startDate);
+
+    const vgvAtivo = leadsNoPeriodo.filter(l => l.status !== 'fechado' && l.status !== 'perdido').reduce((acc, l) => acc + (Number(l.value) || 0), 0);
+    const previsaoComissao = leadsNoPeriodo.filter(l => l.status !== 'fechado' && l.status !== 'perdido').reduce((acc, l) => acc + (Number(l.value) * (Number(l.commission_rate) || 0) / 100), 0);
+    const receitasFin = transacoesNoPeriodo.filter(t => t.type === 'receita').reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
+    const despesasFin = transacoesNoPeriodo.filter(t => t.type === 'despesa').reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
+    const comissoesFechadas = leadsNoPeriodo.filter(l => l.status === 'fechado').reduce((acc, l) => acc + (Number(l.value) * (Number(l.commission_rate) || 0) / 100), 0);
+    const lucroLiquido = (receitasFin + comissoesFechadas) - despesasFin;
+
+    return { vgvAtivo, previsaoComissao, lucroLiquido, totalLeads: leadsNoPeriodo.length, comissoesFechadas };
+  }, [safeLeads, safeTransactions, viewType]);
+
+  const chartData = useMemo(() => {
+    const data = [];
+    const now = new Date();
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const label = d.toLocaleString('pt-BR', { month: 'short' }).toUpperCase().replace('.', '');
+      const value = safeLeads.filter(l => {
+        const date = new Date(l.createdAt);
+        return date.getMonth() === d.getMonth() && date.getFullYear() === d.getFullYear();
+      }).reduce((sum, l) => sum + (Number(l.value) || 0), 0);
+      data.push({ name: label, vgv: value });
+    }
+    return data;
+  }, [safeLeads]);
+
+  const formatCurrency = (value: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(value || 0);
+
+  const cardClass = `p-6 rounded-[32px] border transition-all duration-300 ${darkMode ? 'bg-zinc-950 border-white/5 text-white' : 'bg-white border-zinc-200 shadow-sm hover:shadow-md'}`;
 
   return (
-    <div className="space-y-8 p-6 animate-fade-in pb-20 font-sans">
-      <div className="flex justify-between items-center">
+    <div className="space-y-8 animate-fade-in pb-20 font-sans p-6">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-black uppercase italic tracking-tighter">Dashboard</h1>
-          <p className="text-zinc-500 font-medium">Sua performance imobiliária hoje.</p>
+          <h1 className={`text-3xl font-black italic uppercase tracking-tighter ${darkMode ? 'text-white' : 'text-zinc-900'}`}>Dashboard</h1>
+          <p className="text-zinc-500 font-medium">Análise financeira integrada em tempo real.</p>
         </div>
-        <button onClick={() => navigate('/leads')} className="px-6 py-3 bg-[#0217ff] text-white rounded-2xl font-black hover:scale-105 transition-all shadow-lg shadow-[#0217ff]/20">
-          <Plus className="w-5 h-5 mr-1 inline" /> NOVO LEAD
+        <button onClick={() => navigate('/leads')} className="flex items-center gap-2 px-6 py-3 bg-[#0217ff] text-white rounded-2xl font-black hover:bg-[#0211bf] transition-all shadow-lg shadow-[#0217ff]/20">
+          <Plus className="w-5 h-5" /> Novo Lead
         </button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className={cardClass}>
-          <div className="w-10 h-10 rounded-xl bg-[#0217ff]/10 text-[#0217ff] flex items-center justify-center mb-4">
-            <Briefcase size={20} />
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        {[
+          { label: 'VGV Ativo', val: formatCurrency(dynamicMetrics.vgvAtivo), icon: Briefcase, color: 'text-[#0217ff]', bg: 'bg-[#0217ff]/10' },
+          { label: 'Previsão de Comissão', val: formatCurrency(dynamicMetrics.previsaoComissao), icon: DollarSign, color: 'text-green-600', bg: 'bg-green-500/10' },
+          { label: 'Lucro Líquido', val: formatCurrency(dynamicMetrics.lucroLiquido), icon: TrendingUp, color: 'text-purple-600', bg: 'bg-purple-500/10' },
+          { label: 'Total de Leads', val: dynamicMetrics.totalLeads, icon: Users, color: 'text-orange-600', bg: 'bg-orange-500/10' }
+        ].map((m, i) => (
+          <div key={i} className={cardClass}>
+            <div className={`w-12 h-12 rounded-2xl ${m.bg} ${m.color} flex items-center justify-center mb-4`}>
+              <m.icon className="w-6 h-6" />
+            </div>
+            <div className="text-zinc-400 text-[10px] font-black uppercase tracking-widest mb-1">{m.label}</div>
+            <div className="text-2xl font-black truncate">{m.val}</div>
           </div>
-          <div className="text-[10px] uppercase font-black text-zinc-500 tracking-widest">VGV Ativo</div>
-          <div className="text-2xl font-black">{formatCurrency(dynamicMetrics.vgvAtivo)}</div>
-        </div>
-        <div className={cardClass}>
-          <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center mb-4">
-            <Users size={20} />
-          </div>
-          <div className="text-[10px] uppercase font-black text-zinc-500 tracking-widest">Total Leads</div>
-          <div className="text-2xl font-black">{dynamicMetrics.totalLeads}</div>
-        </div>
-        <div className={cardClass}>
-          <div className="w-10 h-10 rounded-xl bg-purple-500/10 text-purple-500 flex items-center justify-center mb-4">
-            <TrendingUp size={20} />
-          </div>
-          <div className="text-[10px] uppercase font-black text-zinc-500 tracking-widest">Conversão</div>
-          <div className="text-2xl font-black">12.5%</div>
-        </div>
+        ))}
       </div>
 
-      <div className={cardClass}>
-        <h2 className="text-xl font-bold italic uppercase tracking-tighter mb-8">Volume de Negócios</h2>
-        
-        <div className="w-full" style={{ height: 350, minHeight: 350, overflow: 'hidden' }}>
-          {isMounted ? (
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="colorVgv" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#0217ff" stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor="#0217ff" stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} strokeOpacity={0.05} />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#888', fontSize: 10, fontWeight: 'bold'}} dy={10} />
-                <YAxis hide />
-                <Tooltip 
-                  contentStyle={{ borderRadius: '15px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}
-                  formatter={(v: any) => [formatCurrency(v), 'VGV']}
-                />
-                <Area type="monotone" dataKey="vgv" stroke="#0217ff" fill="url(#colorVgv)" strokeWidth={4} isAnimationActive={false} />
-              </AreaChart>
-            </ResponsiveContainer>
-          ) : (
-            <div className="h-full flex items-center justify-center text-zinc-500 uppercase text-[10px] font-black">Iniciando Gráficos...</div>
-          )}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="lg:col-span-2 space-y-6">
+          <div className={cardClass}>
+            <div className="flex justify-between items-center mb-8">
+              <h2 className="text-xl font-bold italic uppercase tracking-tighter">Volume de Negócios</h2>
+              <button onClick={() => setIsDropdownOpen(!isDropdownOpen)} className="flex items-center gap-2 px-4 py-2 rounded-xl border border-zinc-200 dark:border-white/10 text-[10px] font-black uppercase">
+                {options.find(o => o.value === viewType)?.label} <ChevronDown size={14} />
+              </button>
+            </div>
+            <div style={{ width: '100%', height: 350, minHeight: 350 }}>
+              {isMounted && (
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={chartData}>
+                    <defs>
+                      <linearGradient id="colorVgv" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#0217ff" stopOpacity={0.3}/>
+                        <stop offset="95%" stopColor="#0217ff" stopOpacity={0}/>
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} strokeOpacity={0.1} />
+                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#888', fontSize: 10}} dy={10} />
+                    <Tooltip contentStyle={{ borderRadius: '20px', border: 'none', backgroundColor: darkMode ? '#111' : '#fff' }} />
+                    <Area type="monotone" dataKey="vgv" stroke="#0217ff" fill="url(#colorVgv)" strokeWidth={4} isAnimationActive={false} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-6">
+          <div className={cardClass}>
+            <h2 className="text-xl font-bold italic uppercase mb-6">Agenda</h2>
+            {safeAppointments.slice(0, 3).map((app, i) => (
+              <div key={i} className="flex gap-4 p-4 rounded-2xl bg-zinc-50 dark:bg-white/5 mb-4">
+                <div className="text-center pr-4 border-r border-zinc-200 dark:border-white/10">
+                  <div className="text-[10px] font-black text-[#0217ff] uppercase">{new Date(app.date).toLocaleString('pt-BR', { month: 'short' })}</div>
+                  <div className="text-lg font-black">{new Date(app.date).getDate()}</div>
+                </div>
+                <div>
+                  <div className="font-bold text-sm">{app.title}</div>
+                  <div className="text-xs text-zinc-500 font-black uppercase">{app.time}</div>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </div>
