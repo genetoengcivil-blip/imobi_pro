@@ -12,12 +12,20 @@ const EVO_GLOBAL_KEY = "minha_chave_simples_123";
 const INSTANCE_NAME = "imobipro";
 
 export default function WhatsAppPage() {
-  // 1. Puxamos apenas o que REALMENTE existe no seu GlobalContext (Nada de WhatsApp aqui)
   const { user, leads, darkMode } = useGlobal() as any;
 
-  // 2. 🔥 ESTADOS LOCAIS (A página agora é auto-suficiente)
   const [isWhatsappConnected, setIsWhatsappConnected] = useState(false);
-  const [localMessages, setLocalMessages] = useState<any[]>([]);
+  
+  // 🔥 SALVAR E RECUPERAR MENSAGENS DO NAVEGADOR (Acabou a perda de histórico!)
+  const [localMessages, setLocalMessages] = useState<any[]>(() => {
+    const saved = localStorage.getItem('imobipro_whatsapp_msgs');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  // Atualiza o histórico no navegador sempre que há uma nova mensagem
+  useEffect(() => {
+    localStorage.setItem('imobipro_whatsapp_msgs', JSON.stringify(localMessages));
+  }, [localMessages]);
 
   const [selectedLead, setSelectedLead] = useState<any>(null);
   const [newMessage, setNewMessage] = useState('');
@@ -42,7 +50,6 @@ export default function WhatsAppPage() {
     msgReceivedBg: darkMode ? 'bg-zinc-900' : 'bg-white',
   };
 
-  // 3. Função local para adicionar mensagens à tela imediatamente
   const addLocalMessage = (leadId: string, content: string, direction: 'sent' | 'received') => {
     const newMsg = { id: Date.now().toString(), leadId, content, direction, timestamp: new Date().toISOString() };
     setLocalMessages(prev => [...prev, newMsg]);
@@ -57,11 +64,9 @@ export default function WhatsAppPage() {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [selectedLead, activeMessages]);
 
-  // ✅ VERIFICAR STATUS DA INSTÂNCIA AO CARREGAR
   useEffect(() => {
     const checkInstance = async () => {
       try {
-        console.log('A verificar status da API na Oracle...');
         const res = await fetch(`${EVO_URL}/instance/connectionState/${INSTANCE_NAME}`, {
           method: 'GET',
           headers: { 'apikey': EVO_GLOBAL_KEY }
@@ -70,15 +75,13 @@ export default function WhatsAppPage() {
         if (res.ok) {
           const data = await res.json();
           if (data.instance?.state === 'open' || data.instance?.status === 'open' || data.state === 'open') {
-            console.log('✅ Instância conectada confirmada! Mudando tela...');
             setIsWhatsappConnected(true);
           } else {
-            console.log('A instância não está conectada ao telemóvel.');
             setIsWhatsappConnected(false);
           }
         }
       } catch (error) {
-        console.error('Aguardando servidor proxy...');
+        // Silencioso
       } finally {
         setInitialCheckDone(true);
       }
@@ -87,7 +90,6 @@ export default function WhatsAppPage() {
     checkInstance();
   }, []);
 
-  // ✅ MONITORAR CONEXÃO DO QR CODE
   const startConnectionWatcher = () => {
     const interval = setInterval(async () => {
       try {
@@ -99,7 +101,6 @@ export default function WhatsAppPage() {
         if (res.ok) {
           const data = await res.json();
           if (data.instance?.state === 'open' || data.instance?.status === 'open' || data.state === 'open') {
-            console.log('✅ WhatsApp ligado com sucesso!');
             clearInterval(interval);
             setIsWhatsappConnected(true);
             setConnectionStatus('disconnected');
@@ -107,11 +108,9 @@ export default function WhatsAppPage() {
         }
       } catch (e) {}
     }, 3000);
-    
     setTimeout(() => clearInterval(interval), 120000);
   };
 
-  // ✅ GERAR QR CODE (Sem loop infinito)
   const handleGenerateQR = async () => {
     setConnectionStatus('generating');
     setErrorMessage(null);
@@ -119,7 +118,6 @@ export default function WhatsAppPage() {
     setIsLoading(true);
 
     try {
-      console.log('Tentando conectar...');
       const connectRes = await fetch(`${EVO_URL}/instance/connect/${INSTANCE_NAME}`, {
         method: 'GET',
         headers: { 'apikey': EVO_GLOBAL_KEY }
@@ -128,18 +126,15 @@ export default function WhatsAppPage() {
       let connectData = null;
       if (connectRes.ok) connectData = await connectRes.json();
 
-      // 1. JÁ ESTÁ CONECTADO
       if (connectData && (connectData.status === 'open' || connectData.instance?.status === 'open' || connectData.instance?.state === 'open')) {
         setIsWhatsappConnected(true);
         setConnectionStatus('disconnected');
       } 
-      // 2. TEM QR CODE PRONTO
       else if (connectData && connectData.base64) {
         setQrCodeBase64(connectData.base64);
         setConnectionStatus('waiting_scan');
         startConnectionWatcher();
       } 
-      // 3. PRECISA CRIAR A INSTÂNCIA DO ZERO
       else if (connectRes.status === 404 || !connectRes.ok) {
         const createRes = await fetch(`${EVO_URL}/instance/create`, {
           method: 'POST',
@@ -147,10 +142,7 @@ export default function WhatsAppPage() {
             'Content-Type': 'application/json',
             'apikey': EVO_GLOBAL_KEY
           },
-          body: JSON.stringify({
-            instanceName: INSTANCE_NAME,
-            qrcode: true
-          })
+          body: JSON.stringify({ instanceName: INSTANCE_NAME, qrcode: true })
         });
 
         if (!createRes.ok) {
@@ -169,7 +161,6 @@ export default function WhatsAppPage() {
           throw new Error("Erro: A API não devolveu o QR Code.");
         }
       }
-      
     } catch (error: any) {
       setErrorMessage(error.message || "Erro desconhecido de proxy.");
       setConnectionStatus('disconnected');
@@ -188,9 +179,7 @@ export default function WhatsAppPage() {
         setIsWhatsappConnected(false);
         setConnectionStatus('disconnected');
         setQrCodeBase64(null);
-      } catch (e) {
-        console.error('Erro ao desconectar:', e);
-      }
+      } catch (e) {}
     }
   };
 
@@ -201,12 +190,14 @@ export default function WhatsAppPage() {
     const messageText = newMessage;
     setNewMessage('');
     
-    // Adiciona visualmente na tela de imediato
+    // Mostra imediatamente na sua tela
     addLocalMessage(selectedLead.id, messageText, 'sent');
 
     try {
       const cleanPhone = selectedLead.phone.replace(/\D/g, '');
-      await fetch(`${EVO_URL}/message/sendText/${INSTANCE_NAME}`, {
+      
+      // 🔥 FORMATO CORRIGIDO PARA A EVOLUTION API v1.8.0
+      const res = await fetch(`${EVO_URL}/message/sendText/${INSTANCE_NAME}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -214,14 +205,20 @@ export default function WhatsAppPage() {
         },
         body: JSON.stringify({
           number: `55${cleanPhone}`,
-          text: messageText,
-          delay: 1200
+          options: { delay: 1200, presence: 'composing' },
+          textMessage: { text: messageText }
         })
       });
-    } catch (error) {}
+
+      if (!res.ok) {
+        const err = await res.text();
+        console.error("Falha ao enviar pelo WhatsApp:", err);
+      }
+    } catch (error) {
+      console.error("Erro na comunicação com a API:", error);
+    }
   };
 
-  // ✅ ECRÃ DE LOADING
   if (!initialCheckDone) {
     return (
       <div className={`min-h-[calc(100vh-80px)] flex flex-col items-center justify-center ${theme.bgApp}`}>
@@ -231,7 +228,6 @@ export default function WhatsAppPage() {
     );
   }
 
-  // ✅ SE ESTIVER CONECTADO, MOSTRA O CHAT
   if (isWhatsappConnected) {
     return (
       <div className={`h-[calc(100vh-80px)] flex animate-fade-in font-sans ${theme.textMain}`}>
@@ -239,19 +235,11 @@ export default function WhatsAppPage() {
           <div className={`p-6 border-b ${theme.border}`}>
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-xl font-black italic tracking-tighter uppercase">Conversas</h2>
-              <button 
-                onClick={handleDisconnect} 
-                title="Desconectar WhatsApp" 
-                className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse cursor-pointer hover:scale-150 transition-all"
-              />
+              <button onClick={handleDisconnect} title="Desconectar WhatsApp" className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse cursor-pointer hover:scale-150 transition-all" />
             </div>
             <div className="relative">
               <Search className={`absolute left-4 top-1/2 -translate-y-1/2 ${theme.textMuted}`} size={16} />
-              <input 
-                type="text" 
-                placeholder="Procurar lead..." 
-                className={`w-full ${theme.inputBg} border ${theme.border} rounded-xl py-3 pl-10 pr-4 text-sm focus:outline-none focus:border-emerald-500 transition-colors ${theme.textMain}`} 
-              />
+              <input type="text" placeholder="Procurar lead..." className={`w-full ${theme.inputBg} border ${theme.border} rounded-xl py-3 pl-10 pr-4 text-sm focus:outline-none focus:border-emerald-500 transition-colors ${theme.textMain}`} />
             </div>
           </div>
 
@@ -264,9 +252,7 @@ export default function WhatsAppPage() {
                   key={lead.id} 
                   onClick={() => setSelectedLead(lead)} 
                   className={`w-full p-4 border-b ${theme.border} flex items-start gap-4 transition-colors ${
-                    selectedLead?.id === lead.id 
-                      ? (darkMode ? 'bg-zinc-900' : 'bg-zinc-100') 
-                      : darkMode ? 'hover:bg-zinc-900/50' : 'hover:bg-zinc-100'
+                    selectedLead?.id === lead.id ? (darkMode ? 'bg-zinc-900' : 'bg-zinc-100') : darkMode ? 'hover:bg-zinc-900/50' : 'hover:bg-zinc-100'
                   }`}
                 >
                   <div className="w-12 h-12 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center font-black text-lg">
@@ -274,9 +260,7 @@ export default function WhatsAppPage() {
                   </div>
                   <div className="flex-1 text-left overflow-hidden">
                     <span className={`font-bold text-sm ${theme.textMain} truncate block`}>{lead.name}</span>
-                    <p className={`text-xs ${theme.textMuted} truncate`}>
-                      {lastMsg ? lastMsg.content : 'Iniciar conversa...'}
-                    </p>
+                    <p className={`text-xs ${theme.textMuted} truncate`}>{lastMsg ? lastMsg.content : 'Iniciar conversa...'}</p>
                   </div>
                 </button>
               );
@@ -288,20 +272,13 @@ export default function WhatsAppPage() {
           <div className={`flex-1 flex flex-col ${theme.bgApp}`}>
             <div className={`h-20 border-b ${theme.border} ${theme.bgCard} flex items-center justify-between px-6`}>
               <div className="flex items-center gap-4">
-                <button 
-                  onClick={() => setSelectedLead(null)} 
-                  className={`lg:hidden p-2 -ml-2 ${theme.textMuted}`}
-                >
-                  <ChevronLeft size={24} />
-                </button>
+                <button onClick={() => setSelectedLead(null)} className={`lg:hidden p-2 -ml-2 ${theme.textMuted}`}><ChevronLeft size={24} /></button>
                 <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center font-black">
                   {selectedLead.name?.charAt(0).toUpperCase()}
                 </div>
                 <div>
                   <h3 className={`font-bold ${theme.textMain}`}>{selectedLead.name}</h3>
-                  <p className={`text-[10px] font-black ${theme.textMuted} uppercase tracking-widest`}>
-                    {selectedLead.phone || 'Sem número'}
-                  </p>
+                  <p className={`text-[10px] font-black ${theme.textMuted} uppercase tracking-widest`}>{selectedLead.phone || 'Sem número'}</p>
                 </div>
               </div>
             </div>
@@ -311,11 +288,7 @@ export default function WhatsAppPage() {
                 const isSent = msg.direction === 'sent';
                 return (
                   <div key={msg.id} className={`flex flex-col ${isSent ? 'items-end' : 'items-start'}`}>
-                    <div className={`max-w-[70%] p-4 ${
-                      isSent 
-                        ? `${theme.msgSentBg} text-white rounded-2xl rounded-tr-sm shadow-lg` 
-                        : `${theme.msgReceivedBg} border ${theme.border} ${theme.textMain} rounded-2xl rounded-tl-sm shadow-sm`
-                    }`}>
+                    <div className={`max-w-[70%] p-4 ${isSent ? `${theme.msgSentBg} text-white rounded-2xl rounded-tr-sm shadow-lg` : `${theme.msgReceivedBg} border ${theme.border} ${theme.textMain} rounded-2xl rounded-tl-sm shadow-sm`}`}>
                       <p className="text-sm font-medium">{msg.content}</p>
                     </div>
                   </div>
@@ -333,11 +306,7 @@ export default function WhatsAppPage() {
                   value={newMessage} 
                   onChange={e => setNewMessage(e.target.value)}
                 />
-                <button 
-                  type="submit" 
-                  disabled={!newMessage.trim()} 
-                  className="p-4 bg-[#0217ff] text-white rounded-2xl disabled:opacity-50 hover:scale-105 transition-all shadow-lg shadow-[#0217ff]/20"
-                >
+                <button type="submit" disabled={!newMessage.trim()} className="p-4 bg-[#0217ff] text-white rounded-2xl disabled:opacity-50 hover:scale-105 transition-all shadow-lg shadow-[#0217ff]/20">
                   <Send size={20} className="ml-1" />
                 </button>
               </form>
@@ -356,7 +325,6 @@ export default function WhatsAppPage() {
     );
   }
 
-  // ✅ SE NÃO ESTIVER CONECTADO, MOSTRA O ECRÃ PARA LER O QR CODE
   return (
     <div className={`p-8 pb-32 min-h-[calc(100vh-80px)] flex flex-col items-center justify-center animate-fade-in font-sans ${theme.textMain}`}>
       <div className={`w-full max-w-4xl flex flex-col md:flex-row items-center gap-12 ${theme.bgCard} p-12 rounded-[48px] border ${theme.border} shadow-2xl`}>
@@ -369,11 +337,7 @@ export default function WhatsAppPage() {
             <p className={`${theme.textMuted} font-medium text-lg leading-relaxed`}>
               Sincronize o seu WhatsApp com o CRM. Leia o QR Code e centralize o seu atendimento de forma automática.
             </p>
-            {errorMessage && (
-              <div className="mt-4 p-4 bg-red-500/10 text-red-500 rounded-2xl text-xs font-mono">
-                {errorMessage}
-              </div>
-            )}
+            {errorMessage && <div className="mt-4 p-4 bg-red-500/10 text-red-500 rounded-2xl text-xs font-mono">{errorMessage}</div>}
           </div>
         </div>
 
@@ -381,11 +345,7 @@ export default function WhatsAppPage() {
           {connectionStatus === 'disconnected' && (
             <div className="text-center space-y-6">
               <QrCode size={64} className={`${theme.textMuted} mx-auto opacity-50`} />
-              <button 
-                onClick={handleGenerateQR} 
-                disabled={isLoading}
-                className="px-8 py-4 bg-emerald-500 text-white rounded-2xl font-black text-xs hover:scale-105 transition-all disabled:opacity-50"
-              >
+              <button onClick={handleGenerateQR} disabled={isLoading} className="px-8 py-4 bg-emerald-500 text-white rounded-2xl font-black text-xs hover:scale-105 transition-all disabled:opacity-50">
                 {isLoading ? 'Conectando...' : 'Gerar QR Code'}
               </button>
             </div>
