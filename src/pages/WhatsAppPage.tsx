@@ -8,9 +8,8 @@ const EVO_GLOBAL_KEY = "minha_chave_simples_123";
 const INSTANCE_NAME = "imobipro";
 
 export default function WhatsAppPage() {
-  const { user, darkMode } = useGlobal() as any;
+  const { darkMode } = useGlobal() as any;
   
-  // Estados básicos
   const [isConnected, setIsConnected] = useState(false);
   const [qrCode, setQrCode] = useState('');
   const [loading, setLoading] = useState(false);
@@ -26,463 +25,223 @@ export default function WhatsAppPage() {
 
   // ✅ DETECTAR MOBILE
   useEffect(() => {
-    const checkMobile = () => {
-      setIsMobile(window.innerWidth < 768);
-    };
+    const checkMobile = () => setIsMobile(window.innerWidth < 768);
     checkMobile();
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
-  // ✅ CARREGAR LEADS
+  // ✅ CARREGAR LEADS INICIAL
   useEffect(() => {
+    const loadLeads = async () => {
+      const { data } = await supabase
+        .from('leads')
+        .select('*')
+        .order('name', { ascending: true });
+      if (data) setLeads(data);
+    };
     loadLeads();
+    checkConnection();
   }, []);
 
-  const loadLeads = async () => {
-    const { data } = await supabase
-      .from('leads')
-      .select('*')
-      .order('created_at', { ascending: false });
-    
-    if (data) setLeads(data);
-  };
-
-  // ✅ CARREGAR MENSAGENS QUANDO SELECIONAR LEAD
+  // ✅ GERENCIAR MENSAGENS (Histórico + Realtime)
   useEffect(() => {
-    if (selectedLead) {
-      loadMessages(selectedLead.id);
+    if (!selectedLead) {
+      setMessages([]);
+      return;
     }
-  }, [selectedLead]);
 
-  const loadMessages = async (leadId: string) => {
-    const { data } = await supabase
-      .from('whatsapp_messages')
-      .select('*')
-      .eq('lead_id', leadId)
-      .order('created_at', { ascending: true });
-    
-    if (data) setMessages(data);
-  };
+    // 1. Carregar Histórico
+    const loadMessages = async () => {
+      const { data } = await supabase
+        .from('whatsapp_messages')
+        .select('*')
+        .eq('lead_id', selectedLead.id)
+        .order('created_at', { ascending: true });
+      if (data) setMessages(data);
+    };
+    loadMessages();
 
-  // ✅ RECEBER MENSAGENS EM TEMPO REAL
-  useEffect(() => {
-    const subscription = supabase
-      .channel('whatsapp_messages')
+    // 2. Ouvir novas mensagens via Realtime
+    const channel = supabase
+      .channel(`chat_${selectedLead.id}`)
       .on('postgres_changes', 
-        { event: 'INSERT', schema: 'public', table: 'whatsapp_messages' },
+        { 
+          event: 'INSERT', 
+          schema: 'public', 
+          table: 'whatsapp_messages',
+          filter: `lead_id=eq.${selectedLead.id}` 
+        },
         (payload) => {
-          // Só adiciona se for do lead selecionado
-          if (selectedLead && payload.new.lead_id === selectedLead.id) {
-            setMessages(prev => [...prev, payload.new]);
-          }
+          setMessages(prev => {
+            if (prev.some(m => m.id === payload.new.id)) return prev;
+            return [...prev, payload.new];
+          });
         }
       )
       .subscribe();
 
-    return () => {
-      subscription.unsubscribe();
-    };
+    return () => { supabase.removeChannel(channel); };
   }, [selectedLead]);
 
-  // ✅ SCROLL PARA ÚLTIMA MENSAGEM
+  // ✅ AUTO-SCROLL
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // ✅ VERIFICAR CONEXÃO WHATSAPP
-  useEffect(() => {
-    checkConnection();
-  }, []);
-
+  // ✅ VERIFICAR CONEXÃO
   const checkConnection = async () => {
     try {
       const res = await fetch(`${EVO_URL}/instance/connectionState/${INSTANCE_NAME}`, {
         headers: { 'apikey': EVO_GLOBAL_KEY }
       });
-      
       if (res.ok) {
         const data = await res.json();
-        if (data.instance?.state === 'open') {
-          setIsConnected(true);
-        }
+        if (data.instance?.state === 'open' || data.state === 'open') setIsConnected(true);
       }
-    } catch (err) {
-      console.log('Verificando conexão...');
-    }
+    } catch (err) { console.log('Buscando conexão...'); }
   };
 
   // ✅ GERAR QR CODE
   const handleGenerateQR = async () => {
     setLoading(true);
     setError('');
-    
     try {
-      // Tenta conectar
       const res = await fetch(`${EVO_URL}/instance/connect/${INSTANCE_NAME}`, {
         headers: { 'apikey': EVO_GLOBAL_KEY }
       });
-      
-      if (res.ok) {
-        const data = await res.json();
-        
-        if (data.base64) {
-          setQrCode(data.base64);
-          startWatching();
-        } else if (data.status === 'open') {
-          setIsConnected(true);
-        }
-      } else {
-        // Cria nova instância
-        const createRes = await fetch(`${EVO_URL}/instance/create`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'apikey': EVO_GLOBAL_KEY
-          },
-          body: JSON.stringify({ instanceName: INSTANCE_NAME, qrcode: true })
-        });
-        
-        if (createRes.ok) {
-          const createData = await createRes.json();
-          if (createData.qrcode?.base64) {
-            setQrCode(createData.qrcode.base64);
-            startWatching();
-          }
-        }
+      const data = await res.json();
+      if (data.base64) {
+        setQrCode(data.base64);
+        startWatching();
+      } else if (data.status === 'open' || data.instance?.state === 'open') {
+        setIsConnected(true);
       }
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
+    } catch (err: any) { setError('Falha ao gerar QR Code. Verifique a Oracle.'); }
+    finally { setLoading(false); }
   };
 
-  // ✅ MONITORAR CONEXÃO
   const startWatching = () => {
     const interval = setInterval(async () => {
-      try {
-        const res = await fetch(`${EVO_URL}/instance/connectionState/${INSTANCE_NAME}`, {
-          headers: { 'apikey': EVO_GLOBAL_KEY }
-        });
-        
-        if (res.ok) {
-          const data = await res.json();
-          if (data.instance?.state === 'open') {
-            clearInterval(interval);
-            setIsConnected(true);
-          }
-        }
-      } catch (e) {}
+      const res = await fetch(`${EVO_URL}/instance/connectionState/${INSTANCE_NAME}`, {
+        headers: { 'apikey': EVO_GLOBAL_KEY }
+      });
+      const data = await res.json();
+      if (data.instance?.state === 'open' || data.state === 'open') {
+        clearInterval(interval);
+        setIsConnected(true);
+      }
     }, 3000);
   };
 
-  // ✅ DESCONECTAR
   const handleDisconnect = async () => {
-    if (window.confirm('Desconectar WhatsApp?')) {
-      await fetch(`${EVO_URL}/instance/logout/${INSTANCE_NAME}`, {
-        method: 'DELETE',
-        headers: { 'apikey': EVO_GLOBAL_KEY }
-      });
-      setIsConnected(false);
-      setQrCode('');
-    }
+    if (!window.confirm('Desconectar WhatsApp?')) return;
+    await fetch(`${EVO_URL}/instance/logout/${INSTANCE_NAME}`, {
+      method: 'DELETE', headers: { 'apikey': EVO_GLOBAL_KEY }
+    });
+    setIsConnected(false);
+    setQrCode('');
   };
 
-  // ✅ ENVIAR MENSAGEM
+  // ✅ ENVIAR MENSAGEM (O Webhook se encarrega de salvar no banco)
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newMessage.trim() || !selectedLead) return;
 
-    const messageText = newMessage;
+    const content = newMessage;
+    const phone = selectedLead.phone.replace(/\D/g, '');
+    const finalNumber = phone.startsWith('55') ? phone : `55${phone}`;
     setNewMessage('');
 
     try {
-      // 1. Salva no Supabase
-      const { data: savedMsg, error: saveError } = await supabase
-        .from('whatsapp_messages')
-        .insert({
-          lead_id: selectedLead.id,
-          content: messageText,
-          direction: 'sent',
-          created_at: new Date().toISOString()
-        })
-        .select()
-        .single();
-
-      if (saveError) {
-        console.error('Erro ao salvar:', saveError);
-        return;
-      }
-
-      // 2. Adiciona à lista local
-      if (savedMsg) {
-        setMessages(prev => [...prev, savedMsg]);
-      }
-
-      // 3. Envia via Evolution API
-      const cleanPhone = selectedLead.phone.replace(/\D/g, '');
-      const finalNumber = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
-
-      const sendRes = await fetch(`${EVO_URL}/message/sendText/${INSTANCE_NAME}`, {
+      // Enviamos para a API. O Webhook salvará no banco e o Realtime mostrará na tela.
+      await fetch(`${EVO_URL}/message/sendText/${INSTANCE_NAME}`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': EVO_GLOBAL_KEY
-        },
+        headers: { 'Content-Type': 'application/json', 'apikey': EVO_GLOBAL_KEY },
         body: JSON.stringify({
           number: finalNumber,
-          text: messageText,
-          delay: 1200
+          textMessage: { text: content }
         })
       });
-
-      if (!sendRes.ok) {
-        console.error('Erro ao enviar para WhatsApp');
-      }
-
-    } catch (error) {
-      console.error('Erro ao enviar:', error);
-    }
+    } catch (error) { console.error('Erro de rede ao enviar'); }
   };
 
-  // ✅ CORES
+  // ✅ CORES DO TEMA
   const theme = {
-    bgApp: darkMode ? '#111' : '#f5f5f5',
-    bgCard: darkMode ? '#000' : '#fff',
-    border: darkMode ? '#333' : '#e5e5e5',
-    text: darkMode ? '#fff' : '#000',
-    textMuted: darkMode ? '#666' : '#999',
-    inputBg: darkMode ? '#222' : '#fff',
-    msgSent: '#10b981',
-    msgReceived: darkMode ? '#222' : '#f0f0f0'
+    bgApp: darkMode ? '#0a0a0a' : '#f0f2f5',
+    bgCard: darkMode ? '#1a1a1a' : '#fff',
+    border: darkMode ? '#2d2d2d' : '#e0e0e0',
+    text: darkMode ? '#e1e1e1' : '#111',
+    textMuted: darkMode ? '#888' : '#666',
+    inputBg: darkMode ? '#262626' : '#fff',
+    msgSent: '#005c4b',
+    msgReceived: darkMode ? '#262626' : '#fff'
   };
 
-  // ✅ TELA DE CONEXÃO
   if (!isConnected) {
     return (
-      <div style={{
-        minHeight: '100vh',
-        background: theme.bgApp,
-        color: theme.text,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: 20
-      }}>
-        <div style={{
-          maxWidth: 400,
-          width: '100%',
-          background: theme.bgCard,
-          borderRadius: 16,
-          padding: 32,
-          border: `1px solid ${theme.border}`
-        }}>
-          <h1 style={{ fontSize: 24, fontWeight: 'bold', marginBottom: 8, textAlign: 'center' }}>
-            Conectar WhatsApp
-          </h1>
-          <p style={{ color: theme.textMuted, marginBottom: 24, textAlign: 'center' }}>
-            Escaneie o QR Code com seu WhatsApp
-          </p>
-
-          <div style={{
-            aspectRatio: '1/1',
-            border: `2px dashed ${theme.border}`,
-            borderRadius: 12,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            marginBottom: 20,
-            background: qrCode ? 'white' : 'transparent'
-          }}>
-            {qrCode ? (
-              <img 
-                src={qrCode} 
-                alt="QR Code" 
-                style={{ width: '80%', height: '80%', objectFit: 'contain' }}
-              />
-            ) : (
-              <button
-                onClick={handleGenerateQR}
-                disabled={loading}
-                style={{
-                  padding: '12px 24px',
-                  background: '#10b981',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: 8,
-                  fontSize: 16,
-                  cursor: 'pointer',
-                  opacity: loading ? 0.5 : 1
-                }}
-              >
-                {loading ? 'Gerando...' : 'Gerar QR Code'}
+      <div style={{ minHeight: '100vh', background: theme.bgApp, color: theme.text, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+        <div style={{ maxWidth: 400, width: '100%', background: theme.bgCard, borderRadius: 24, padding: 40, border: `1px solid ${theme.border}`, textAlign: 'center', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)' }}>
+          <h1 style={{ fontSize: 24, fontWeight: 900, marginBottom: 12, letterSpacing: '-0.025em' }}>Conectar WhatsApp</h1>
+          <p style={{ color: theme.textMuted, marginBottom: 32, fontSize: 14 }}>Escaneie o código para sincronizar o ImobiPro</p>
+          <div style={{ aspectRatio: '1/1', border: `2px dashed ${theme.border}`, borderRadius: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 24, background: qrCode ? 'white' : 'transparent', overflow: 'hidden' }}>
+            {qrCode ? <img src={qrCode} alt="QR Code" style={{ width: '90%', height: '90%' }} /> : (
+              <button onClick={handleGenerateQR} disabled={loading} style={{ padding: '14px 28px', background: '#10b981', color: 'white', border: 'none', borderRadius: 12, fontWeight: 'bold', cursor: 'pointer', opacity: loading ? 0.5 : 1 }}>
+                {loading ? 'GERANDO...' : 'GERAR QR CODE'}
               </button>
             )}
           </div>
-
-          {error && (
-            <div style={{
-              padding: 12,
-              background: '#ef4444',
-              color: 'white',
-              borderRadius: 8,
-              fontSize: 14
-            }}>
-              {error}
-            </div>
-          )}
+          {error && <p style={{ color: '#ef4444', fontSize: 12 }}>{error}</p>}
         </div>
       </div>
     );
   }
 
-  // ✅ TELA DO CHAT
   return (
-    <div style={{
-      height: '100vh',
-      display: 'flex',
-      background: theme.bgApp,
-      color: theme.text
-    }}>
-      {/* Sidebar - versão mobile/desktop */}
+    <div style={{ height: '100vh', display: 'flex', background: theme.bgApp, color: theme.text, fontFamily: 'sans-serif' }}>
+      {/* Sidebar */}
       <div style={{
-        width: isMobile ? (sidebarOpen ? '100%' : '0') : 300,
+        width: isMobile ? (sidebarOpen ? '100%' : '0') : 350,
         position: isMobile ? 'fixed' : 'relative',
-        left: 0,
-        top: 0,
-        height: '100%',
-        background: theme.bgCard,
-        borderRight: `1px solid ${theme.border}`,
-        transition: 'width 0.3s',
-        overflow: 'hidden',
-        zIndex: 50
+        left: 0, top: 0, height: '100%',
+        background: theme.bgCard, borderRight: `1px solid ${theme.border}`,
+        transition: '0.3s', overflow: 'hidden', zIndex: 100
       }}>
-        <div style={{
-          padding: 16,
-          borderBottom: `1px solid ${theme.border}`,
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center'
-        }}>
-          <h2 style={{ fontSize: 18, fontWeight: 'bold' }}>Conversas</h2>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button
-              onClick={handleDisconnect}
-              style={{
-                padding: '6px 12px',
-                background: '#ef4444',
-                color: 'white',
-                border: 'none',
-                borderRadius: 6,
-                fontSize: 12,
-                cursor: 'pointer'
-              }}
-            >
-              Sair
-            </button>
-            {isMobile && (
-              <button
-                onClick={() => setSidebarOpen(false)}
-                style={{
-                  padding: '6px 12px',
-                  background: theme.border,
-                  color: theme.text,
-                  border: 'none',
-                  borderRadius: 6,
-                  cursor: 'pointer'
-                }}
-              >
-                X
-              </button>
-            )}
-          </div>
+        <div style={{ padding: '24px', borderBottom: `1px solid ${theme.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h2 style={{ fontSize: 20, fontWeight: 900, textTransform: 'uppercase', fontStyle: 'italic' }}>Conversas</h2>
+          <button onClick={handleDisconnect} style={{ padding: '8px 16px', background: '#ef444415', color: '#ef4444', border: 'none', borderRadius: 8, fontSize: 11, fontWeight: 'bold', cursor: 'pointer' }}>SAIR</button>
         </div>
-
-        <div style={{ overflowY: 'auto', height: 'calc(100% - 70px)' }}>
+        <div style={{ overflowY: 'auto', height: 'calc(100% - 80px)' }}>
           {leads.map(lead => (
-            <button
-              key={lead.id}
-              onClick={() => {
-                setSelectedLead(lead);
-                if (isMobile) setSidebarOpen(false);
-              }}
-              style={{
-                width: '100%',
-                padding: 12,
-                border: 'none',
-                borderBottom: `1px solid ${theme.border}`,
-                background: selectedLead?.id === lead.id ? (darkMode ? '#222' : '#e5e5e5') : 'transparent',
-                color: theme.text,
-                textAlign: 'left',
-                cursor: 'pointer'
-              }}
-            >
-              <div style={{ fontWeight: 'bold' }}>{lead.name}</div>
-              <div style={{ fontSize: 12, color: theme.textMuted }}>{lead.phone}</div>
+            <button key={lead.id} onClick={() => { setSelectedLead(lead); if (isMobile) setSidebarOpen(false); }} style={{ width: '100%', padding: '20px 24px', border: 'none', borderBottom: `1px solid ${theme.border}`, background: selectedLead?.id === lead.id ? '#10b98110' : 'transparent', color: theme.text, textAlign: 'left', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <span style={{ fontWeight: 'bold', fontSize: 14 }}>{lead.name}</span>
+              <span style={{ fontSize: 11, color: theme.textMuted }}>{lead.phone}</span>
             </button>
           ))}
         </div>
       </div>
 
-      {/* Main Content */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+      {/* Chat */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', position: 'relative' }}>
         {selectedLead ? (
           <>
-            {/* Header */}
-            <div style={{
-              padding: 16,
-              borderBottom: `1px solid ${theme.border}`,
-              background: theme.bgCard,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 12
-            }}>
-              {isMobile && (
-                <button
-                  onClick={() => setSidebarOpen(true)}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    color: theme.text,
-                    cursor: 'pointer',
-                    fontSize: 20
-                  }}
-                >
-                  ☰
-                </button>
-              )}
+            <div style={{ padding: '16px 24px', borderBottom: `1px solid ${theme.border}`, background: theme.bgCard, display: 'flex', alignItems: 'center', gap: 16 }}>
+              {isMobile && <button onClick={() => setSidebarOpen(true)} style={{ background: 'none', border: 'none', color: theme.text, fontSize: 24 }}>☰</button>}
               <div>
-                <h3 style={{ fontSize: 18, fontWeight: 'bold' }}>{selectedLead.name}</h3>
-                <p style={{ fontSize: 12, color: theme.textMuted }}>{selectedLead.phone}</p>
+                <h3 style={{ fontSize: 16, fontWeight: 'bold' }}>{selectedLead.name}</h3>
+                <p style={{ fontSize: 10, color: theme.textMuted, textTransform: 'uppercase', fontWeight: 'bold', letterSpacing: 1 }}>{selectedLead.phone}</p>
               </div>
             </div>
 
-            {/* Messages */}
-            <div style={{
-              flex: 1,
-              overflowY: 'auto',
-              padding: 16,
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 8
-            }}>
+            <div style={{ flex: 1, overflowY: 'auto', padding: '24px', display: 'flex', flexDirection: 'column', gap: 12 }}>
               {messages.map(msg => (
-                <div
-                  key={msg.id}
-                  style={{
-                    display: 'flex',
-                    justifyContent: msg.direction === 'sent' ? 'flex-end' : 'flex-start'
-                  }}
-                >
+                <div key={msg.id} style={{ display: 'flex', justifyContent: msg.direction === 'sent' ? 'flex-end' : 'flex-start' }}>
                   <div style={{
-                    maxWidth: '70%',
-                    padding: '8px 12px',
+                    maxWidth: '75%', padding: '12px 16px',
                     background: msg.direction === 'sent' ? theme.msgSent : theme.msgReceived,
                     color: msg.direction === 'sent' ? 'white' : theme.text,
-                    borderRadius: 12,
-                    border: msg.direction === 'sent' ? 'none' : `1px solid ${theme.border}`,
-                    wordBreak: 'break-word'
+                    borderRadius: msg.direction === 'sent' ? '16px 16px 2px 16px' : '16px 16px 16px 2px',
+                    fontSize: 14, boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
                   }}>
                     {msg.content}
                   </div>
@@ -491,74 +250,18 @@ export default function WhatsAppPage() {
               <div ref={messagesEndRef} />
             </div>
 
-            {/* Input */}
-            <div style={{
-              padding: 16,
-              borderTop: `1px solid ${theme.border}`,
-              background: theme.bgCard
-            }}>
-              <form onSubmit={handleSendMessage} style={{ display: 'flex', gap: 8 }}>
-                <input
-                  type="text"
-                  value={newMessage}
-                  onChange={(e) => setNewMessage(e.target.value)}
-                  placeholder="Digite sua mensagem..."
-                  style={{
-                    flex: 1,
-                    padding: '10px 12px',
-                    border: `1px solid ${theme.border}`,
-                    borderRadius: 8,
-                    background: theme.inputBg,
-                    color: theme.text,
-                    outline: 'none'
-                  }}
-                />
-                <button
-                  type="submit"
-                  disabled={!newMessage.trim()}
-                  style={{
-                    padding: '10px 20px',
-                    background: '#10b981',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: 8,
-                    cursor: 'pointer',
-                    opacity: !newMessage.trim() ? 0.5 : 1
-                  }}
-                >
-                  Enviar
-                </button>
+            <div style={{ padding: '20px', background: theme.bgCard, borderTop: `1px solid ${theme.border}` }}>
+              <form onSubmit={handleSendMessage} style={{ display: 'flex', gap: 12 }}>
+                <input type="text" value={newMessage} onChange={(e) => setNewMessage(e.target.value)} placeholder="Digite uma mensagem..." style={{ flex: 1, padding: '14px 20px', border: `1px solid ${theme.border}`, borderRadius: 14, background: theme.inputBg, color: theme.text, outline: 'none', fontSize: 14 }} />
+                <button type="submit" disabled={!newMessage.trim()} style={{ padding: '0 24px', background: '#0217ff', color: 'white', border: 'none', borderRadius: 14, fontWeight: 'bold', cursor: 'pointer', opacity: !newMessage.trim() ? 0.5 : 1 }}>ENVIAR</button>
               </form>
             </div>
           </>
         ) : (
-          <div style={{
-            flex: 1,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: theme.textMuted,
-            padding: 20,
-            textAlign: 'center'
-          }}>
-            {isMobile && (
-              <button
-                onClick={() => setSidebarOpen(true)}
-                style={{
-                  position: 'absolute',
-                  top: 16,
-                  left: 16,
-                  background: 'none',
-                  border: 'none',
-                  color: theme.text,
-                  cursor: 'pointer',
-                  fontSize: 20
-                }}
-              >
-                ☰
-              </button>
-            )}
-            <p>Selecione uma conversa para começar</p>
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: theme.textMuted, gap: 16 }}>
+            {isMobile && <button onClick={() => setSidebarOpen(true)} style={{ position: 'absolute', top: 20, left: 20, background: 'none', border: 'none', color: theme.text, fontSize: 24 }}>☰</button>}
+            <MessageSquare size={48} style={{ opacity: 0.2 }} />
+            <p style={{ fontWeight: 'bold', fontSize: 12, textTransform: 'uppercase', letterSpacing: 1 }}>Selecione um cliente para conversar</p>
           </div>
         )}
       </div>
