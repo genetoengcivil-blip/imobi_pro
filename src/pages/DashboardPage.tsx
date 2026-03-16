@@ -12,14 +12,11 @@ import {
 import { useGlobal } from '../context/GlobalContext';
 import { LEAD_STATUSES } from '../types';
 
-// Definição dos tipos de visualização
 type ViewOption = 'mensal' | 'trimestral' | 'semestral' | 'anual';
 
 export default function DashboardPage() {
   const navigate = useNavigate();
   const { leads, transactions, appointments, darkMode } = useGlobal();
-  
-  // Estados para o Filtro Dropdown
   const [viewType, setViewType] = useState<ViewOption>('mensal');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
@@ -30,138 +27,95 @@ export default function DashboardPage() {
     { value: 'anual', label: 'Visão Anual' },
   ];
 
-  // 🛡️ Safe Guards
   const safeLeads = useMemo(() => leads || [], [leads]);
   const safeTransactions = useMemo(() => transactions || [], [transactions]);
   const safeAppointments = useMemo(() => appointments || [], [appointments]);
 
-  // 🔢 Cálculos de Métricas Dinâmicas
   const dynamicMetrics = useMemo(() => {
     const now = new Date();
     let startDate = new Date();
-
     if (viewType === 'mensal') startDate.setMonth(now.getMonth() - 5);
     else if (viewType === 'trimestral' || viewType === 'semestral') startDate.setMonth(now.getMonth() - 11);
     else if (viewType === 'anual') startDate.setFullYear(now.getFullYear() - 2);
-
     startDate.setDate(1);
     startDate.setHours(0, 0, 0, 0);
 
     const leadsNoPeriodo = safeLeads.filter(l => new Date(l.createdAt) >= startDate);
     const transacoesNoPeriodo = safeTransactions.filter(t => new Date(t.date || (t as any).created_at) >= startDate);
 
-    const vgvAtivo = leadsNoPeriodo
-      .filter(l => l.status !== 'fechado' && l.status !== 'perdido')
-      .reduce((acc, l) => acc + (Number(l.value) || 0), 0);
-    
-    const previsaoComissao = leadsNoPeriodo
-      .filter(l => l.status !== 'fechado' && l.status !== 'perdido')
-      .reduce((acc, l) => acc + (Number(l.value) * (Number(l.commission_rate) || 0) / 100), 0);
-
+    const vgvAtivo = leadsNoPeriodo.filter(l => l.status !== 'fechado' && l.status !== 'perdido').reduce((acc, l) => acc + (Number(l.value) || 0), 0);
+    const previsaoComissao = leadsNoPeriodo.filter(l => l.status !== 'fechado' && l.status !== 'perdido').reduce((acc, l) => acc + (Number(l.value) * (Number(l.commission_rate) || 0) / 100), 0);
     const receitasFin = transacoesNoPeriodo.filter(t => t.type === 'receita').reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
     const despesasFin = transacoesNoPeriodo.filter(t => t.type === 'despesa').reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
-    
-    const comissoesFechadas = leadsNoPeriodo
-      .filter(l => l.status === 'fechado')
-      .reduce((acc, l) => acc + (Number(l.value) * (Number(l.commission_rate) || 0) / 100), 0);
-
+    const comissoesFechadas = leadsNoPeriodo.filter(l => l.status === 'fechado').reduce((acc, l) => acc + (Number(l.value) * (Number(l.commission_rate) || 0) / 100), 0);
     const lucroLiquido = (receitasFin + comissoesFechadas) - despesasFin;
 
-    return { 
-      vgvAtivo, 
-      previsaoComissao, 
-      lucroLiquido, 
-      totalLeads: leadsNoPeriodo.length,
-      comissoesFechadas 
-    };
+    return { vgvAtivo, previsaoComissao, lucroLiquido, totalLeads: leadsNoPeriodo.length, comissoesFechadas };
   }, [safeLeads, safeTransactions, viewType]);
 
-  // 📈 Lógica Dinâmica do Gráfico
   const chartData = useMemo(() => {
     const data = [];
     const now = new Date();
-
     if (viewType === 'mensal') {
       for (let i = 5; i >= 0; i--) {
         const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
         const label = d.toLocaleString('pt-BR', { month: 'short' }).toUpperCase().replace('.', '');
-        const value = safeLeads
-          .filter(l => {
-            const date = new Date(l.createdAt);
-            return date.getMonth() === d.getMonth() && date.getFullYear() === d.getFullYear();
-          })
-          .reduce((sum, l) => sum + (Number(l.value) || 0), 0);
+        const value = safeLeads.filter(l => {
+          const date = new Date(l.createdAt);
+          return date.getMonth() === d.getMonth() && date.getFullYear() === d.getFullYear();
+        }).reduce((sum, l) => sum + (Number(l.value) || 0), 0);
         data.push({ name: label, vgv: value });
       }
-    } 
-    else if (viewType === 'trimestral') {
+    } else if (viewType === 'trimestral') {
       for (let i = 3; i >= 0; i--) {
         const d = new Date(now.getFullYear(), now.getMonth() - (i * 3), 1);
         const quarter = Math.floor(d.getMonth() / 3) + 1;
         const label = `${quarter}º TRI`;
-        const value = safeLeads
-          .filter(l => {
-            const date = new Date(l.createdAt);
-            const lQuarter = Math.floor(date.getMonth() / 3) + 1;
-            return lQuarter === quarter && date.getFullYear() === d.getFullYear();
-          })
-          .reduce((sum, l) => sum + (Number(l.value) || 0), 0);
+        const value = safeLeads.filter(l => {
+          const date = new Date(l.createdAt);
+          const lQuarter = Math.floor(date.getMonth() / 3) + 1;
+          return lQuarter === quarter && date.getFullYear() === d.getFullYear();
+        }).reduce((sum, l) => sum + (Number(l.value) || 0), 0);
         data.push({ name: label, vgv: value });
       }
-    }
-    else if (viewType === 'semestral') {
+    } else if (viewType === 'semestral') {
       for (let i = 1; i >= 0; i--) {
         const d = new Date(now.getFullYear(), now.getMonth() - (i * 6), 1);
         const semester = d.getMonth() < 6 ? 1 : 2;
         const label = `${semester}º SEM`;
-        const value = safeLeads
-          .filter(l => {
-            const date = new Date(l.createdAt);
-            const lSemester = date.getMonth() < 6 ? 1 : 2;
-            return lSemester === semester && date.getFullYear() === d.getFullYear();
-          })
-          .reduce((sum, l) => sum + (Number(l.value) || 0), 0);
+        const value = safeLeads.filter(l => {
+          const date = new Date(l.createdAt);
+          const lSemester = date.getMonth() < 6 ? 1 : 2;
+          return lSemester === semester && date.getFullYear() === d.getFullYear();
+        }).reduce((sum, l) => sum + (Number(l.value) || 0), 0);
         data.push({ name: label, vgv: value });
       }
-    }
-    else if (viewType === 'anual') {
+    } else if (viewType === 'anual') {
       for (let i = 2; i >= 0; i--) {
         const year = now.getFullYear() - i;
-        const value = safeLeads
-          .filter(l => new Date(l.createdAt).getFullYear() === year)
-          .reduce((sum, l) => sum + (Number(l.value) || 0), 0);
+        const value = safeLeads.filter(l => new Date(l.createdAt).getFullYear() === year).reduce((sum, l) => sum + (Number(l.value) || 0), 0);
         data.push({ name: year.toString(), vgv: value });
       }
     }
     return data;
   }, [safeLeads, viewType]);
 
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(value || 0);
-  };
+  const formatCurrency = (value: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(value || 0);
 
-  const cardClass = `p-6 rounded-[32px] border transition-all duration-300 ${
-    darkMode ? 'bg-zinc-950 border-white/5 text-white' : 'bg-white border-zinc-200 shadow-sm hover:shadow-md'
-  }`;
+  const cardClass = `p-6 rounded-[32px] border transition-all duration-300 ${darkMode ? 'bg-zinc-950 border-white/5 text-white' : 'bg-white border-zinc-200 shadow-sm hover:shadow-md'}`;
 
   return (
     <div className="space-y-8 animate-fade-in pb-20 font-sans">
-      
-      {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className={`text-3xl font-black ${darkMode ? 'text-white' : 'text-zinc-900'}`}>Dashboard</h1>
           <p className="text-zinc-500 font-medium">Análise financeira integrada em tempo real.</p>
         </div>
-        <button 
-          onClick={() => navigate('/leads')}
-          className="flex items-center gap-2 px-6 py-3 bg-[#0217ff] text-white rounded-2xl font-black hover:bg-[#0211bf] transition-all active:scale-95 shadow-lg shadow-[#0217ff]/20"
-        >
+        <button onClick={() => navigate('/leads')} className="flex items-center gap-2 px-6 py-3 bg-[#0217ff] text-white rounded-2xl font-black hover:bg-[#0211bf] transition-all active:scale-95 shadow-lg shadow-[#0217ff]/20">
           <Plus className="w-5 h-5" /> Novo Lead
         </button>
       </div>
 
-      {/* Métricas Principais */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {[
           { label: 'VGV Ativo', val: formatCurrency(dynamicMetrics.vgvAtivo), icon: Briefcase, color: 'text-[#0217ff]', bg: 'bg-[#0217ff]/10' },
@@ -180,7 +134,6 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        
         <div className="lg:col-span-2 space-y-6">
           <div className={cardClass}>
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-8 gap-4">
@@ -188,39 +141,17 @@ export default function DashboardPage() {
                 <h2 className="text-xl font-bold">Volume de Negócios</h2>
                 <p className="text-xs text-zinc-500 font-medium uppercase tracking-wider">Entrada de VGV (R$)</p>
               </div>
-
               <div className="relative">
-                <button
-                  onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                  className={`flex items-center gap-3 px-4 py-2 text-[11px] font-black uppercase tracking-widest rounded-xl border transition-all ${
-                    darkMode 
-                    ? 'bg-zinc-900 border-white/10 text-white hover:border-[#0217ff]' 
-                    : 'bg-white border-zinc-200 text-zinc-900 hover:border-[#0217ff] shadow-sm'
-                  }`}
-                >
+                <button onClick={() => setIsDropdownOpen(!isDropdownOpen)} className={`flex items-center gap-3 px-4 py-2 text-[11px] font-black uppercase tracking-widest rounded-xl border transition-all ${darkMode ? 'bg-zinc-900 border-white/10 text-white hover:border-[#0217ff]' : 'bg-white border-zinc-200 text-zinc-900 hover:border-[#0217ff] shadow-sm'}`}>
                   {options.find(o => o.value === viewType)?.label}
                   <ChevronDown className={`w-4 h-4 text-[#0217ff] transition-transform ${isDropdownOpen ? 'rotate-180' : ''}`} />
                 </button>
-
                 {isDropdownOpen && (
                   <>
                     <div className="fixed inset-0 z-40" onClick={() => setIsDropdownOpen(false)} />
-                    <div className={`absolute right-0 mt-2 w-48 rounded-2xl shadow-2xl z-50 overflow-hidden border animate-in fade-in zoom-in duration-200 ${
-                      darkMode ? 'bg-zinc-900 border-white/10' : 'bg-white border-zinc-100'
-                    }`}>
+                    <div className={`absolute right-0 mt-2 w-48 rounded-2xl shadow-2xl z-50 overflow-hidden border animate-in fade-in zoom-in duration-200 ${darkMode ? 'bg-zinc-900 border-white/10' : 'bg-white border-zinc-100'}`}>
                       {options.map((option) => (
-                        <button
-                          key={option.value}
-                          onClick={() => {
-                            setViewType(option.value);
-                            setIsDropdownOpen(false);
-                          }}
-                          className={`w-full text-left px-4 py-3 text-[10px] font-black uppercase tracking-widest transition-colors ${
-                            viewType === option.value
-                            ? 'bg-[#0217ff] text-white'
-                            : darkMode ? 'text-zinc-400 hover:bg-white/5' : 'text-zinc-600 hover:bg-zinc-50'
-                          }`}
-                        >
+                        <button key={option.value} onClick={() => { setViewType(option.value); setIsDropdownOpen(false); }} className={`w-full text-left px-4 py-3 text-[10px] font-black uppercase tracking-widest transition-colors ${viewType === option.value ? 'bg-[#0217ff] text-white' : darkMode ? 'text-zinc-400 hover:bg-white/5' : 'text-zinc-600 hover:bg-zinc-50'}`}>
                           {option.label}
                         </button>
                       ))}
@@ -230,8 +161,8 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* 🛡️ BLINDAGEM DO GRÁFICO: Evita width(-1) e destrava o WhatsApp */}
-            <div className="w-full overflow-hidden" style={{ height: '350px', minHeight: '350px' }}>
+            {/* 🛡️ CORREÇÃO DEFINITIVA DO GRÁFICO (EVITA WIDTH -1) */}
+            <div className="w-full" style={{ height: '350px', minHeight: '350px' }}>
               <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                 <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                   <defs>
@@ -243,17 +174,13 @@ export default function DashboardPage() {
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={darkMode ? "#333" : "#eee"} />
                   <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#888', fontSize: 10, fontWeight: 'bold'}} dy={10} />
                   <YAxis hide />
-                  <Tooltip 
-                    contentStyle={{ borderRadius: '20px', border: 'none', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)', backgroundColor: darkMode ? '#111' : '#fff' }}
-                    formatter={(value: number) => [formatCurrency(value), 'VGV']}
-                  />
+                  <Tooltip contentStyle={{ borderRadius: '20px', border: 'none', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)', backgroundColor: darkMode ? '#111' : '#fff' }} formatter={(value: number) => [formatCurrency(value), 'VGV']} />
                   <Area type="monotone" dataKey="vgv" stroke="#0217ff" strokeWidth={4} fillOpacity={1} fill="url(#colorVgv)" />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
           </div>
 
-          {/* Últimos Leads */}
           <div className="space-y-4">
             <h2 className="text-xl font-bold flex items-center gap-3 italic px-2">
               <Users className="w-6 h-6 text-[#0217ff]" /> Últimas Capturas
@@ -285,7 +212,6 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Sidebar Lateral */}
         <div className="space-y-8">
           <div className="space-y-4">
             <h2 className="text-xl font-bold flex items-center gap-3 italic px-2">
