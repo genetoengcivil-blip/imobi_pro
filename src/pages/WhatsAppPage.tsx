@@ -73,39 +73,61 @@ export default function WhatsAppPage() {
     return () => clearInterval(interval);
   }, []);
 
-  // Gerar QR Code
+  // ✅ GERAR QR CODE - CORRIGIDO
   const handleGenerateQR = async () => {
     setLoading(true);
     setError('');
+    
     try {
+      console.log('1. Tentando conectar na instância...');
       const res = await fetch(`${EVO_URL}/instance/connect/${INSTANCE_NAME}`, {
         headers: { 'apikey': EVO_GLOBAL_KEY }
       });
       
+      console.log('2. Resposta do connect:', res.status);
+      
       if (res.ok) {
         const data = await res.json();
+        console.log('3. Dados recebidos:', data);
+        
+        // ✅ Verifica se tem base64 (QR Code)
         if (data.base64) {
           setQrCode(data.base64);
-        } else if (data.status === 'open') {
+        } 
+        // ✅ Verifica se tem code (outro formato de QR)
+        else if (data.code) {
+          // Converte o code para imagem se necessário
+          setQrCode(`data:image/png;base64,${data.code}`);
+        }
+        // ✅ Verifica se já está conectado
+        else if (data.status === 'open' || data.instance?.status === 'open') {
           setIsConnected(true);
         }
-      } else {
-        const createRes = await fetch(`${EVO_URL}/instance/create`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'apikey': EVO_GLOBAL_KEY
-          },
-          body: JSON.stringify({ instanceName: INSTANCE_NAME, qrcode: true })
-        });
-        if (createRes.ok) {
-          const createData = await createRes.json();
-          if (createData.qrcode?.base64) {
-            setQrCode(createData.qrcode.base64);
+        // ✅ Se não tem nenhum dos dois, tenta criar
+        else {
+          console.log('4. Criando nova instância...');
+          const createRes = await fetch(`${EVO_URL}/instance/create`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'apikey': EVO_GLOBAL_KEY
+            },
+            body: JSON.stringify({ 
+              instanceName: INSTANCE_NAME, 
+              qrcode: true 
+            })
+          });
+          
+          if (createRes.ok) {
+            const createData = await createRes.json();
+            if (createData.qrcode?.base64) {
+              setQrCode(createData.qrcode.base64);
+            }
           }
         }
       }
     } catch (err: any) {
+      console.error('Erro:', err);
       setError(err.message);
     } finally {
       setLoading(false);
