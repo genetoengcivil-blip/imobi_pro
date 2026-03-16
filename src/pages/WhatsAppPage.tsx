@@ -1,227 +1,473 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { Search, Send, Loader2, QrCode, MessageSquare, Unplug } from 'lucide-react';
+import { 
+  Search, Send, Phone, MoreVertical, CheckCheck,
+  Shield, Smartphone, ChevronLeft, Loader2,
+  QrCode, MessageSquare, Paperclip, Smile, Unplug
+} from 'lucide-react';
 import { useGlobal } from '../context/GlobalContext';
 
+// 🔒 CONFIGURAÇÕES
 const EVO_URL = "/evo-api";
 const EVO_GLOBAL_KEY = "minha_chave_simples_123"; 
 const INSTANCE_NAME = "imobipro";
 
 export default function WhatsAppPage() {
-  const context = useGlobal() as any;
-  const leads = context?.leads || [];
-  const darkMode = context?.darkMode || false;
+  const { user, leads, darkMode } = useGlobal() as any;
 
   const [isWhatsappConnected, setIsWhatsappConnected] = useState(false);
-  const [localMessages, setLocalMessages] = useState<any[]>([]);
+  
+  // 🔥 SISTEMA DE MENSAGENS NO NAVEGADOR
+  const [localMessages, setLocalMessages] = useState<any[]>(() => {
+    try {
+      const saved = localStorage.getItem('@ImobiPro:WhatsAppMessages');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    if (localMessages.length > 0) {
+      localStorage.setItem('@ImobiPro:WhatsAppMessages', JSON.stringify(localMessages));
+    }
+  }, [localMessages]);
+
   const [selectedLead, setSelectedLead] = useState<any>(null);
   const [newMessage, setNewMessage] = useState('');
+  
   const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'generating' | 'waiting_scan'>('disconnected');
   const [qrCodeBase64, setQrCodeBase64] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
   const [initialCheckDone, setInitialCheckDone] = useState(false);
 
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem('@ImobiPro:ChatLogs');
-      if (saved) setLocalMessages(JSON.parse(saved));
-    } catch (e) {}
-  }, []);
+  const theme = {
+    bgApp: darkMode ? 'bg-zinc-950' : 'bg-zinc-50',
+    bgCard: darkMode ? 'bg-black' : 'bg-white',
+    bgSidebar: darkMode ? 'bg-zinc-950' : 'bg-zinc-50',
+    border: darkMode ? 'border-white/5' : 'border-zinc-200',
+    textMain: darkMode ? 'text-white' : 'text-zinc-900',
+    textMuted: darkMode ? 'text-zinc-500' : 'text-zinc-500',
+    inputBg: darkMode ? 'bg-black' : 'bg-white',
+    msgSentBg: 'bg-[#0217ff]',
+    msgReceivedBg: darkMode ? 'bg-zinc-900' : 'bg-white',
+  };
 
-  useEffect(() => {
-    if (localMessages.length > 0) {
-      localStorage.setItem('@ImobiPro:ChatLogs', JSON.stringify(localMessages));
-    }
-  }, [localMessages]);
+  const addLocalMessage = (leadId: string, content: string, direction: 'sent' | 'received', apiId?: string) => {
+    const newMsg = { 
+      id: apiId || Date.now().toString(), 
+      leadId, 
+      content, 
+      direction, 
+      timestamp: new Date().toISOString() 
+    };
+    
+    setLocalMessages(prev => {
+      // Impede mensagens duplicadas na tela
+      if (prev.some(m => m.id === newMsg.id)) return prev;
+      return [...prev, newMsg].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+    });
+  };
+
+  const activeMessages = useMemo(() => {
+    if (!selectedLead) return [];
+    return localMessages.filter((m: any) => m.leadId === selectedLead.id);
+  }, [localMessages, selectedLead]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [selectedLead, localMessages]);
+  }, [selectedLead, activeMessages]);
 
-  const formatPhone = (phone: string) => {
-    if (!phone) return "";
-    let clean = phone.replace(/\D/g, '');
-    if (clean.length === 10 || clean.length === 11) clean = `55${clean}`;
-    return clean;
+  // ✅ LIMPEZA DE NÚMERO DE TELEFONE
+  const formatPhoneNumber = (phone: string) => {
+    let cleanPhone = phone.replace(/\D/g, '');
+    if (cleanPhone.startsWith('0')) cleanPhone = cleanPhone.substring(1);
+    if (cleanPhone.length === 10 || cleanPhone.length === 11) {
+      cleanPhone = `55${cleanPhone}`;
+    }
+    return cleanPhone;
   };
 
-  // ✅ RADAR DE MENSAGENS REFORÇADO
+  // ✅ RADAR DE MENSAGENS COM SUPORTE A ÁUDIO E IMAGEM
   useEffect(() => {
     if (!isWhatsappConnected || !selectedLead) return;
 
-    const fetchMsgs = async () => {
+    const fetchChatHistory = async () => {
       try {
-        const targetPhone = formatPhone(selectedLead.phone);
-        const remoteJid = `${targetPhone}@s.whatsapp.net`;
+        const cleanPhone = formatPhoneNumber(selectedLead.phone);
+        const remoteJid = `${cleanPhone}@s.whatsapp.net`;
 
-        // Tentamos o findMessages (Filtro por número)
         const res = await fetch(`${EVO_URL}/chat/findMessages/${INSTANCE_NAME}`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'apikey': EVO_GLOBAL_KEY },
-          body: JSON.stringify({ where: { remoteJid }, take: 20 })
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': EVO_GLOBAL_KEY
+          },
+          body: JSON.stringify({ where: { remoteJid } })
         });
 
         if (res.ok) {
           const data = await res.json();
-          const records = Array.isArray(data) ? data : (data?.messages?.records || data?.records || []);
-          
-          records.forEach((msg: any) => {
-            const msgJid = msg.key?.remoteJid || msg.remoteJid || '';
-            if (msgJid.includes(targetPhone)) {
-              const apiId = msg.key?.id || msg.id;
-              const isFromMe = msg.key?.fromMe || msg.fromMe;
-              
-              let content = msg.message?.conversation || msg.message?.extendedTextMessage?.text || msg.text || "";
-              
-              // Fallback para mídias
-              if (!content && msg.message) {
-                if (msg.message.imageMessage) content = "📷 Imagem";
-                else if (msg.message.audioMessage) content = "🎵 Áudio";
-                else content = "📎 Mídia";
-              }
+          let records = [];
+          if (Array.isArray(data)) records = data;
+          else if (data && data.messages && Array.isArray(data.messages.records)) records = data.messages.records;
 
-              if (content) {
-                setLocalMessages(prev => {
-                  if (prev.some(m => m.id === apiId)) return prev;
-                  return [...prev, { id: apiId, leadId: selectedLead.id, content, direction: isFromMe ? 'sent' : 'received' }];
-                });
+          if (records.length > 0) {
+            records.forEach((msg: any) => {
+              const msgJid = msg.key?.remoteJid || msg.remoteJid || '';
+              
+              // 🛡️ O SEGURANÇA: Só entra na tela se a mensagem vier EXATAMENTE do número do cliente!
+              if (msgJid.includes(cleanPhone)) {
+                const apiId = msg.key?.id || msg.id;
+                const isFromMe = msg.key?.fromMe || msg.fromMe;
+                
+                // 📸 DETETOR DE MÍDIA
+                let textContent = msg.message?.conversation || msg.message?.extendedTextMessage?.text || msg.text || '';
+                
+                if (!textContent && msg.message) {
+                  if (msg.message.imageMessage) textContent = '📷 Imagem';
+                  else if (msg.message.audioMessage) textContent = '🎵 Áudio';
+                  else if (msg.message.videoMessage) textContent = '🎥 Vídeo';
+                  else if (msg.message.documentMessage) textContent = '📎 Documento';
+                  else if (msg.message.stickerMessage) textContent = '✨ Figurinha';
+                  else if (msg.message.locationMessage) textContent = '📍 Localização';
+                  else textContent = '📎 Arquivo multimídia';
+                }
+                
+                if (textContent) {
+                  addLocalMessage(selectedLead.id, textContent, isFromMe ? 'sent' : 'received', apiId);
+                }
               }
-            }
-          });
+            });
+          }
         }
-      } catch (e) {
-        console.error("Erro radar:", e);
+      } catch (error) {
+        // Silencioso
       }
     };
 
-    const interval = setInterval(fetchMsgs, 5000);
+    fetchChatHistory();
+    const interval = setInterval(fetchChatHistory, 5000);
     return () => clearInterval(interval);
   }, [isWhatsappConnected, selectedLead]);
 
-  // ✅ STATUS
+
+  // ✅ VERIFICAR STATUS DA INSTÂNCIA
   useEffect(() => {
-    const check = async () => {
+    const checkInstance = async () => {
       try {
         const res = await fetch(`${EVO_URL}/instance/connectionState/${INSTANCE_NAME}`, {
-          method: 'GET', headers: { 'apikey': EVO_GLOBAL_KEY }
+          method: 'GET',
+          headers: { 'apikey': EVO_GLOBAL_KEY }
         });
-        const data = await res.json();
-        setIsWhatsappConnected(data.instance?.state === 'open' || data.state === 'open' || data.status === 'open');
-      } catch (e) {} finally { setInitialCheckDone(true); }
+        
+        if (res.ok) {
+          const data = await res.json();
+          if (data.instance?.state === 'open' || data.instance?.status === 'open' || data.state === 'open') {
+            setIsWhatsappConnected(true);
+          } else {
+            setIsWhatsappConnected(false);
+          }
+        }
+      } catch (error) {} finally {
+        setInitialCheckDone(true);
+      }
     };
-    check();
+    
+    checkInstance();
   }, []);
+
+  const startConnectionWatcher = () => {
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`${EVO_URL}/instance/connectionState/${INSTANCE_NAME}`, {
+          method: 'GET',
+          headers: { 'apikey': EVO_GLOBAL_KEY }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.instance?.state === 'open' || data.instance?.status === 'open' || data.state === 'open') {
+            clearInterval(interval);
+            setIsWhatsappConnected(true);
+            setConnectionStatus('disconnected');
+          }
+        }
+      } catch (e) {}
+    }, 3000);
+    setTimeout(() => clearInterval(interval), 120000);
+  };
 
   const handleGenerateQR = async () => {
     setConnectionStatus('generating');
-    try {
-      const res = await fetch(`${EVO_URL}/instance/connect/${INSTANCE_NAME}`, {
-        method: 'GET', headers: { 'apikey': EVO_GLOBAL_KEY }
-      });
-      const data = await res.json();
-      if (data.base64) {
-        setQrCodeBase64(data.base64);
-        setConnectionStatus('waiting_scan');
-      }
-    } catch (e) { setConnectionStatus('disconnected'); }
-  };
-
-  // ✅ ENVIO COM SUFIXO WHATSAPP (A Chave para funcionar na Oracle)
-  const handleSendMessage = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newMessage.trim() || !selectedLead) return;
-    
-    const msg = newMessage;
-    const phone = formatPhone(selectedLead.phone);
-    const remoteJid = `${phone}@s.whatsapp.net`; // Sufixo necessário
-    setNewMessage('');
-
-    // Adiciona localmente
-    const tempId = `temp-${Date.now()}`;
-    setLocalMessages(prev => [...prev, { id: tempId, leadId: selectedLead.id, content: msg, direction: 'sent' }]);
+    setErrorMessage(null);
+    setQrCodeBase64(null);
+    setIsLoading(true);
 
     try {
-      const response = await fetch(`${EVO_URL}/message/sendText/${INSTANCE_NAME}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'apikey': EVO_GLOBAL_KEY },
-        body: JSON.stringify({ 
-          number: phone, // A API costuma aceitar o número puro aqui...
-          textMessage: { text: msg } 
-        })
+      const connectRes = await fetch(`${EVO_URL}/instance/connect/${INSTANCE_NAME}`, {
+        method: 'GET',
+        headers: { 'apikey': EVO_GLOBAL_KEY }
       });
       
-      if (!response.ok) {
-        console.error("Erro no envio:", await response.text());
+      let connectData = null;
+      if (connectRes.ok) connectData = await connectRes.json();
+
+      if (connectData && (connectData.status === 'open' || connectData.instance?.status === 'open' || connectData.instance?.state === 'open')) {
+        setIsWhatsappConnected(true);
+        setConnectionStatus('disconnected');
+      } 
+      else if (connectData && connectData.base64) {
+        setQrCodeBase64(connectData.base64);
+        setConnectionStatus('waiting_scan');
+        startConnectionWatcher();
+      } 
+      else if (connectRes.status === 404 || !connectRes.ok) {
+        const createRes = await fetch(`${EVO_URL}/instance/create`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': EVO_GLOBAL_KEY
+          },
+          body: JSON.stringify({ instanceName: INSTANCE_NAME, qrcode: true })
+        });
+
+        if (!createRes.ok) throw new Error("Servidor recusou a criação.");
+        
+        const createData = await createRes.json();
+        if (createData.qrcode && createData.qrcode.base64) {
+          setQrCodeBase64(createData.qrcode.base64);
+          setConnectionStatus('waiting_scan');
+          startConnectionWatcher();
+        } else if (createData.instance?.state === 'open') {
+          setIsWhatsappConnected(true);
+        } else {
+          throw new Error("Erro ao obter QR Code.");
+        }
       }
-    } catch (e) {
-      console.error("Erro rede:", e);
+    } catch (error: any) {
+      setErrorMessage(error.message || "Erro desconhecido.");
+      setConnectionStatus('disconnected');
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  if (!initialCheckDone) return (
-    <div className="h-screen flex items-center justify-center bg-zinc-950">
-      <Loader2 className="animate-spin text-emerald-500" size={32} />
-    </div>
-  );
+  const handleDisconnect = async () => {
+    if(window.confirm("Deseja forçar a desconexão da instância?")) {
+      try {
+        await fetch(`${EVO_URL}/instance/logout/${INSTANCE_NAME}`, {
+          method: 'DELETE',
+          headers: { 'apikey': EVO_GLOBAL_KEY }
+        });
+        setIsWhatsappConnected(false);
+        setConnectionStatus('disconnected');
+        setQrCodeBase64(null);
+      } catch (e) {}
+    }
+  };
 
-  if (isWhatsappConnected) {
+  // 🔥 ENVIO DE MENSAGEM COM ALERTA DE ERROS
+  const handleSendMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newMessage.trim() || !selectedLead || !selectedLead.phone) return;
+
+    const messageText = newMessage;
+    setNewMessage('');
+    
+    addLocalMessage(selectedLead.id, messageText, 'sent');
+
+    try {
+      const cleanPhone = formatPhoneNumber(selectedLead.phone);
+
+      const payload = {
+        number: cleanPhone,
+        options: { delay: 1200, presence: 'composing' },
+        textMessage: { text: messageText }
+      };
+
+      const res = await fetch(`${EVO_URL}/message/sendText/${INSTANCE_NAME}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': EVO_GLOBAL_KEY
+        },
+        body: JSON.stringify(payload)
+      });
+
+      const resData = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        console.error("Erro da API:", resData);
+        const errorMsg = resData?.response?.message || resData?.message || resData?.error || "Erro desconhecido";
+        alert(`⚠️ O WhatsApp não conseguiu enviar a mensagem!\n\nMotivo: ${errorMsg}\nNúmero tentado: ${cleanPhone}`);
+      }
+
+    } catch (error) {
+      alert("⚠️ Erro de rede: Não foi possível comunicar com o servidor WhatsApp.");
+    }
+  };
+
+  if (!initialCheckDone) {
     return (
-      <div className={`h-[calc(100vh-80px)] flex ${darkMode ? 'bg-zinc-950 text-white' : 'bg-zinc-50 text-zinc-900'}`}>
-        <div className={`w-80 border-r ${darkMode ? 'border-zinc-800' : 'border-zinc-200'} flex flex-col`}>
-          <div className="p-4 border-b flex justify-between items-center bg-emerald-500/5">
-            <span className="font-bold text-xs text-emerald-500 tracking-widest uppercase">Conversas</span>
-            <button onClick={() => setIsWhatsappConnected(false)} className="opacity-40 hover:text-red-500 transition-all"><Unplug size={16}/></button>
-          </div>
-          <div className="flex-1 overflow-y-auto">
-            {leads.map((lead: any) => (
-              <button key={lead.id} onClick={() => setSelectedLead(lead)} className={`w-full p-4 flex gap-3 border-b ${darkMode ? 'border-zinc-800' : 'border-zinc-200'} ${selectedLead?.id === lead.id ? 'bg-emerald-500/10' : ''}`}>
-                <div className="w-10 h-10 bg-emerald-500/20 rounded flex items-center justify-center font-bold text-emerald-500">{lead.name?.[0] || "?"}</div>
-                <div className="text-left truncate">
-                   <p className="font-bold text-sm">{lead.name}</p>
-                   <p className="text-[10px] opacity-40">{lead.phone}</p>
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="flex-1 flex flex-col">
-          {selectedLead ? (
-            <>
-              <div className="h-16 p-4 border-b flex items-center font-bold shadow-sm">{selectedLead.name}</div>
-              <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                {localMessages.filter(m => m.leadId === selectedLead.id).map(m => (
-                  <div key={m.id} className={`flex ${m.direction === 'sent' ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`max-w-[80%] p-3 rounded-xl ${m.direction === 'sent' ? 'bg-[#0217ff] text-white' : (darkMode ? 'bg-zinc-800' : 'bg-white border')}`}>
-                      <p className="text-sm">{m.content}</p>
-                    </div>
-                  </div>
-                ))}
-                <div ref={chatEndRef} />
-              </div>
-              <form onSubmit={handleSendMessage} className="p-4 border-t flex gap-2 bg-white dark:bg-zinc-900">
-                <input value={newMessage} onChange={e => setNewMessage(e.target.value)} placeholder="Mensagem..." className="flex-1 p-3 rounded-lg border dark:bg-zinc-800 dark:border-zinc-700 focus:outline-none" />
-                <button type="submit" className="p-3 bg-emerald-500 text-white rounded-lg"><Send size={18}/></button>
-              </form>
-            </>
-          ) : (
-            <div className="flex-1 flex flex-col items-center justify-center opacity-20"><MessageSquare size={48} /></div>
-          )}
-        </div>
+      <div className={`min-h-[calc(100vh-80px)] flex flex-col items-center justify-center ${theme.bgApp}`}>
+        <Loader2 size={48} className="text-emerald-500 animate-spin mb-4" />
+        <p className="text-[10px] font-black tracking-widest uppercase text-zinc-500">Conectando ao CRM...</p>
       </div>
     );
   }
 
-  return (
-    <div className={`h-screen flex items-center justify-center ${darkMode ? 'bg-zinc-950 text-white' : 'bg-zinc-50'}`}>
-      <div className={`max-w-sm w-full p-8 rounded-[40px] border ${darkMode ? 'bg-zinc-900 border-zinc-800' : 'bg-white'} text-center shadow-2xl`}>
-        <QrCode className="mx-auto text-emerald-500 mb-4" size={48} />
-        <h2 className="text-xl font-bold mb-6 italic uppercase tracking-tighter">Conectar WhatsApp</h2>
-        {connectionStatus === 'waiting_scan' && qrCodeBase64 ? (
-          <div className="bg-white p-4 rounded-3xl border-2 border-emerald-500 inline-block shadow-lg"><img src={qrCodeBase64} className="w-44 h-44" /></div>
+  // TELA DO CHAT (Conectado)
+  if (isWhatsappConnected) {
+    return (
+      <div className={`h-[calc(100vh-80px)] flex animate-fade-in font-sans ${theme.textMain}`}>
+        <div className={`w-80 border-r ${theme.border} ${theme.bgSidebar} flex flex-col`}>
+          <div className={`p-6 border-b ${theme.border}`}>
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-black italic tracking-tighter uppercase">Conversas</h2>
+              <button onClick={handleDisconnect} title="Forçar Desconexão" className="w-8 h-8 rounded-full bg-red-500/10 text-red-500 flex items-center justify-center hover:bg-red-500 hover:text-white transition-all">
+                <Unplug size={16} />
+              </button>
+            </div>
+            <div className="relative">
+              <Search className={`absolute left-4 top-1/2 -translate-y-1/2 ${theme.textMuted}`} size={16} />
+              <input type="text" placeholder="Procurar lead..." className={`w-full ${theme.inputBg} border ${theme.border} rounded-xl py-3 pl-10 pr-4 text-sm focus:outline-none focus:border-emerald-500 transition-colors ${theme.textMain}`} />
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-y-auto custom-scrollbar">
+            {(leads || []).map((lead: any) => {
+              const leadMsgs = localMessages.filter((m: any) => m.leadId === lead.id);
+              const lastMsg = leadMsgs[leadMsgs.length - 1];
+              return (
+                <button 
+                  key={lead.id} 
+                  onClick={() => setSelectedLead(lead)} 
+                  className={`w-full p-4 border-b ${theme.border} flex items-start gap-4 transition-colors ${
+                    selectedLead?.id === lead.id ? (darkMode ? 'bg-zinc-900' : 'bg-zinc-100') : darkMode ? 'hover:bg-zinc-900/50' : 'hover:bg-zinc-100'
+                  }`}
+                >
+                  <div className="w-12 h-12 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center font-black text-lg">
+                    {lead.name?.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="flex-1 text-left overflow-hidden">
+                    <span className={`font-bold text-sm ${theme.textMain} truncate block`}>{lead.name}</span>
+                    <p className={`text-xs ${theme.textMuted} truncate`}>{lastMsg ? lastMsg.content : 'Iniciar conversa...'}</p>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {selectedLead ? (
+          <div className={`flex-1 flex flex-col ${theme.bgApp}`}>
+            <div className={`h-20 border-b ${theme.border} ${theme.bgCard} flex items-center justify-between px-6`}>
+              <div className="flex items-center gap-4">
+                <button onClick={() => setSelectedLead(null)} className={`lg:hidden p-2 -ml-2 ${theme.textMuted}`}><ChevronLeft size={24} /></button>
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center font-black">
+                  {selectedLead.name?.charAt(0).toUpperCase()}
+                </div>
+                <div>
+                  <h3 className={`font-bold ${theme.textMain}`}>{selectedLead.name}</h3>
+                  <p className={`text-[10px] font-black ${theme.textMuted} uppercase tracking-widest`}>{selectedLead.phone || 'Sem número'}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+              {activeMessages.map((msg: any) => {
+                const isSent = msg.direction === 'sent';
+                return (
+                  <div key={msg.id} className={`flex flex-col ${isSent ? 'items-end' : 'items-start'}`}>
+                    <div className={`max-w-[70%] p-4 ${isSent ? `${theme.msgSentBg} text-white rounded-2xl rounded-tr-sm shadow-lg` : `${theme.msgReceivedBg} border ${theme.border} ${theme.textMain} rounded-2xl rounded-tl-sm shadow-sm`}`}>
+                      <p className="text-sm font-medium whitespace-pre-wrap">{msg.content}</p>
+                    </div>
+                  </div>
+                );
+              })}
+              <div ref={chatEndRef} />
+            </div>
+
+            <div className={`p-4 ${theme.bgCard} border-t ${theme.border}`}>
+              <form onSubmit={handleSendMessage} className="flex gap-3">
+                <input 
+                  type="text" 
+                  placeholder="Escreva uma mensagem..." 
+                  className={`flex-1 ${theme.inputBg} border ${theme.border} rounded-2xl px-6 focus:outline-none focus:border-emerald-500 transition-colors ${theme.textMain} text-sm font-medium`}
+                  value={newMessage} 
+                  onChange={e => setNewMessage(e.target.value)}
+                />
+                <button type="submit" disabled={!newMessage.trim()} className="p-4 bg-[#0217ff] text-white rounded-2xl disabled:opacity-50 hover:scale-105 transition-all shadow-lg shadow-[#0217ff]/20">
+                  <Send size={20} className="ml-1" />
+                </button>
+              </form>
+            </div>
+          </div>
         ) : (
-          <button onClick={handleGenerateQR} className="w-full p-4 bg-emerald-500 text-white font-black rounded-2xl hover:bg-emerald-600 transition-all">GERAR QR CODE</button>
+          <div className={`flex-1 flex flex-col items-center justify-center ${theme.bgApp}`}>
+            <div className={`w-24 h-24 rounded-full ${theme.bgCard} border ${theme.border} flex items-center justify-center mb-6 shadow-2xl`}>
+              <Smartphone size={40} className="text-emerald-500" />
+            </div>
+            <h2 className="text-2xl font-black italic uppercase tracking-tighter mb-2">ImobiPro <span className="text-emerald-500">Chat</span></h2>
+            <p className={`${theme.textMuted} font-medium`}>Selecione um cliente ao lado para conversar.</p>
+          </div>
         )}
+      </div>
+    );
+  }
+
+  // TELA DE QR CODE (Desconectado)
+  return (
+    <div className={`p-8 pb-32 min-h-[calc(100vh-80px)] flex flex-col items-center justify-center animate-fade-in font-sans ${theme.textMain}`}>
+      <div className={`w-full max-w-4xl flex flex-col md:flex-row items-center gap-12 ${theme.bgCard} p-12 rounded-[48px] border ${theme.border} shadow-2xl`}>
+        <div className="flex-1 space-y-8">
+          <div className="w-20 h-20 bg-emerald-500/10 rounded-3xl flex items-center justify-center border border-emerald-500/20">
+            <MessageSquare className="text-emerald-500" size={40} />
+          </div>
+          <div>
+            <h1 className="text-4xl font-black italic uppercase tracking-tighter mb-4">Conecte o <span className="text-emerald-500">WhatsApp</span></h1>
+            <p className={`${theme.textMuted} font-medium text-lg leading-relaxed`}>
+              Sincronize o seu WhatsApp com o CRM. Leia o QR Code e centralize o seu atendimento de forma automática.
+            </p>
+            {errorMessage && <div className="mt-4 p-4 bg-red-500/10 text-red-500 rounded-2xl text-xs font-mono">{errorMessage}</div>}
+            
+            <button 
+              onClick={handleDisconnect}
+              className="mt-6 flex items-center gap-2 px-4 py-2 bg-zinc-100 dark:bg-zinc-900 rounded-xl text-xs font-bold hover:bg-red-500/10 hover:text-red-500 transition-colors"
+            >
+              <Unplug size={14} /> Forçar Limpeza da Sessão
+            </button>
+          </div>
+        </div>
+
+        <div className={`w-full md:w-[400px] aspect-square rounded-[32px] border-2 border-dashed ${connectionStatus === 'waiting_scan' ? 'border-emerald-500/50 bg-emerald-500/5' : theme.border} flex flex-col items-center justify-center p-8 relative`}>
+          {connectionStatus === 'disconnected' && (
+            <div className="text-center space-y-6">
+              <QrCode size={64} className={`${theme.textMuted} mx-auto opacity-50`} />
+              <button onClick={handleGenerateQR} disabled={isLoading} className="px-8 py-4 bg-emerald-500 text-white rounded-2xl font-black text-xs hover:scale-105 transition-all disabled:opacity-50">
+                {isLoading ? 'Conectando...' : 'Gerar QR Code'}
+              </button>
+            </div>
+          )}
+
+          {connectionStatus === 'generating' && (
+            <div className="text-center space-y-4">
+              <Loader2 size={48} className="text-emerald-500 animate-spin mx-auto" />
+              <p className="font-black text-[10px] animate-pulse uppercase tracking-widest">Obtendo QR Code...</p>
+            </div>
+          )}
+
+          {connectionStatus === 'waiting_scan' && qrCodeBase64 && (
+            <div className="text-center space-y-4">
+              <div className="bg-white p-4 rounded-2xl shadow-xl">
+                <img src={qrCodeBase64} alt="QR Code" className="w-56 h-56" />
+              </div>
+              <p className="text-emerald-500 font-black text-[10px] uppercase tracking-widest animate-pulse">Aguardando Leitura...</p>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
