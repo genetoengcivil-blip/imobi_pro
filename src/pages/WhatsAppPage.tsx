@@ -6,9 +6,9 @@ import {
 } from 'lucide-react';
 import { useGlobal } from '../context/GlobalContext';
 
-// 🔗 ESTE TEM QUE SER OBRIGATORIAMENTE /evo-api PARA O VERCEL.JSON FUNCIONAR
+// 🔗 CONFIGURAÇÕES RESTAURADAS COM A SUA CHAVE REAL
 const EVO_URL = "/evo-api"; 
-const EVO_GLOBAL_KEY = "minha_chave_simples_123";
+const EVO_GLOBAL_KEY = "MIIEowIBAAKCAQEAuI+VrfEFvd8JKK7JVftIwUmTgS3ezht3TFdHuMjp1EH/z5UPVuOwmLb0eYsY0vSqRGXUqeWgN4JcNtKgBI9nGuW6yyj47Jga3HglqQJsneVQdRu/KZMhrz1qVtaLuAsxieVyGetpgz45WlTpavADoybeQpopESH4QhXkKEogjBbgSSXPRiOtfgTtcFC7ji4H9ZqNLWO9cdxR6I9WOgILONUz6PDfvzxGPuRXr61JVzMVjUDtZ/qsP1IPm8Mg+D8+yCK0D7O1UUa3Ih6PK3NRRYf2p+zxoCTjUp+caGB6o4LlrgmhEvJnHkGDrmyucKV46o4HKv3txyC1AINXV+5uPQIDAQABAoIBAAQkfOiVk1pqqir2mWBLrptgCmaI4ApiRXA6OUrlf5IbFSHUp658l9clrCEaRSlfAn9chcR2ef0k+OrmGV9g1KCe7W1n8wZkd53hOH8tpcB5iC/Iuqa1PblQOJXQZPxxi+AbfU8loI2olOL5KvASiRJdafm2uhs/VvIsyZ055LcgNpBISnmAIAQlzv4meYMu0K2ABgN38c8KSBUuMSVCWIeLtSqPwLZLK6KYlpqJg+sR3RC2vEkChXq4mfRLIiB5YiB5DPuPcgPe+81c5rPF5BHaA+LW+gK0ELnupSIu3LkfQg3IYPHni1TWOUz+1h42I+OzF38J+uTA5B16uYeiyUECgYEA3JcEVLt/+ywmprb6SWn602KW6FrOmdM3XP9d5lUPotHe6cDOjCf/xUM2IwtB/Ghi9W8VScMu3HkSeP+vVDkxlcyaNMKZzY5PiVWUTig0pQwRMZkXfyAiim4NPU+rOvcQkGev0UcRp+cSh35T9a8wWMifKJsSRuBvqHepjMFFfBECgYEA1i/7D1/lvQ/w34fU2exz+CFsfsxTIg5bUe/uufQAiof8mtxFQlqFFle0QxClWQNi+/4u8i0Ypfb2jTrz4QCTCZhN8YiLnyKu1rkZpPacgMLvEi3V0kXemJa3FKQbmG6rNfEsnGhrwcJ8Z7N3X/3NKvNLxJvYhS95Yb7UC/Yl620CgYA6Naew7GGTWE1CxRo68Tp9OZD087F9Kh177u9KbrvXjWYzbOuUVKHL3jaU/M2G28zxU0Tc2CKvj0tunpoXsZgCHaG7tnZ7pcgbR3gBP97UhuCqo+ltZH945B2eRj27K6M1WAcvRH/GPNXI528kb/xkEVzejD1Acs1EOX+GYyIA4QKBgCJeSJbK+H5B1JDJpung+yrRkis2dhB85UJckZ3c/Uk9UNc4iRSAmeJf6Fjqjt2doYB15OqPOelHm4BF+WQdR3q+qaMcGetLEWr7AJZry+kNXnc4S5sWAwXRCUeSnarz9x0Mue/PAZtxraymK32HqChAKeQ+bZvRZlS83iGdObBxAoGBANH4GiJM+DBK6ktrzoCxY1fuHcU554MdhpWpu+QSohDLnlJcvvCVF2JwIc2qXBLqMIEjzMU2+4j8PTXyAQtavTriiCjH4ORoHZtwfWxFIMVBnCGZ4s2EyMmpjPoG/tHgUrPRxTEgmr4UAXK14yMu8XdBa7MTB5kgnphJ4KZXruiA";
 const INSTANCE_NAME = "imobipro";
 
 export default function WhatsAppPage() {
@@ -19,8 +19,6 @@ export default function WhatsAppPage() {
   const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'generating' | 'waiting_scan'>('disconnected');
   const [qrCodeBase64, setQrCodeBase64] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [isCheckingInstance, setIsCheckingInstance] = useState(false);
-  
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   const theme = {
@@ -45,7 +43,7 @@ export default function WhatsAppPage() {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [selectedLead, activeMessages, markAsRead]);
 
-  // 👀 WATCHER: Aguarda a leitura do QR Code pelo seu telemóvel
+  // 👀 WATCHER: Aguarda a leitura do QR Code
   const startConnectionWatcher = () => {
     const interval = setInterval(async () => {
       try {
@@ -53,22 +51,19 @@ export default function WhatsAppPage() {
           method: 'GET',
           headers: { 'apikey': EVO_GLOBAL_KEY }
         });
-        const data = await res.json();
-        
-        if (data.instance?.state === 'open' || data.instance?.status === 'open' || data.state === 'open') {
-          clearInterval(interval);
-          setWhatsappConnected(true);
-          setConnectionStatus('disconnected');
+        if(res.ok) {
+          const data = await res.json();
+          if (data.instance?.state === 'open' || data.instance?.status === 'open' || data.state === 'open') {
+            clearInterval(interval);
+            setWhatsappConnected(true);
+            setConnectionStatus('disconnected');
+          }
         }
-      } catch (e) {
-        // Ignorar para não travar o console
-      }
+      } catch (e) {}
     }, 3000);
-
-    setTimeout(() => clearInterval(interval), 120000); // Para após 2 min
+    setTimeout(() => clearInterval(interval), 120000);
   };
 
-  // ✅ GERAR QR CODE COM REDIRECIONAMENTO VERCEL
   const handleGenerateQR = async () => {
     setConnectionStatus('generating');
     setErrorMessage(null);
@@ -80,16 +75,25 @@ export default function WhatsAppPage() {
         headers: { 'apikey': EVO_GLOBAL_KEY }
       });
       
-      const connectData = await connectRes.json();
+      // Se a API retornar erro (ex: 404 Not Found ou 403 Unauthorized), capturamos aqui
+      if (!connectRes.ok && connectRes.status !== 404) {
+        const errorText = await connectRes.text();
+        throw new Error(`Erro do servidor (${connectRes.status}): ${errorText}`);
+      }
 
-      if (connectData.base64) {
+      let connectData;
+      if(connectRes.ok) {
+        connectData = await connectRes.json();
+      }
+
+      if (connectData && connectData.base64) {
         setQrCodeBase64(connectData.base64);
         setConnectionStatus('waiting_scan');
         startConnectionWatcher();
-      } else if (connectData.instance?.status === 'open' || connectData.status === 'open') {
+      } else if (connectData && (connectData.instance?.status === 'open' || connectData.status === 'open')) {
         setWhatsappConnected(true);
       } else {
-        // Se a instância não existe, cria ela no momento
+        // Se a instância não existe (404), cria ela
         const createRes = await fetch(`${EVO_URL}/instance/create`, {
           method: 'POST',
           headers: {
@@ -103,6 +107,8 @@ export default function WhatsAppPage() {
           })
         });
         
+        if (!createRes.ok) throw new Error("Falha ao criar instância na Evolution API.");
+        
         const createData = await createRes.json();
         
         if (createData.qrcode && createData.qrcode.base64) {
@@ -112,11 +118,12 @@ export default function WhatsAppPage() {
         } else if (createData.instance?.state === 'open') {
            setWhatsappConnected(true);
         } else {
-           throw new Error("Falha ao gerar o QR Code no servidor.");
+           throw new Error("API não retornou o QR Code.");
         }
       }
     } catch (error: any) {
-      setErrorMessage("Erro de proxy. Verifique se a chave API está certa ou se o servidor está ativo.");
+      console.error("Erro detalhado:", error);
+      setErrorMessage(error.message || "Erro ao contactar servidor.");
       setConnectionStatus('disconnected');
     }
   };
@@ -173,7 +180,7 @@ export default function WhatsAppPage() {
                 Sincronize o seu WhatsApp com o CRM. Leia o QR Code e centralize o seu atendimento de forma automática.
               </p>
               {errorMessage && (
-                <div className="mt-4 p-4 bg-red-500/10 text-red-500 rounded-2xl text-xs font-bold border border-red-500/20">
+                <div className="mt-4 p-4 bg-red-500/10 text-red-500 rounded-2xl text-xs font-bold border border-red-500/20 break-words">
                   {errorMessage}
                 </div>
               )}
