@@ -17,8 +17,9 @@ export default function WhatsAppPage() {
   
   const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'generating' | 'waiting_scan'>('disconnected');
   const [qrCodeBase64, setQrCodeBase64] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   
-  // Instância única por usuário
+  // Instância única por usuário baseada no ID do Supabase
   const instanceName = useMemo(() => `imobipro_user_${user?.id?.split('-')[0] || 'corretor'}`, [user]);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -44,13 +45,21 @@ export default function WhatsAppPage() {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [selectedLead, activeMessages, markAsRead]);
 
+  // Função para limpar o estado de erro e tentar novamente
+  const resetConnectionState = () => {
+    setConnectionStatus('disconnected');
+    setQrCodeBase64(null);
+    setErrorMessage(null);
+  };
+
   // 1. GERAR QR CODE REAL
   const handleGenerateQR = async () => {
     setConnectionStatus('generating');
     setQrCodeBase64(null);
+    setErrorMessage(null);
 
     try {
-      // Tenta conectar/criar
+      // Tenta criar ou recuperar a instância
       const response = await fetch(`${EVO_URL}/instance/create`, {
         method: 'POST',
         headers: {
@@ -70,17 +79,17 @@ export default function WhatsAppPage() {
       if (data.qrcode?.base64) {
         setQrCodeBase64(data.qrcode.base64);
         setConnectionStatus('waiting_scan');
-        checkConnectionStatus();
+        startConnectionWatcher();
       } else if (data.instance?.status === 'open') {
         setWhatsappConnected(true);
         setConnectionStatus('disconnected');
       } else {
-        // Se a instância já existe mas não mandou QR, tentamos o fetchConnect
+        // Se a instância já existe mas não mandou QR, tentamos forçar a conexão
         fetchConnectInstance();
       }
     } catch (error: any) {
       console.error("Erro na conexão:", error);
-      alert(`Erro ao contactar servidor: ${error.message}`);
+      setErrorMessage("Erro de comunicação com o servidor. Verifique o vercel.json e o IP da Oracle.");
       setConnectionStatus('disconnected');
     }
   };
@@ -95,14 +104,18 @@ export default function WhatsAppPage() {
       if (data.base64) {
         setQrCodeBase64(data.base64);
         setConnectionStatus('waiting_scan');
-        checkConnectionStatus();
+        startConnectionWatcher();
+      } else if (data.status === "open") {
+        setWhatsappConnected(true);
+        setConnectionStatus('disconnected');
       }
     } catch (e) {
+      setErrorMessage("Falha ao recuperar QR Code de conexão.");
       setConnectionStatus('disconnected');
     }
   };
 
-  const checkConnectionStatus = () => {
+  const startConnectionWatcher = () => {
     const interval = setInterval(async () => {
       try {
         const res = await fetch(`${EVO_URL}/instance/connectionState/${instanceName}`, {
@@ -111,13 +124,18 @@ export default function WhatsAppPage() {
         });
         const data = await res.json();
         
-        if (data.instance?.state === 'open') {
+        if (data.instance?.state === 'open' || data.instance?.status === 'open') {
           clearInterval(interval);
           setWhatsappConnected(true);
           setConnectionStatus('disconnected');
         }
-      } catch (e) {}
+      } catch (e) {
+        // Silencioso para não poluir o console durante o polling
+      }
     }, 5000);
+
+    // Limpa o intervalo após 2 minutos para não gastar recursos
+    setTimeout(() => clearInterval(interval), 120000);
   };
 
   const handleDisconnect = async () => {
@@ -129,7 +147,7 @@ export default function WhatsAppPage() {
         });
       } catch (e) {}
       setWhatsappConnected(false);
-      setConnectionStatus('disconnected');
+      resetConnectionState();
     }
   };
 
@@ -171,8 +189,13 @@ export default function WhatsAppPage() {
             <div>
               <h1 className="text-4xl font-black italic uppercase tracking-tighter mb-4">Conecte o <span className="text-emerald-500">WhatsApp</span></h1>
               <p className={`${theme.textMuted} font-medium text-lg leading-relaxed`}>
-                Sincronize o seu WhatsApp com o CRM. Leia o QR Code e centralize o seu atendimento de forma automática.
+                Sincronize o seu WhatsApp com o CRM. Centralize o atendimento e automatize o envio de mensagens.
               </p>
+              {errorMessage && (
+                <div className="mt-4 p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-500 text-xs font-bold">
+                  {errorMessage}
+                </div>
+              )}
             </div>
           </div>
 
@@ -189,21 +212,21 @@ export default function WhatsAppPage() {
             {connectionStatus === 'generating' && (
               <div className="text-center space-y-4">
                 <Loader2 size={48} className="text-emerald-500 animate-spin mx-auto" />
-                <p className="font-black uppercase tracking-widest text-[10px] animate-pulse">Consultando servidor...</p>
+                <p className="font-black uppercase tracking-widest text-[10px] animate-pulse">Estabelecendo túnel seguro...</p>
               </div>
             )}
 
             {connectionStatus === 'waiting_scan' && qrCodeBase64 && (
-              <div className="text-center space-y-4">
+              <div className="text-center space-y-4 animate-in zoom-in">
                 <div className="bg-white p-4 rounded-2xl shadow-xl">
-                  <img src={qrCodeBase64} alt="QR Code" className="w-56 h-56" />
+                  <img src={qrCodeBase64} alt="QR Code WhatsApp" className="w-56 h-56" />
                 </div>
-                <p className="text-emerald-500 font-black uppercase text-[10px] animate-pulse">Aguardando leitura...</p>
+                <p className="text-emerald-500 font-black uppercase text-[10px] animate-pulse">Aguardando leitura do telemóvel...</p>
               </div>
             )}
 
             <div className={`absolute -bottom-4 bg-zinc-900 text-white px-6 py-2 rounded-full flex items-center gap-2 text-[10px] font-black uppercase tracking-widest shadow-xl border border-white/10`}>
-              <Shield size={14} className="text-emerald-500" /> End-to-End Encryption
+              <Shield size={14} className="text-emerald-500" /> Criptografia Ponta-a-Ponta
             </div>
           </div>
         </div>
@@ -237,7 +260,7 @@ export default function WhatsAppPage() {
                 </div>
                 <div className="flex-1 text-left">
                   <div className="font-bold text-sm truncate">{lead.name}</div>
-                  <p className={`text-xs ${theme.textMuted} truncate`}>{lastMsg ? lastMsg.content : 'Iniciar conversa...'}</p>
+                  <p className={`text-xs ${theme.textMuted} truncate`}>{lastMsg ? lastMsg.content : 'Sem mensagens...'}</p>
                 </div>
               </button>
             );
@@ -266,7 +289,7 @@ export default function WhatsAppPage() {
               const isSent = msg.direction === 'sent';
               return (
                 <div key={msg.id} className={`flex flex-col ${isSent ? 'items-end' : 'items-start'}`}>
-                  <div className={`max-w-[70%] p-4 ${isSent ? `${theme.msgSentBg} text-white rounded-2xl rounded-tr-sm` : `${theme.msgReceivedBg} border ${theme.border} ${theme.textMain} rounded-2xl rounded-tl-sm`}`}>
+                  <div className={`max-w-[70%] p-4 ${isSent ? `${theme.msgSentBg} text-white rounded-2xl rounded-tr-sm shadow-lg` : `${theme.msgReceivedBg} border ${theme.border} ${theme.textMain} rounded-2xl rounded-tl-sm shadow-sm`}`}>
                     <p className="text-sm font-medium">{msg.content}</p>
                   </div>
                 </div>
@@ -291,7 +314,7 @@ export default function WhatsAppPage() {
       ) : (
         <div className={`flex-1 flex flex-col items-center justify-center ${theme.bgApp}`}>
           <Smartphone size={40} className="text-emerald-500 mb-4 opacity-20" />
-          <p className={`${theme.textMuted} font-medium`}>Selecione uma conversa para iniciar.</p>
+          <p className={`${theme.textMuted} font-medium`}>Selecione um cliente para iniciar a conversa.</p>
         </div>
       )}
     </div>
