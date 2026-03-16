@@ -1,45 +1,45 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useGlobal } from '../context/GlobalContext';
 import { supabase } from '../lib/supabase';
+import { 
+  MessageSquare, Send, QrCode, Loader2, Smartphone 
+} from 'lucide-react';
 
 const EVO_URL = "/evo-api";
 const EVO_GLOBAL_KEY = "minha_chave_simples_123";
 const INSTANCE_NAME = "imobipro";
 
 export default function WhatsAppPage() {
-  const { darkMode } = useGlobal() as any;
+  const context = useGlobal() as any;
+  const leads = context?.leads || [];
+  const darkMode = context?.darkMode || false;
+  
   const [isConnected, setIsConnected] = useState(false);
   const [qrCode, setQrCode] = useState('');
   const [loading, setLoading] = useState(false);
-  const [leads, setLeads] = useState<any[]>([]);
   const [messages, setMessages] = useState<any[]>([]);
   const [selectedLead, setSelectedLead] = useState<any>(null);
   const [newMessage, setNewMessage] = useState('');
+  const [initialCheckDone, setInitialCheckDone] = useState(false);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    const loadLeads = async () => {
-      const { data } = await supabase.from('leads').select('*').order('name');
-      if (data) setLeads(data);
-    };
-    loadLeads();
+  // Gestão de mensagens com Realtime
+  const loadMessages = useCallback(async (leadId: string) => {
+    const { data } = await supabase
+      .from('whatsapp_messages')
+      .select('*')
+      .eq('lead_id', leadId)
+      .order('created_at', { ascending: true });
+    if (data) setMessages(data);
   }, []);
 
-  // ✅ GERENCIAR MENSAGENS COM REALTIME
   useEffect(() => {
-    if (!selectedLead) return;
-    
-    const loadMessages = async () => {
-      const { data } = await supabase
-        .from('whatsapp_messages')
-        .select('*')
-        .eq('lead_id', selectedLead.id)
-        .order('created_at', { ascending: true });
-      if (data) setMessages(data);
-    };
-    loadMessages();
+    if (!selectedLead?.id) return;
 
-    // Ativa escuta em tempo real: o chat atualiza sozinho quando o Webhook insere no banco
+    loadMessages(selectedLead.id);
+
+    // Subscreve às mudanças para atualizar a interface automaticamente
     const channel = supabase
       .channel(`chat_${selectedLead.id}`)
       .on('postgres_changes', { 
@@ -49,63 +49,58 @@ export default function WhatsAppPage() {
         filter: `lead_id=eq.${selectedLead.id}` 
       }, (payload) => {
         setMessages(prev => {
-          if (prev.some(m => m.id === payload.new.id || m.message_id === payload.new.message_id)) return prev;
+          if (prev.some(m => m.message_id === payload.new.message_id)) return prev;
           return [...prev, payload.new];
         });
       })
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
-  }, [selectedLead]);
+  }, [selectedLead, loadMessages]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Verificar status da conexão com a Oracle
+  // Verificação inicial de status
   useEffect(() => {
-    const checkStatus = async () => {
+    const init = async () => {
       try {
         const res = await fetch(`${EVO_URL}/instance/connectionState/${INSTANCE_NAME}`, {
           headers: { 'apikey': EVO_GLOBAL_KEY }
         });
-        if (res.ok) {
-          const data = await res.json();
-          const state = data.instance?.state || data.state || data.status;
-          setIsConnected(state === 'open' || state === 'connected');
-        }
-      } catch (e) {}
+        const statusData = await res.json();
+        const state = statusData.instance?.state || statusData.state;
+        setIsConnected(state === 'open' || state === 'connected');
+      } catch (e) {} finally { setInitialCheckDone(true); }
     };
-    checkStatus();
-    const interval = setInterval(checkStatus, 10000);
-    return () => clearInterval(interval);
+    init();
   }, []);
 
   const handleGenerateQR = async () => {
     setLoading(true);
+    setQrCode('');
     try {
       const res = await fetch(`${EVO_URL}/instance/connect/${INSTANCE_NAME}`, {
         headers: { 'apikey': EVO_GLOBAL_KEY }
       });
       const data = await res.json();
       if (data.base64) setQrCode(data.base64);
-      else if (data.status === 'open') setIsConnected(true);
-    } catch (err) {} finally { setLoading(false); }
+    } catch (e) { alert("Erro ao conectar."); }
+    finally { setLoading(false); }
   };
 
-  // ✅ ENVIAR MENSAGEM (O Webhook se encarrega de atualizar a tela)
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newMessage.trim() || !selectedLead) return;
 
     const text = newMessage;
+    const phone = selectedLead.phone?.replace(/\D/g, '');
+    const cleanPhone = phone?.startsWith('55') ? phone : `55${phone}`;
     setNewMessage('');
 
     try {
-      const phone = selectedLead.phone?.replace(/\D/g, '');
-      const cleanPhone = phone?.startsWith('55') ? phone : `55${phone}`;
-      
-      // Payload corrigido para a Evolution API v1.8+
+      // Envia apenas para a API; o Webhook trata do armazenamento
       await fetch(`${EVO_URL}/message/sendText/${INSTANCE_NAME}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'apikey': EVO_GLOBAL_KEY },
@@ -114,24 +109,19 @@ export default function WhatsAppPage() {
           textMessage: { text: text }
         })
       });
-    } catch (err) {
-      console.error('Erro ao enviar:', err);
-    }
+    } catch (err) { console.error('Erro ao enviar'); }
   };
+
+  if (!initialCheckDone) return <div className="h-screen flex items-center justify-center bg-zinc-950"><Loader2 className="animate-spin text-emerald-500" /></div>;
 
   if (!isConnected) {
     return (
-      <div className={`min-h-screen flex items-center justify-center p-4 ${darkMode ? 'bg-black text-white' : 'bg-gray-50'}`}>
-        <div className="max-w-md w-full bg-white dark:bg-gray-900 rounded-[32px] shadow-2xl p-10 text-center border dark:border-gray-800">
-          <h1 className="text-2xl font-black uppercase italic mb-6">WhatsApp Hub</h1>
-          <div className="aspect-square border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-2xl flex items-center justify-center mb-8 bg-gray-50 dark:bg-gray-800 overflow-hidden">
-            {qrCode ? (
-              <img src={qrCode} alt="QR" className="w-full h-full p-4" />
-            ) : (
-              <button onClick={handleGenerateQR} disabled={loading} className="px-8 py-4 bg-green-500 text-white rounded-xl font-bold hover:scale-105 transition-all">
-                {loading ? 'GERANDO...' : 'CONECTAR AGORA'}
-              </button>
-            )}
+      <div className={`h-screen flex items-center justify-center p-6 ${darkMode ? 'bg-zinc-950 text-white' : 'bg-white'}`}>
+        <div className="max-w-md w-full p-10 rounded-[40px] border shadow-2xl text-center">
+          <QrCode className="mx-auto text-emerald-500 mb-6" size={56} />
+          <h2 className="text-2xl font-black uppercase italic mb-6">WhatsApp Hub</h2>
+          <div className="bg-white p-4 rounded-3xl inline-block mb-6 shadow-xl border-2 border-emerald-500">
+            {qrCode ? <img src={qrCode} alt="QR" className="w-48 h-48" /> : <button onClick={handleGenerateQR} className="p-4 text-emerald-500 font-bold">{loading ? 'Gerando...' : 'Clique para Gerar QR'}</button>}
           </div>
         </div>
       </div>
@@ -139,44 +129,43 @@ export default function WhatsAppPage() {
   }
 
   return (
-    <div className={`h-[calc(100vh-80px)] flex ${darkMode ? 'bg-gray-900 text-white' : 'bg-gray-50 text-black'}`}>
-      {/* Sidebar */}
-      <div className="w-80 border-r border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 flex flex-col">
-        <div className="p-6 border-b border-gray-200 dark:border-gray-700 font-bold uppercase text-xs tracking-widest text-green-500">Conversas</div>
-        <div className="overflow-y-auto flex-1">
-          {leads.map(lead => (
-            <button key={lead.id} onClick={() => setSelectedLead(lead)} className={`w-full p-4 text-left border-b border-gray-200 dark:border-gray-700 transition-colors ${selectedLead?.id === lead.id ? 'bg-green-500/10' : 'hover:bg-gray-50 dark:hover:bg-gray-700'}`}>
-              <div className="font-bold text-sm">{lead.name}</div>
-              <div className="text-[10px] opacity-50">{lead.phone}</div>
+    <div className={`h-[calc(100vh-80px)] flex ${darkMode ? 'bg-zinc-950 text-white' : 'bg-zinc-50 text-zinc-900'}`}>
+      <div className={`w-80 border-r flex flex-col ${darkMode ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-gray-200'}`}>
+        <div className="p-4 border-b font-black uppercase italic text-emerald-500 tracking-widest text-xs">Conversas</div>
+        <div className="flex-1 overflow-y-auto">
+          {leads.map((lead: any) => (
+            <button key={lead.id} onClick={() => setSelectedLead(lead)} className={`w-full p-4 flex gap-3 border-b transition-colors ${darkMode ? 'border-zinc-800' : 'border-gray-100'} ${selectedLead?.id === lead.id ? 'bg-emerald-500/10' : ''}`}>
+              <div className="w-10 h-10 bg-emerald-500/20 rounded-lg flex items-center justify-center font-bold text-emerald-500">{lead.name?.[0] || "?"}</div>
+              <div className="text-left truncate">
+                <p className="font-bold text-sm truncate">{lead.name}</p>
+                <p className="text-[10px] opacity-40">{lead.phone}</p>
+              </div>
             </button>
           ))}
         </div>
       </div>
 
-      {/* Chat Area */}
-      <div className="flex-1 flex flex-col bg-gray-50 dark:bg-black">
+      <div className="flex-1 flex flex-col">
         {selectedLead ? (
           <>
-            <div className="p-4 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-950 font-bold">{selectedLead.name}</div>
+            <div className={`h-16 p-4 border-b flex items-center font-bold ${darkMode ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-gray-200'}`}>{selectedLead.name}</div>
             <div className="flex-1 overflow-y-auto p-6 space-y-4">
-              {messages.map(msg => (
-                <div key={msg.id} className={`flex ${msg.direction === 'sent' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[75%] p-3 rounded-2xl shadow-sm ${msg.direction === 'sent' ? 'bg-[#0217ff] text-white rounded-br-none' : 'bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-bl-none'}`}>
-                    <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+              {messages.map((m: any) => (
+                <div key={m.id} className={`flex ${m.direction === 'sent' ? 'justify-end' : 'justify-start'}`}>
+                  <div className={`max-w-[75%] p-3 rounded-2xl shadow-sm ${m.direction === 'sent' ? 'bg-[#0217ff] text-white' : (darkMode ? 'bg-zinc-800' : 'bg-white border border-gray-200')}`}>
+                    <p className="text-sm whitespace-pre-wrap">{m.content}</p>
                   </div>
                 </div>
               ))}
               <div ref={messagesEndRef} />
             </div>
-            <div className="p-4 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-950">
-              <form onSubmit={handleSendMessage} className="flex gap-2">
-                <input value={newMessage} onChange={e => setNewMessage(e.target.value)} placeholder="Mensagem..." className="flex-1 p-3 rounded-xl border dark:bg-gray-900 focus:outline-none focus:border-green-500" />
-                <button type="submit" disabled={!newMessage.trim()} className="px-6 py-3 bg-green-500 text-white rounded-xl font-bold">Enviar</button>
-              </form>
-            </div>
+            <form onSubmit={handleSendMessage} className={`p-4 border-t flex gap-2 ${darkMode ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-gray-200'}`}>
+              <input value={newMessage} onChange={e => setNewMessage(e.target.value)} placeholder="Mensagem..." className={`flex-1 p-3 rounded-xl border ${darkMode ? 'bg-zinc-800 border-zinc-700' : 'bg-zinc-100'} focus:outline-none`} />
+              <button type="submit" className="p-3 bg-emerald-500 text-white rounded-xl"><Send size={20}/></button>
+            </form>
           </>
         ) : (
-          <div className="flex-1 flex items-center justify-center opacity-20 font-bold uppercase tracking-widest">Selecione um cliente</div>
+          <div className="flex-1 flex flex-col items-center justify-center opacity-10"><Smartphone size={64} /><p className="mt-4 font-bold uppercase tracking-widest text-xs">Selecione um cliente</p></div>
         )}
       </div>
     </div>
