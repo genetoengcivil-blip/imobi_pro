@@ -12,7 +12,13 @@ const EVO_GLOBAL_KEY = "minha_chave_simples_123";
 const INSTANCE_NAME = "imobipro";
 
 export default function WhatsAppPage() {
-  const { user, leads, messages, addMessage, markAsRead, whatsappConnected, setWhatsappConnected, darkMode } = useGlobal();
+  const globalCtx = useGlobal() as any;
+  
+  // 🛡️ PROTEÇÃO MÁXIMA CONTRA ERROS DE MAIÚSCULAS/MINÚSCULAS NO CONTEXTO
+  const setConnected = globalCtx.setWhatsappConnected || globalCtx.setWhatsAppConnected;
+  const isConnected = globalCtx.whatsappConnected || globalCtx.whatsAppConnected;
+  const { user, leads, messages, addMessage, markAsRead, darkMode } = globalCtx;
+
   const [selectedLead, setSelectedLead] = useState<any>(null);
   const [newMessage, setNewMessage] = useState('');
   
@@ -42,9 +48,18 @@ export default function WhatsAppPage() {
   }, [messages, selectedLead]);
 
   useEffect(() => {
-    if (selectedLead) markAsRead(selectedLead.id);
+    if (selectedLead && typeof markAsRead === 'function') markAsRead(selectedLead.id);
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [selectedLead, activeMessages, markAsRead]);
+
+  // Função segura para alterar o estado sem crashar a aplicação
+  const safeSetConnected = (status: boolean) => {
+    if (typeof setConnected === 'function') {
+      setConnected(status);
+    } else {
+      console.error("ERRO: setWhatsappConnected não foi encontrado no GlobalContext!");
+    }
+  };
 
   // ✅ VERIFICAR STATUS DA INSTÂNCIA AO CARREGAR
   useEffect(() => {
@@ -58,23 +73,14 @@ export default function WhatsAppPage() {
         
         if (res.ok) {
           const instances = await res.json();
-          console.log('Instâncias encontradas:', instances);
+          const instance = instances.find((i: any) => i.instance?.instanceName === INSTANCE_NAME);
           
-          // Procura nossa instância
-          const instance = instances.find((i: any) => 
-            i.instance?.instanceName === INSTANCE_NAME
-          );
-          
-          // ✅ Verifica se já está conectada
-          if (instance?.instance?.status === 'open') {
+          if (instance?.instance?.status === 'open' || instance?.instance?.state === 'open') {
             console.log('✅ Instância já está conectada!');
-            // Usar setTimeout para evitar problemas de renderização
-            setTimeout(() => {
-              setWhatsappConnected(true);
-            }, 100);
+            safeSetConnected(true);
           } else {
             console.log('Instância existe mas não está conectada');
-            setWhatsappConnected(false);
+            safeSetConnected(false);
           }
         }
       } catch (error) {
@@ -85,7 +91,7 @@ export default function WhatsAppPage() {
     };
     
     checkInstance();
-  }, []); // Removida dependência para executar apenas uma vez
+  }, []);
 
   // ✅ MONITORAR CONEXÃO
   const startConnectionWatcher = () => {
@@ -99,25 +105,20 @@ export default function WhatsAppPage() {
         
         if (res.ok) {
           const data = await res.json();
-          console.log('Status:', data);
-          
-          // Verifica se conectou
-          if (data.instance?.state === 'open' || data.instance?.status === 'open') {
+          if (data.instance?.state === 'open' || data.instance?.status === 'open' || data.state === 'open') {
             console.log('✅ WhatsApp conectado!');
             clearInterval(interval);
-            setWhatsappConnected(true);
+            safeSetConnected(true);
             setConnectionStatus('disconnected');
           }
         }
-      } catch (e) {
-        // Erro silencioso
-      }
+      } catch (e) {}
     }, 3000);
     
     setTimeout(() => clearInterval(interval), 120000);
   };
 
-  // ✅ GERAR QR CODE
+  // ✅ GERAR QR CODE (Sem Loop Infinito)
   const handleGenerateQR = async () => {
     setConnectionStatus('generating');
     setErrorMessage(null);
@@ -132,44 +133,56 @@ export default function WhatsAppPage() {
         headers: { 'apikey': EVO_GLOBAL_KEY }
       });
       
+      let connectData = null;
       if (connectRes.ok) {
-        const connectData = await connectRes.json();
-        console.log('Resposta do connect:', connectData);
+        connectData = await connectRes.json();
+      }
+
+      // 1. JÁ ESTÁ LIGADO
+      if (connectData && (connectData.status === 'open' || connectData.instance?.status === 'open' || connectData.instance?.state === 'open')) {
+        console.log('WhatsApp já está conectado!');
+        safeSetConnected(true);
+        setConnectionStatus('disconnected');
+      } 
+      // 2. TEM QR CODE PRONTO
+      else if (connectData && connectData.base64) {
+        console.log('QR Code gerado com sucesso!');
+        setQrCodeBase64(connectData.base64);
+        setConnectionStatus('waiting_scan');
+        startConnectionWatcher();
+      } 
+      // 3. SE A INSTÂNCIA NÃO EXISTIR (404), VAMOS CRIAR (Substitui o loop infinito)
+      else if (connectRes.status === 404 || !connectRes.ok) {
+        console.log('Instância não encontrada. A criar nova...');
+        const createRes = await fetch(`${EVO_URL}/instance/create`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': EVO_GLOBAL_KEY
+          },
+          body: JSON.stringify({
+            instanceName: INSTANCE_NAME,
+            qrcode: true
+          })
+        });
+
+        if (!createRes.ok) throw new Error("A Oracle recusou a criação da instância.");
         
-        // ✅ CASO 1: JÁ ESTÁ CONECTADO
-        if (connectData.status === 'open' || connectData.instance?.status === 'open') {
-          console.log('WhatsApp já está conectado!');
-          setWhatsappConnected(true);
-          setConnectionStatus('disconnected');
-          return;
-        }
-        
-        // ✅ CASO 2: TEM QR CODE
-        if (connectData.base64) {
-          console.log('QR Code gerado!');
-          setQrCodeBase64(connectData.base64);
+        const createData = await createRes.json();
+        if (createData.qrcode && createData.qrcode.base64) {
+          setQrCodeBase64(createData.qrcode.base64);
           setConnectionStatus('waiting_scan');
           startConnectionWatcher();
-          return;
+        } else if (createData.instance?.state === 'open') {
+          safeSetConnected(true);
+        } else {
+          throw new Error("Não foi possível gerar o QR Code. Tente novamente.");
         }
-        
-        // ✅ CASO 3: AGUARDANDO QR CODE
-        console.log('Aguardando QR Code...');
-        setErrorMessage('Escaneie o QR Code no WhatsApp para conectar');
-        setTimeout(() => {
-          handleGenerateQR(); // Tenta novamente
-        }, 2000);
-        
-      } else {
-        const errorText = await connectRes.text();
-        console.error('Erro na conexão:', errorText);
-        setErrorMessage(`Erro ${connectRes.status}: Não foi possível conectar`);
-        setConnectionStatus('disconnected');
       }
       
     } catch (error: any) {
       console.error("Erro detalhado:", error);
-      setErrorMessage(error.message);
+      setErrorMessage(error.message || "Erro desconhecido. Verifique o servidor.");
       setConnectionStatus('disconnected');
     } finally {
       setIsLoading(false);
@@ -183,7 +196,7 @@ export default function WhatsAppPage() {
           method: 'DELETE',
           headers: { 'apikey': EVO_GLOBAL_KEY }
         });
-        setWhatsappConnected(false);
+        safeSetConnected(false);
         setConnectionStatus('disconnected');
         setQrCodeBase64(null);
       } catch (e) {
@@ -194,7 +207,7 @@ export default function WhatsAppPage() {
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newMessage.trim() || !selectedLead || !selectedLead.phone) return;
+    if (!newMessage.trim() || !selectedLead || !selectedLead.phone || typeof addMessage !== 'function') return;
 
     const messageText = newMessage;
     setNewMessage('');
@@ -229,7 +242,7 @@ export default function WhatsAppPage() {
   }
 
   // ✅ SE JÁ ESTIVER CONECTADO, MOSTRA O CHAT
-  if (whatsappConnected) {
+  if (isConnected) {
     return (
       <div className={`h-[calc(100vh-80px)] flex animate-fade-in font-sans ${theme.textMain}`}>
         {/* Sidebar de conversas */}

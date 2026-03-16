@@ -30,6 +30,7 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [appointments, setAppointments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [darkMode, setDarkMode] = useState(false);
+  
 
   const carregarDados = async (authUser: any) => {
     try {
