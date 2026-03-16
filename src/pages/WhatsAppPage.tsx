@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   Search, Send, Phone, MoreVertical, CheckCheck,
   Shield, Smartphone, ChevronLeft, Loader2,
-  QrCode, MessageSquare, Paperclip, Smile, Unplug
+  QrCode, MessageSquare, Paperclip, Smile
 } from 'lucide-react';
 import { useGlobal } from '../context/GlobalContext';
 
@@ -16,19 +16,15 @@ export default function WhatsAppPage() {
 
   const [isWhatsappConnected, setIsWhatsappConnected] = useState(false);
   
-  // 🔥 SISTEMA DE MENSAGENS BLINDADO NO NAVEGADOR
+  // 🔥 SALVAR E RECUPERAR MENSAGENS DO NAVEGADOR (Acabou a perda de histórico!)
   const [localMessages, setLocalMessages] = useState<any[]>(() => {
-    try {
-      const saved = localStorage.getItem('@ImobiPro:WhatsAppMessages');
-      return saved ? JSON.parse(saved) : [];
-    } catch (e) {
-      return [];
-    }
+    const saved = localStorage.getItem('imobipro_whatsapp_msgs');
+    return saved ? JSON.parse(saved) : [];
   });
 
-  // Salva no navegador sempre que há alteração
+  // Atualiza o histórico no navegador sempre que há uma nova mensagem
   useEffect(() => {
-    localStorage.setItem('@ImobiPro:WhatsAppMessages', JSON.stringify(localMessages));
+    localStorage.setItem('imobipro_whatsapp_msgs', JSON.stringify(localMessages));
   }, [localMessages]);
 
   const [selectedLead, setSelectedLead] = useState<any>(null);
@@ -68,7 +64,6 @@ export default function WhatsAppPage() {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [selectedLead, activeMessages]);
 
-  // ✅ VERIFICAR STATUS DA INSTÂNCIA
   useEffect(() => {
     const checkInstance = async () => {
       try {
@@ -86,7 +81,7 @@ export default function WhatsAppPage() {
           }
         }
       } catch (error) {
-        console.error("Erro na verificação inicial:", error);
+        // Silencioso
       } finally {
         setInitialCheckDone(true);
       }
@@ -174,9 +169,8 @@ export default function WhatsAppPage() {
     }
   };
 
-  // 🔥 FORÇAR DESCONEXÃO (Limpa a sessão na Oracle para gerar novo QR Code)
   const handleDisconnect = async () => {
-    if(window.confirm("Deseja forçar a desconexão? Isso vai exigir a leitura do QR Code novamente.")) {
+    if(window.confirm("Desconectar o WhatsApp?")) {
       try {
         await fetch(`${EVO_URL}/instance/logout/${INSTANCE_NAME}`, {
           method: 'DELETE',
@@ -185,9 +179,7 @@ export default function WhatsAppPage() {
         setIsWhatsappConnected(false);
         setConnectionStatus('disconnected');
         setQrCodeBase64(null);
-      } catch (e) {
-        console.error('Erro ao desconectar:', e);
-      }
+      } catch (e) {}
     }
   };
 
@@ -198,19 +190,13 @@ export default function WhatsAppPage() {
     const messageText = newMessage;
     setNewMessage('');
     
-    // Adiciona ao histórico do navegador imediatamente
+    // Mostra imediatamente na sua tela
     addLocalMessage(selectedLead.id, messageText, 'sent');
 
     try {
-      // 🔥 CORREÇÃO DO NÚMERO DE TELEFONE (Evita o erro "5555")
-      let cleanPhone = selectedLead.phone.replace(/\D/g, '');
+      const cleanPhone = selectedLead.phone.replace(/\D/g, '');
       
-      // Se o número não começar por 55, nós adicionamos. Se já tiver, deixamos como está.
-      if (!cleanPhone.startsWith('55')) {
-        cleanPhone = `55${cleanPhone}`;
-      }
-
-      // Payload universal simplificado para a v1.8.0
+      // 🔥 FORMATO CORRIGIDO PARA A EVOLUTION API v1.8.0
       const res = await fetch(`${EVO_URL}/message/sendText/${INSTANCE_NAME}`, {
         method: 'POST',
         headers: {
@@ -218,15 +204,16 @@ export default function WhatsAppPage() {
           'apikey': EVO_GLOBAL_KEY
         },
         body: JSON.stringify({
-          number: cleanPhone,
-          text: messageText,
-          delay: 1200
+          number: `55${cleanPhone}`,
+          options: { delay: 1200, presence: 'composing' },
+          textMessage: { text: messageText }
         })
       });
 
-      const resData = await res.json();
-      console.log("Status do Envio:", resData);
-
+      if (!res.ok) {
+        const err = await res.text();
+        console.error("Falha ao enviar pelo WhatsApp:", err);
+      }
     } catch (error) {
       console.error("Erro na comunicação com a API:", error);
     }
@@ -241,7 +228,6 @@ export default function WhatsAppPage() {
     );
   }
 
-  // TELA DO CHAT (Conectado)
   if (isWhatsappConnected) {
     return (
       <div className={`h-[calc(100vh-80px)] flex animate-fade-in font-sans ${theme.textMain}`}>
@@ -249,13 +235,7 @@ export default function WhatsAppPage() {
           <div className={`p-6 border-b ${theme.border}`}>
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-xl font-black italic tracking-tighter uppercase">Conversas</h2>
-              <button 
-                onClick={handleDisconnect} 
-                title="Forçar Desconexão" 
-                className="w-8 h-8 rounded-full bg-red-500/10 text-red-500 flex items-center justify-center hover:bg-red-500 hover:text-white transition-all"
-              >
-                <Unplug size={16} />
-              </button>
+              <button onClick={handleDisconnect} title="Desconectar WhatsApp" className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse cursor-pointer hover:scale-150 transition-all" />
             </div>
             <div className="relative">
               <Search className={`absolute left-4 top-1/2 -translate-y-1/2 ${theme.textMuted}`} size={16} />
@@ -345,7 +325,6 @@ export default function WhatsAppPage() {
     );
   }
 
-  // TELA DE QR CODE (Desconectado)
   return (
     <div className={`p-8 pb-32 min-h-[calc(100vh-80px)] flex flex-col items-center justify-center animate-fade-in font-sans ${theme.textMain}`}>
       <div className={`w-full max-w-4xl flex flex-col md:flex-row items-center gap-12 ${theme.bgCard} p-12 rounded-[48px] border ${theme.border} shadow-2xl`}>
@@ -359,14 +338,6 @@ export default function WhatsAppPage() {
               Sincronize o seu WhatsApp com o CRM. Leia o QR Code e centralize o seu atendimento de forma automática.
             </p>
             {errorMessage && <div className="mt-4 p-4 bg-red-500/10 text-red-500 rounded-2xl text-xs font-mono">{errorMessage}</div>}
-            
-            {/* NOVO BOTÃO DE FORÇAR DESCONEXÃO PARA QUANDO A API TRAVA */}
-            <button 
-              onClick={handleDisconnect}
-              className="mt-6 flex items-center gap-2 px-4 py-2 bg-zinc-100 dark:bg-zinc-900 rounded-xl text-xs font-bold hover:bg-red-500/10 hover:text-red-500 transition-colors"
-            >
-              <Unplug size={14} /> Forçar Limpeza da Sessão
-            </button>
           </div>
         </div>
 
