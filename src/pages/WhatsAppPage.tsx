@@ -12,10 +12,10 @@ const EVO_GLOBAL_KEY = "minha_chave_simples_123";
 const INSTANCE_NAME = "imobipro";
 
 export default function WhatsAppPage() {
-  // 1. Puxamos apenas o que REALMENTE existe no seu GlobalContext
-  const { user, leads, darkMode } = useGlobal();
+  // 1. Puxamos apenas o que REALMENTE existe no seu GlobalContext (Nada de WhatsApp aqui)
+  const { user, leads, darkMode } = useGlobal() as any;
 
-  // 2. 🔥 CRIAMOS OS ESTADOS QUE FALTAVAM AQUI DENTRO! (Adeus "is not a function")
+  // 2. 🔥 ESTADOS LOCAIS (A página agora é auto-suficiente)
   const [isWhatsappConnected, setIsWhatsappConnected] = useState(false);
   const [localMessages, setLocalMessages] = useState<any[]>([]);
 
@@ -42,7 +42,7 @@ export default function WhatsAppPage() {
     msgReceivedBg: darkMode ? 'bg-zinc-900' : 'bg-white',
   };
 
-  // 3. Função local para adicionar mensagens à tela
+  // 3. Função local para adicionar mensagens à tela imediatamente
   const addLocalMessage = (leadId: string, content: string, direction: 'sent' | 'received') => {
     const newMsg = { id: Date.now().toString(), leadId, content, direction, timestamp: new Date().toISOString() };
     setLocalMessages(prev => [...prev, newMsg]);
@@ -61,7 +61,7 @@ export default function WhatsAppPage() {
   useEffect(() => {
     const checkInstance = async () => {
       try {
-        console.log('Verificando status da API...');
+        console.log('A verificar status da API na Oracle...');
         const res = await fetch(`${EVO_URL}/instance/connectionState/${INSTANCE_NAME}`, {
           method: 'GET',
           headers: { 'apikey': EVO_GLOBAL_KEY }
@@ -70,7 +70,7 @@ export default function WhatsAppPage() {
         if (res.ok) {
           const data = await res.json();
           if (data.instance?.state === 'open' || data.instance?.status === 'open' || data.state === 'open') {
-            console.log('✅ Instância já está conectada na Oracle!');
+            console.log('✅ Instância conectada confirmada! Mudando tela...');
             setIsWhatsappConnected(true);
           } else {
             console.log('A instância não está conectada ao telemóvel.');
@@ -78,7 +78,7 @@ export default function WhatsAppPage() {
           }
         }
       } catch (error) {
-        console.error('Aguardando servidor...');
+        console.error('Aguardando servidor proxy...');
       } finally {
         setInitialCheckDone(true);
       }
