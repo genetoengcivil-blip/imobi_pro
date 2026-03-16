@@ -7,21 +7,29 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (req.method !== 'POST') return res.status(200).send('OK');
 
   try {
-    const payload = req.body;
-    
-    if (payload.event === 'messages.upsert' || payload.event === 'messages.send') {
-      const msg = payload.data;
-      if (!msg?.key?.remoteJid) return res.status(200).send('OK');
+    const { event, data } = req.body;
 
-      const phone = msg.key.remoteJid.split('@')[0];
-      const isFromMe = msg.key.fromMe || false;
-      const content = msg.message?.conversation || msg.message?.extendedTextMessage?.text || "📎 Mídia";
+    if (event === 'messages.upsert' || event === 'messages.send' || event === 'send.message') {
+      const remoteJid = data.key?.remoteJid || data.remoteJid || '';
+      const phone = remoteJid.split('@')[0];
+      const messageId = data.key?.id || data.id;
+      const isFromMe = data.key?.fromMe || data.fromMe || false;
 
-      const { data: lead } = await supabase.from('leads').select('id').ilike('phone', `%${phone.slice(-8)}%`).single();
+      // Conteúdo da mensagem
+      let content = data.message?.conversation || 
+                    data.message?.extendedTextMessage?.text || 
+                    data.content || "📎 Mídia";
+
+      // Busca o lead pelo telefone (últimos 8 dígitos)
+      const { data: lead } = await supabase
+        .from('leads')
+        .select('id')
+        .ilike('phone', `%${phone.slice(-8)}%`)
+        .single();
 
       if (lead) {
         await supabase.from('whatsapp_messages').upsert({
-          message_id: msg.key.id,
+          message_id: messageId,
           lead_id: lead.id,
           content: content,
           direction: isFromMe ? 'sent' : 'received',
@@ -31,6 +39,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
     return res.status(200).json({ success: true });
   } catch (e) {
-    return res.status(200).send('OK'); // Evita que a Evolution API fique tentando reenviar em loop
+    return res.status(200).send('OK');
   }
 }
