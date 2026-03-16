@@ -7,7 +7,7 @@ import {
 import { useGlobal } from '../context/GlobalContext';
 
 // 🔒 CONFIGURAÇÕES DO SERVIDOR ORACLE - CORRIGIDAS
-const EVO_URL = "http://137.131.136.246:8080"; // IP da Oracle + porta
+const EVO_URL = "https://api.imobi-pro.com"; // IP da Oracle + porta
 const EVO_GLOBAL_KEY = "minha_chave_simples_123"; // Chave configurada no servidor
 
 export default function WhatsAppPage() {
