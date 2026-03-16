@@ -14,10 +14,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const isFromMe = data.key.fromMe || false;
     const content = data.message?.conversation || data.message?.extendedTextMessage?.text || "📎 Mídia";
 
-    // Busca o lead pelos últimos 8 dígitos (evita erro de 9º dígito)
+    // Busca o lead pelos últimos 8 dígitos para evitar erros de 9º dígito
     const { data: lead } = await supabase.from('leads').select('id').ilike('phone', `%${phone.slice(-8)}%`).single();
 
     if (lead) {
+      // ✅ O UPSERT impede a duplicação usando o message_id
       await supabase.from('whatsapp_messages').upsert({
         message_id: data.key.id,
         lead_id: lead.id,
@@ -27,5 +28,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }, { onConflict: 'message_id' });
     }
     return res.status(200).send('OK');
-  } catch (e) { return res.status(200).send('OK'); }
+  } catch (e) { 
+    return res.status(200).send('OK'); 
+  }
 }
