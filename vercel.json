@@ -1,16 +1,14 @@
 {
   "rewrites": [
     {
-      "source": "/evo-api/:path*",
-      "destination": "https://api.imobi-pro.com/:path*"
-    },
+      "source": "/evo-api/(.*)",
+      "destination": "https://api.imobi-pro.com/$1"
+    }
+  ],
+  "routes": [
     {
-      "source": "/index.html",
-      "destination": "/index.html"
-    },
-    {
-      "source": "/(.*)",
-      "destination": "/index.html"
+      "src": "/evo-api/(.*)",
+      "dest": "https://api.imobi-pro.com/$1"
     }
   ]
 }
