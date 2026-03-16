@@ -12,10 +12,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   try {
     const payload = req.body;
     
-    // Captura tanto mensagens recebidas quanto confirmações de envio
+    // Captura tanto mensagens recebidas quanto confirmações de envio da Oracle
     if (payload.event === 'messages.upsert' || payload.event === 'messages.send') {
       const msg = payload.data;
-      if (!msg) return res.status(200).json({ skip: 'Sem dados' });
+      if (!msg) return res.status(200).send('OK');
 
       const remoteJid = msg.key?.remoteJid || '';
       const phone = remoteJid.split('@')[0];
@@ -26,7 +26,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                     msg.message?.extendedTextMessage?.text || 
                     "📎 Arquivo de mídia";
 
-      // 1. Busca o Lead pelo telefone (ignorando o 9º dígito se necessário)
       const { data: lead } = await supabase
         .from('leads')
         .select('id')
@@ -34,7 +33,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         .single();
 
       if (lead) {
-        // 2. Salva ou Atualiza (upsert) para evitar duplicados na tela
+        // ✅ UPSERT: Se o message_id já existir, ele não duplica a linha
         await supabase.from('whatsapp_messages').upsert({
           message_id: messageId,
           lead_id: lead.id,
