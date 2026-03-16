@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { useGlobal } from '../context/GlobalContext';
 
-// 🔗 CONFIGURAÇÃO VIA TÚNEL VERCEL (Resolve CORS e Failed to Fetch)
+// 🔗 CONFIGURAÇÃO VIA PROXY VERCEL
 const EVO_URL = "/evo-api"; 
 const EVO_GLOBAL_KEY = "minha_chave_simples_123";
 const INSTANCE_NAME = "imobipro";
@@ -19,6 +19,7 @@ export default function WhatsAppPage() {
   const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'generating' | 'waiting_scan'>('disconnected');
   const [qrCodeBase64, setQrCodeBase64] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isCheckingInstance, setIsCheckingInstance] = useState(false);
   
   const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -40,18 +41,21 @@ export default function WhatsAppPage() {
   }, [messages, selectedLead]);
 
   useEffect(() => {
-    const checkStatus = async () => {
+    const checkInstance = async () => {
+      setIsCheckingInstance(true);
       try {
-        const res = await fetch(`${EVO_URL}/instance/connectionState/${INSTANCE_NAME}`, {
+        const response = await fetch(`${EVO_URL}/instance/connectionState/${INSTANCE_NAME}`, {
           headers: { 'apikey': EVO_GLOBAL_KEY }
         });
-        const data = await res.json();
+        const data = await response.json();
         if (data.instance?.state === 'open') setWhatsappConnected(true);
       } catch (e) {
-        console.log("Aguardando conexão com a API...");
+        console.error("Erro ao verificar instância:", e);
+      } finally {
+        setIsCheckingInstance(false);
       }
     };
-    checkStatus();
+    checkInstance();
   }, [setWhatsappConnected]);
 
   const handleGenerateQR = async () => {
@@ -69,7 +73,6 @@ export default function WhatsAppPage() {
       } else if (data.instance?.status === 'open') {
         setWhatsappConnected(true);
       } else {
-        // Tenta criar se não existir
         await fetch(`${EVO_URL}/instance/create`, {
           method: 'POST',
           headers: { 'apikey': EVO_GLOBAL_KEY, 'Content-Type': 'application/json' },
@@ -78,7 +81,7 @@ export default function WhatsAppPage() {
         handleGenerateQR();
       }
     } catch (err) {
-      setErrorMessage("Erro ao conectar com a Evolution API via Vercel.");
+      setErrorMessage("Erro de conexão. Verifique o vercel.json.");
       setConnectionStatus('disconnected');
     }
   };
@@ -98,7 +101,7 @@ export default function WhatsAppPage() {
           textMessage: { text: msg } 
         })
       });
-    } catch (e) { console.error("Erro ao enviar:", e); }
+    } catch (e) { console.error(e); }
   };
 
   if (!whatsappConnected) {
@@ -112,9 +115,9 @@ export default function WhatsAppPage() {
             <div>
               <h1 className="text-4xl font-black italic uppercase tracking-tighter mb-4">WhatsApp <span className="text-emerald-500">SaaS</span></h1>
               <p className={`${theme.textMuted} font-medium text-lg leading-relaxed`}>
-                Sincronize seu aparelho para gerenciar leads em tempo real.
+                Conecte seu aparelho para gerenciar leads em tempo real.
               </p>
-              {errorMessage && <p className="mt-4 text-red-500 text-xs font-bold uppercase">{errorMessage}</p>}
+              {errorMessage && <div className="mt-4 p-3 bg-red-500/10 text-red-500 rounded-xl text-xs">{errorMessage}</div>}
             </div>
           </div>
           <div className={`w-full md:w-[350px] aspect-square flex items-center justify-center border-2 border-dashed rounded-[32px] ${theme.border}`}>
@@ -124,7 +127,7 @@ export default function WhatsAppPage() {
               </button>
             )}
             {connectionStatus === 'generating' && <Loader2 className="animate-spin text-emerald-500" size={48} />}
-            {qrCodeBase64 && <img src={qrCodeBase64} className="w-64 h-64 rounded-xl shadow-2xl" alt="Scan me" />}
+            {qrCodeBase64 && <img src={qrCodeBase64} className="w-64 h-64 rounded-xl shadow-2xl" alt="QR Code" />}
           </div>
         </div>
       </div>
@@ -166,7 +169,7 @@ export default function WhatsAppPage() {
         </div>
         <form onSubmit={handleSendMessage} className="p-4 border-t flex gap-3">
           <input value={newMessage} onChange={e => setNewMessage(e.target.value)} className="flex-1 bg-zinc-100 dark:bg-zinc-900 border-none rounded-2xl px-6 text-sm" placeholder="Digite sua mensagem..." />
-          <button type="submit" className="p-4 bg-[#0217ff] text-white rounded-2xl hover:scale-105 transition-all"><Send size={20}/></button>
+          <button type="submit" className="p-4 bg-[#0217ff] text-white rounded-2xl hover:scale-105 transition-all shadow-lg shadow-[#0217ff]/20"><Send size={20}/></button>
         </form>
       </div>
     </div>
