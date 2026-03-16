@@ -8,24 +8,29 @@ const INSTANCE_NAME = "imobipro";
 
 export default function WhatsAppPage() {
   const { darkMode } = useGlobal() as any;
+  
+  // Estados básicos
   const [isConnected, setIsConnected] = useState(false);
   const [qrCode, setQrCode] = useState('');
   const [loading, setLoading] = useState(false);
-  const [leads, setLeads] = useState<any[]>([]);
-  const [messages, setMessages] = useState<any[]>([]);
-  const [selectedLead, setSelectedLead] = useState<any>(null);
+  const [leads, setLeads] = useState([]);
+  const [messages, setMessages] = useState([]);
+  const [selectedLead, setSelectedLead] = useState(null);
   const [newMessage, setNewMessage] = useState('');
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [sending, setSending] = useState(false);
 
+  const messagesEndRef = useRef(null);
+
+  // Carregar leads
   useEffect(() => {
     const loadLeads = async () => {
-      const { data } = await supabase.from('leads').select('*').order('name');
+      const { data } = await supabase.from('leads').select('*');
       if (data) setLeads(data);
     };
     loadLeads();
   }, []);
 
-  // GERENCIAR MENSAGENS COM REALTIME
+  // Carregar mensagens do lead selecionado
   useEffect(() => {
     if (!selectedLead) return;
     
@@ -34,29 +39,14 @@ export default function WhatsAppPage() {
         .from('whatsapp_messages')
         .select('*')
         .eq('lead_id', selectedLead.id)
-        .order('created_at', { ascending: true });
+        .order('created_at');
       if (data) setMessages(data);
     };
+    
     loadMessages();
-
-    const channel = supabase
-      .channel(`chat_${selectedLead.id}`)
-      .on('postgres_changes', { 
-        event: 'INSERT', 
-        schema: 'public', 
-        table: 'whatsapp_messages',
-        filter: `lead_id=eq.${selectedLead.id}` 
-      }, (payload) => {
-        setMessages(prev => {
-          if (prev.some(m => m.id === payload.new.id || m.message_id === payload.new.message_id)) return prev;
-          return [...prev, payload.new];
-        });
-      })
-      .subscribe();
-
-    return () => { supabase.removeChannel(channel); };
   }, [selectedLead]);
 
+  // Scroll automático
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
@@ -68,107 +58,125 @@ export default function WhatsAppPage() {
         const res = await fetch(`${EVO_URL}/instance/connectionState/${INSTANCE_NAME}`, {
           headers: { 'apikey': EVO_GLOBAL_KEY }
         });
-        if (res.ok) {
-          const data = await res.json();
-          const state = data.instance?.state || data.state || data.status;
-          setIsConnected(state === 'open' || state === 'connected');
-        }
+        const data = await res.json();
+        const state = data.instance?.state || data.state;
+        setIsConnected(state === 'open');
       } catch (e) {}
     };
     checkStatus();
-    const interval = setInterval(checkStatus, 10000);
+    const interval = setInterval(checkStatus, 5000);
     return () => clearInterval(interval);
   }, []);
 
-  // ✅ FUNÇÃO CORRIGIDA PARA GERAR QR CODE
+  // Gerar QR Code
   const handleGenerateQR = async () => {
     setLoading(true);
     try {
-      console.log('Conectando na instância...');
+      // Tenta conectar
       const res = await fetch(`${EVO_URL}/instance/connect/${INSTANCE_NAME}`, {
         headers: { 'apikey': EVO_GLOBAL_KEY }
       });
-      
       const data = await res.json();
-      console.log('Resposta da API:', data);
       
-      // Verifica todos os possíveis lugares onde o QR pode estar
       if (data.base64) {
         setQrCode(data.base64);
-      } 
-      else if (data.qrcode?.base64) {
+      } else if (data.qrcode?.base64) {
         setQrCode(data.qrcode.base64);
-      }
-      else if (data.code) {
-        setQrCode(`data:image/png;base64,${data.code}`);
-      }
-      else if (data.status === 'open' || data.instance?.status === 'open') {
+      } else if (data.status === 'open') {
         setIsConnected(true);
-      }
-      else {
-        console.log('QR não encontrado, tentando criar instância...');
+      } else {
+        // Cria nova instância
         const createRes = await fetch(`${EVO_URL}/instance/create`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'apikey': EVO_GLOBAL_KEY
           },
-          body: JSON.stringify({
-            instanceName: INSTANCE_NAME,
-            qrcode: true
-          })
+          body: JSON.stringify({ instanceName: INSTANCE_NAME, qrcode: true })
         });
-        
         const createData = await createRes.json();
-        console.log('Resposta da criação:', createData);
-        
         if (createData.qrcode?.base64) {
           setQrCode(createData.qrcode.base64);
         }
       }
     } catch (err) {
-      console.error('Erro:', err);
+      console.error(err);
     } finally {
       setLoading(false);
     }
   };
 
-  // ENVIAR MENSAGEM
-  const handleSendMessage = async (e: React.FormEvent) => {
+  // ENVIAR MENSAGEM - VERSÃO SIMPLES
+  const handleSendMessage = async (e) => {
     e.preventDefault();
-    if (!newMessage.trim() || !selectedLead) return;
+    if (!newMessage.trim() || !selectedLead || sending) return;
 
     const text = newMessage;
     setNewMessage('');
+    setSending(true);
 
     try {
+      // Formata o telefone
       const phone = selectedLead.phone?.replace(/\D/g, '');
       const cleanPhone = phone?.startsWith('55') ? phone : `55${phone}`;
-      
-      await fetch(`${EVO_URL}/message/sendText/${INSTANCE_NAME}`, {
+
+      // 1. ENVIA PELA EVOLUTION API
+      const response = await fetch(`${EVO_URL}/message/sendText/${INSTANCE_NAME}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'apikey': EVO_GLOBAL_KEY },
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': EVO_GLOBAL_KEY
+        },
         body: JSON.stringify({
           number: cleanPhone,
-          textMessage: { text: text }
+          text: text
         })
       });
+
+      if (!response.ok) {
+        throw new Error('Erro ao enviar');
+      }
+
+      // 2. SE ENVIOU COM SUCESSO, SALVA NO BANCO
+      const { data: savedMsg } = await supabase
+        .from('whatsapp_messages')
+        .insert({
+          lead_id: selectedLead.id,
+          content: text,
+          direction: 'sent',
+          created_at: new Date().toISOString()
+        })
+        .select()
+        .single();
+
+      if (savedMsg) {
+        setMessages(prev => [...prev, savedMsg]);
+      }
+
     } catch (err) {
       console.error('Erro ao enviar:', err);
+      alert('Falha ao enviar mensagem. Verifique a conexão com WhatsApp.');
+    } finally {
+      setSending(false);
     }
   };
 
+  // TELA DE CONEXÃO
   if (!isConnected) {
     return (
-      <div className={`min-h-screen flex items-center justify-center p-4 ${darkMode ? 'bg-black text-white' : 'bg-gray-50'}`}>
-        <div className="max-w-md w-full bg-white dark:bg-gray-900 rounded-[32px] shadow-2xl p-10 text-center border dark:border-gray-800">
-          <h1 className="text-2xl font-black uppercase italic mb-6">WhatsApp Hub</h1>
-          <div className="aspect-square border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-2xl flex items-center justify-center mb-8 bg-gray-50 dark:bg-gray-800 overflow-hidden">
+      <div className={`min-h-screen flex items-center justify-center p-4 ${darkMode ? 'bg-black' : 'bg-gray-50'}`}>
+        <div className="max-w-md w-full bg-white dark:bg-gray-900 rounded-2xl shadow-xl p-8">
+          <h1 className="text-2xl font-bold text-center mb-6">Conectar WhatsApp</h1>
+          <div className="aspect-square border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-xl flex items-center justify-center mb-6 bg-gray-50 dark:bg-gray-800">
             {qrCode ? (
-              <img src={qrCode} alt="QR" className="w-full h-full p-4" />
+              <img src={qrCode} alt="QR Code" className="w-64 h-64" />
             ) : (
-              <button onClick={handleGenerateQR} disabled={loading} className="px-8 py-4 bg-green-500 text-white rounded-xl font-bold hover:scale-105 transition-all">
-                {loading ? 'GERANDO...' : 'CONECTAR AGORA'}
+              <button
+                onClick={handleGenerateQR}
+                disabled={loading}
+                className="px-6 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:opacity-50"
+              >
+                {loading ? 'Gerando...' : 'Gerar QR Code'}
               </button>
             )}
           </div>
@@ -177,45 +185,85 @@ export default function WhatsAppPage() {
     );
   }
 
+  // TELA DO CHAT
   return (
     <div className={`h-[calc(100vh-80px)] flex ${darkMode ? 'bg-gray-900 text-white' : 'bg-gray-50 text-black'}`}>
       {/* Sidebar */}
-      <div className="w-80 border-r border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 flex flex-col">
-        <div className="p-6 border-b border-gray-200 dark:border-gray-700 font-bold uppercase text-xs tracking-widest text-green-500">Conversas</div>
-        <div className="overflow-y-auto flex-1">
+      <div className="w-80 border-r border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+        <div className="p-4 border-b border-gray-200 dark:border-gray-700 font-bold">
+          Conversas
+        </div>
+        <div className="overflow-y-auto h-[calc(100%-65px)]">
           {leads.map(lead => (
-            <button key={lead.id} onClick={() => setSelectedLead(lead)} className={`w-full p-4 text-left border-b border-gray-200 dark:border-gray-700 transition-colors ${selectedLead?.id === lead.id ? 'bg-green-500/10' : 'hover:bg-gray-50 dark:hover:bg-gray-700'}`}>
-              <div className="font-bold text-sm">{lead.name}</div>
-              <div className="text-[10px] opacity-50">{lead.phone}</div>
+            <button
+              key={lead.id}
+              onClick={() => setSelectedLead(lead)}
+              className={`w-full p-4 text-left border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 ${
+                selectedLead?.id === lead.id ? 'bg-gray-100 dark:bg-gray-700' : ''
+              }`}
+            >
+              <div className="font-medium">{lead.name}</div>
+              <div className="text-sm text-gray-500">{lead.phone}</div>
             </button>
           ))}
         </div>
       </div>
 
-      {/* Chat Area */}
-      <div className="flex-1 flex flex-col bg-gray-50 dark:bg-black">
+      {/* Chat */}
+      <div className="flex-1 flex flex-col">
         {selectedLead ? (
           <>
-            <div className="p-4 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-950 font-bold">{selectedLead.name}</div>
-            <div className="flex-1 overflow-y-auto p-6 space-y-4">
+            {/* Header */}
+            <div className="p-4 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 font-bold">
+              {selectedLead.name}
+            </div>
+
+            {/* Messages */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
               {messages.map(msg => (
-                <div key={msg.id} className={`flex ${msg.direction === 'sent' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[75%] p-3 rounded-2xl shadow-sm ${msg.direction === 'sent' ? 'bg-[#0217ff] text-white rounded-br-none' : 'bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-bl-none'}`}>
-                    <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                <div
+                  key={msg.id}
+                  className={`flex ${msg.direction === 'sent' ? 'justify-end' : 'justify-start'}`}
+                >
+                  <div
+                    className={`max-w-[70%] p-3 rounded-lg ${
+                      msg.direction === 'sent'
+                        ? 'bg-green-500 text-white'
+                        : 'bg-gray-200 dark:bg-gray-700'
+                    }`}
+                  >
+                    {msg.content}
                   </div>
                 </div>
               ))}
               <div ref={messagesEndRef} />
             </div>
-            <div className="p-4 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-950">
+
+            {/* Input */}
+            <div className="p-4 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
               <form onSubmit={handleSendMessage} className="flex gap-2">
-                <input value={newMessage} onChange={e => setNewMessage(e.target.value)} placeholder="Mensagem..." className="flex-1 p-3 rounded-xl border dark:bg-gray-900 focus:outline-none focus:border-green-500" />
-                <button type="submit" disabled={!newMessage.trim()} className="px-6 py-3 bg-green-500 text-white rounded-xl font-bold">Enviar</button>
+                <input
+                  type="text"
+                  value={newMessage}
+                  onChange={e => setNewMessage(e.target.value)}
+                  placeholder="Digite sua mensagem..."
+                  className="flex-1 p-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700"
+                  disabled={sending}
+                />
+                <button
+                  type="submit"
+                  disabled={!newMessage.trim() || sending}
+                  className="px-4 py-2 bg-green-500 text-white rounded-lg disabled:opacity-50"
+                >
+                  {sending ? 'Enviando...' : 'Enviar'}
+                </button>
               </form>
             </div>
           </>
         ) : (
-          <div className="flex-1 flex items-center justify-center opacity-20 font-bold uppercase tracking-widest">Selecione um cliente</div>
+          <div className="flex-1 flex items-center justify-center text-gray-500">
+            Selecione uma conversa
+          </div>
         )}
       </div>
     </div>
