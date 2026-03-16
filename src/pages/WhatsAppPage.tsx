@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { useGlobal } from '../context/GlobalContext';
 
-// 🔒 CONFIGURAÇÕES DO SERVIDOR ORACLE
+// 🔒 CONFIGURAÇÕES DO SERVIDOR ORACLE - CORRIGIDAS
 const EVO_URL = "http://137.131.136.246:8080"; // IP da Oracle + porta
 const EVO_GLOBAL_KEY = "minha_chave_simples_123"; // Chave configurada no servidor
 
@@ -47,6 +47,32 @@ export default function WhatsAppPage() {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [selectedLead, activeMessages, markAsRead]);
 
+  // ✅ TESTE DE CONEXÃO - Para debug
+  const testConnection = async () => {
+    try {
+      console.log('Testando conexão com:', EVO_URL);
+      const response = await fetch(`${EVO_URL}/instance/fetchInstances`, {
+        method: 'GET',
+        headers: { 
+          'apikey': EVO_GLOBAL_KEY,
+          'Content-Type': 'application/json'
+        }
+      });
+      console.log('Status da conexão:', response.status);
+      if (response.ok) {
+        const data = await response.json();
+        console.log('Instâncias encontradas:', data);
+        return true;
+      } else {
+        console.error('Erro na resposta:', await response.text());
+        return false;
+      }
+    } catch (error) {
+      console.error('Erro de conexão:', error);
+      return false;
+    }
+  };
+
   // ✅ VERIFICAR INSTÂNCIA AO CARREGAR
   useEffect(() => {
     const checkExistingInstance = async () => {
@@ -54,6 +80,14 @@ export default function WhatsAppPage() {
       
       setIsCheckingInstance(true);
       try {
+        // Testa conexão primeiro
+        const connected = await testConnection();
+        if (!connected) {
+          setErrorMessage("Não foi possível conectar ao servidor Evolution API. Verifique se o servidor está rodando.");
+          setIsCheckingInstance(false);
+          return;
+        }
+
         const response = await fetch(`${EVO_URL}/instance/fetchInstances`, {
           method: 'GET',
           headers: { 
@@ -64,11 +98,16 @@ export default function WhatsAppPage() {
 
         if (response.ok) {
           const instances = await response.json();
+          console.log('Instâncias carregadas:', instances);
+          
+          // Verifica se nossa instância já existe
           const existingInstance = instances.find((inst: any) => 
-            inst.instance?.instanceName === instanceName || inst.instanceName === instanceName
+            inst.instance?.instanceName === instanceName || 
+            inst.instanceName === instanceName
           );
 
           if (existingInstance) {
+            console.log('Instância encontrada:', existingInstance);
             // Verifica se já está conectada
             if (existingInstance.instance?.status === 'open' || existingInstance.status === 'open') {
               setWhatsappConnected(true);
@@ -77,6 +116,7 @@ export default function WhatsAppPage() {
         }
       } catch (error) {
         console.error("Erro ao verificar instância:", error);
+        setErrorMessage("Erro ao conectar com a Evolution API");
       } finally {
         setIsCheckingInstance(false);
       }
@@ -92,13 +132,15 @@ export default function WhatsAppPage() {
     setErrorMessage(null);
   };
 
-  // ✅ FUNÇÃO PARA GERAR QR CODE
+  // ✅ FUNÇÃO PARA GERAR QR CODE - CORRIGIDA
   const handleGenerateQR = async () => {
     setConnectionStatus('generating');
     setQrCodeBase64(null);
     setErrorMessage(null);
 
     try {
+      console.log('Gerando QR Code para instância:', instanceName);
+      
       // Primeiro tenta conectar se a instância já existe
       const connectResponse = await fetch(`${EVO_URL}/instance/connect/${instanceName}`, {
         method: 'GET',
@@ -110,6 +152,7 @@ export default function WhatsAppPage() {
 
       if (connectResponse.ok) {
         const connectData = await connectResponse.json();
+        console.log('Resposta do connect:', connectData);
         
         if (connectData.base64) {
           setQrCodeBase64(connectData.base64);
@@ -124,6 +167,7 @@ export default function WhatsAppPage() {
       }
 
       // Se não conseguiu conectar, cria nova instância
+      console.log('Criando nova instância...');
       const createResponse = await fetch(`${EVO_URL}/instance/create`, {
         method: 'POST',
         headers: {
@@ -138,10 +182,13 @@ export default function WhatsAppPage() {
       });
 
       if (!createResponse.ok) {
-        throw new Error(`Erro HTTP: ${createResponse.status}`);
+        const errorText = await createResponse.text();
+        console.error('Erro na criação:', errorText);
+        throw new Error(`Erro HTTP: ${createResponse.status} - ${errorText}`);
       }
 
       const createData = await createResponse.json();
+      console.log('Resposta da criação:', createData);
       
       if (createData.qrcode?.base64) {
         setQrCodeBase64(createData.qrcode.base64);
@@ -160,6 +207,7 @@ export default function WhatsAppPage() {
 
   // ✅ FUNÇÃO PARA VERIFICAR STATUS DA CONEXÃO
   const startConnectionWatcher = () => {
+    console.log('Iniciando monitoramento de conexão...');
     const interval = setInterval(async () => {
       try {
         const res = await fetch(`${EVO_URL}/instance/connectionState/${instanceName}`, {
@@ -172,19 +220,24 @@ export default function WhatsAppPage() {
 
         if (res.ok) {
           const data = await res.json();
+          console.log('Status da conexão:', data);
           
           if (data.instance?.state === 'open' || data.status === 'open') {
+            console.log('WhatsApp conectado com sucesso!');
             clearInterval(interval);
             setWhatsappConnected(true);
             setConnectionStatus('disconnected');
           }
         }
       } catch (e) {
-        // Silencioso
+        console.log('Erro no monitoramento:', e);
       }
     }, 3000);
 
-    setTimeout(() => clearInterval(interval), 120000);
+    setTimeout(() => {
+      clearInterval(interval);
+      console.log('Monitoramento encerrado por timeout');
+    }, 120000);
   };
 
   const handleDisconnect = async () => {
@@ -197,7 +250,10 @@ export default function WhatsAppPage() {
             'Content-Type': 'application/json'
           }
         });
-      } catch (e) {}
+        console.log('WhatsApp desconectado');
+      } catch (e) {
+        console.error('Erro ao desconectar:', e);
+      }
       setWhatsappConnected(false);
       resetConnectionState();
     }
@@ -213,6 +269,8 @@ export default function WhatsAppPage() {
 
     try {
       const cleanPhone = selectedLead.phone.replace(/\D/g, '');
+      console.log(`Enviando mensagem para: 55${cleanPhone}`);
+      
       const response = await fetch(`${EVO_URL}/message/sendText/${instanceName}`, {
         method: 'POST',
         headers: {
@@ -227,7 +285,10 @@ export default function WhatsAppPage() {
       });
 
       if (!response.ok) {
-        console.error("Erro ao enviar mensagem:", await response.text());
+        const errorText = await response.text();
+        console.error("Erro ao enviar mensagem:", errorText);
+      } else {
+        console.log('Mensagem enviada com sucesso');
       }
     } catch (error) {
       console.error("Erro ao enviar:", error);
@@ -238,7 +299,7 @@ export default function WhatsAppPage() {
     return (
       <div className={`p-8 pb-32 min-h-[calc(100vh-80px)] flex flex-col items-center justify-center animate-fade-in font-sans ${theme.textMain}`}>
         <Loader2 size={48} className="text-emerald-500 animate-spin mb-4" />
-        <p className="text-zinc-500">Verificando conexão...</p>
+        <p className="text-zinc-500">Verificando conexão com o servidor...</p>
       </div>
     );
   }
@@ -259,6 +320,12 @@ export default function WhatsAppPage() {
               {errorMessage && (
                 <div className="mt-4 p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-500 text-xs font-bold">
                   {errorMessage}
+                  <button 
+                    onClick={testConnection}
+                    className="ml-2 underline hover:no-underline"
+                  >
+                    Testar conexão
+                  </button>
                 </div>
               )}
             </div>
