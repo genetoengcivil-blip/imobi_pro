@@ -2,7 +2,8 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   Search, Send, Phone, MoreVertical, CheckCheck,
   Shield, Smartphone, ChevronLeft, Loader2,
-  QrCode, MessageSquare, Paperclip, Smile, Unplug
+  QrCode, MessageSquare, Paperclip, Smile, Unplug,
+  Image, Mic, FileText, Video
 } from 'lucide-react';
 import { useGlobal } from '../context/GlobalContext';
 
@@ -55,17 +56,95 @@ export default function WhatsAppPage() {
     msgReceivedBg: darkMode ? 'bg-zinc-900' : 'bg-white',
   };
 
-  const addLocalMessage = (leadId: string, content: string, direction: 'sent' | 'received', apiId?: string) => {
+  // ✅ FUNÇÃO PARA EXTRAIR CONTEÚDO DA MENSAGEM (SUPORTA TODOS OS TIPOS)
+  const extractMessageContent = (msg: any) => {
+    // Se já tem texto processado
+    if (msg.text) return { type: 'text', content: msg.text };
+    
+    // Verifica todos os possíveis campos de mensagem
+    const message = msg.message || msg;
+    
+    // 📝 TEXTO
+    if (message.conversation) {
+      return { type: 'text', content: message.conversation };
+    }
+    if (message.extendedTextMessage?.text) {
+      return { type: 'text', content: message.extendedTextMessage.text };
+    }
+    
+    // 🖼️ IMAGEM
+    if (message.imageMessage) {
+      return { 
+        type: 'image', 
+        content: '📷 Imagem',
+        url: message.imageMessage.url,
+        caption: message.imageMessage.caption || ''
+      };
+    }
+    
+    // 🎵 ÁUDIO
+    if (message.audioMessage) {
+      return { 
+        type: 'audio', 
+        content: '🎵 Áudio',
+        url: message.audioMessage.url,
+        duration: message.audioMessage.seconds
+      };
+    }
+    
+    // 🎥 VÍDEO
+    if (message.videoMessage) {
+      return { 
+        type: 'video', 
+        content: '🎥 Vídeo',
+        url: message.videoMessage.url,
+        caption: message.videoMessage.caption || ''
+      };
+    }
+    
+    // 📎 DOCUMENTO
+    if (message.documentMessage) {
+      return { 
+        type: 'document', 
+        content: `📎 ${message.documentMessage.title || 'Documento'}`,
+        url: message.documentMessage.url,
+        fileName: message.documentMessage.fileName
+      };
+    }
+    
+    // ✨ FIGURINHA
+    if (message.stickerMessage) {
+      return { type: 'sticker', content: '✨ Figurinha' };
+    }
+    
+    // 📍 LOCALIZAÇÃO
+    if (message.locationMessage) {
+      return { type: 'location', content: '📍 Localização' };
+    }
+    
+    // 📞 CONTATO
+    if (message.contactMessage) {
+      return { type: 'contact', content: '📇 Contato' };
+    }
+    
+    return { type: 'unknown', content: '📎 Mídia não suportada' };
+  };
+
+  const addLocalMessage = (leadId: string, msgData: any, direction: 'sent' | 'received') => {
+    const extracted = extractMessageContent(msgData);
+    const apiId = msgData.key?.id || msgData.id || Date.now().toString();
+    
     const newMsg = { 
-      id: apiId || Date.now().toString(), 
+      id: apiId,
       leadId, 
-      content, 
+      content: extracted.content,
+      type: extracted.type,
+      metadata: extracted,
       direction, 
-      timestamp: new Date().toISOString() 
+      timestamp: msgData.messageTimestamp ? new Date(msgData.messageTimestamp * 1000).toISOString() : new Date().toISOString()
     };
     
     setLocalMessages(prev => {
-      // Impede mensagens duplicadas na tela
       if (prev.some(m => m.id === newMsg.id)) return prev;
       return [...prev, newMsg].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
     });
@@ -90,69 +169,59 @@ export default function WhatsAppPage() {
     return cleanPhone;
   };
 
-  // ✅ RADAR DE MENSAGENS COM SUPORTE A ÁUDIO E IMAGEM
+  // ✅ BUSCAR MENSAGENS DO CHAT (VERSÃO CORRIGIDA)
+  const fetchChatMessages = async () => {
+    if (!selectedLead) return;
+    
+    try {
+      const cleanPhone = formatPhoneNumber(selectedLead.phone);
+      
+      // Endpoint correto para buscar mensagens
+      const res = await fetch(`${EVO_URL}/chat/findMessages/${INSTANCE_NAME}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': EVO_GLOBAL_KEY
+        },
+        body: JSON.stringify({
+          where: {
+            remoteJid: `${cleanPhone}@s.whatsapp.net`
+          }
+        })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        
+        // A Evolution API pode retornar em diferentes formatos
+        let messages = [];
+        if (Array.isArray(data)) {
+          messages = data;
+        } else if (data?.messages?.records) {
+          messages = data.messages.records;
+        } else if (data?.records) {
+          messages = data.records;
+        }
+
+        // Processa cada mensagem
+        messages.forEach((msg: any) => {
+          const isFromMe = msg.key?.fromMe || msg.fromMe || false;
+          addLocalMessage(selectedLead.id, msg, isFromMe ? 'sent' : 'received');
+        });
+      }
+    } catch (error) {
+      console.error('Erro ao buscar mensagens:', error);
+    }
+  };
+
+  // ✅ RADAR DE MENSAGENS (a cada 5 segundos)
   useEffect(() => {
     if (!isWhatsappConnected || !selectedLead) return;
 
-    const fetchChatHistory = async () => {
-      try {
-        const cleanPhone = formatPhoneNumber(selectedLead.phone);
-        const remoteJid = `${cleanPhone}@s.whatsapp.net`;
-
-        const res = await fetch(`${EVO_URL}/chat/findMessages/${INSTANCE_NAME}`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'apikey': EVO_GLOBAL_KEY
-          },
-          body: JSON.stringify({ where: { remoteJid } })
-        });
-
-        if (res.ok) {
-          const data = await res.json();
-          let records = [];
-          if (Array.isArray(data)) records = data;
-          else if (data && data.messages && Array.isArray(data.messages.records)) records = data.messages.records;
-
-          if (records.length > 0) {
-            records.forEach((msg: any) => {
-              const msgJid = msg.key?.remoteJid || msg.remoteJid || '';
-              
-              // 🛡️ O SEGURANÇA: Só entra na tela se a mensagem vier EXATAMENTE do número do cliente!
-              if (msgJid.includes(cleanPhone)) {
-                const apiId = msg.key?.id || msg.id;
-                const isFromMe = msg.key?.fromMe || msg.fromMe;
-                
-                // 📸 DETETOR DE MÍDIA
-                let textContent = msg.message?.conversation || msg.message?.extendedTextMessage?.text || msg.text || '';
-                
-                if (!textContent && msg.message) {
-                  if (msg.message.imageMessage) textContent = '📷 Imagem';
-                  else if (msg.message.audioMessage) textContent = '🎵 Áudio';
-                  else if (msg.message.videoMessage) textContent = '🎥 Vídeo';
-                  else if (msg.message.documentMessage) textContent = '📎 Documento';
-                  else if (msg.message.stickerMessage) textContent = '✨ Figurinha';
-                  else if (msg.message.locationMessage) textContent = '📍 Localização';
-                  else textContent = '📎 Arquivo multimídia';
-                }
-                
-                if (textContent) {
-                  addLocalMessage(selectedLead.id, textContent, isFromMe ? 'sent' : 'received', apiId);
-                }
-              }
-            });
-          }
-        }
-      } catch (error) {
-        // Silencioso
-      }
-    };
-
-    fetchChatHistory();
-    const interval = setInterval(fetchChatHistory, 5000);
+    fetchChatMessages();
+    const interval = setInterval(fetchChatMessages, 5000);
     return () => clearInterval(interval);
   }, [isWhatsappConnected, selectedLead]);
-
 
   // ✅ VERIFICAR STATUS DA INSTÂNCIA
   useEffect(() => {
@@ -264,11 +333,13 @@ export default function WhatsAppPage() {
         setIsWhatsappConnected(false);
         setConnectionStatus('disconnected');
         setQrCodeBase64(null);
+        setLocalMessages([]);
+        localStorage.removeItem('@ImobiPro:WhatsAppMessages');
       } catch (e) {}
     }
   };
 
-  // 🔥 ENVIO DE MENSAGEM COM ALERTA DE ERROS
+  // 🔥 ENVIO DE MENSAGEM
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newMessage.trim() || !selectedLead || !selectedLead.phone) return;
@@ -276,7 +347,8 @@ export default function WhatsAppPage() {
     const messageText = newMessage;
     setNewMessage('');
     
-    addLocalMessage(selectedLead.id, messageText, 'sent');
+    // Adiciona localmente
+    addLocalMessage(selectedLead.id, { text: messageText }, 'sent');
 
     try {
       const cleanPhone = formatPhoneNumber(selectedLead.phone);
@@ -296,16 +368,24 @@ export default function WhatsAppPage() {
         body: JSON.stringify(payload)
       });
 
-      const resData = await res.json().catch(() => null);
-
       if (!res.ok) {
+        const resData = await res.json().catch(() => null);
         console.error("Erro da API:", resData);
-        const errorMsg = resData?.response?.message || resData?.message || resData?.error || "Erro desconhecido";
-        alert(`⚠️ O WhatsApp não conseguiu enviar a mensagem!\n\nMotivo: ${errorMsg}\nNúmero tentado: ${cleanPhone}`);
       }
 
     } catch (error) {
-      alert("⚠️ Erro de rede: Não foi possível comunicar com o servidor WhatsApp.");
+      console.error("Erro ao enviar:", error);
+    }
+  };
+
+  // ✅ RENDERIZAR ÍCONE BASEADO NO TIPO DE MENSAGEM
+  const renderMessageIcon = (type: string) => {
+    switch(type) {
+      case 'image': return <Image size={16} className="mr-1" />;
+      case 'audio': return <Mic size={16} className="mr-1" />;
+      case 'video': return <Video size={16} className="mr-1" />;
+      case 'document': return <FileText size={16} className="mr-1" />;
+      default: return null;
     }
   };
 
@@ -353,7 +433,10 @@ export default function WhatsAppPage() {
                   </div>
                   <div className="flex-1 text-left overflow-hidden">
                     <span className={`font-bold text-sm ${theme.textMain} truncate block`}>{lead.name}</span>
-                    <p className={`text-xs ${theme.textMuted} truncate`}>{lastMsg ? lastMsg.content : 'Iniciar conversa...'}</p>
+                    <p className={`text-xs ${theme.textMuted} truncate flex items-center`}>
+                      {lastMsg && renderMessageIcon(lastMsg.type)}
+                      {lastMsg ? lastMsg.content : 'Iniciar conversa...'}
+                    </p>
                   </div>
                 </button>
               );
@@ -382,7 +465,13 @@ export default function WhatsAppPage() {
                 return (
                   <div key={msg.id} className={`flex flex-col ${isSent ? 'items-end' : 'items-start'}`}>
                     <div className={`max-w-[70%] p-4 ${isSent ? `${theme.msgSentBg} text-white rounded-2xl rounded-tr-sm shadow-lg` : `${theme.msgReceivedBg} border ${theme.border} ${theme.textMain} rounded-2xl rounded-tl-sm shadow-sm`}`}>
+                      <div className="flex items-center gap-1 mb-1">
+                        {renderMessageIcon(msg.type)}
+                      </div>
                       <p className="text-sm font-medium whitespace-pre-wrap">{msg.content}</p>
+                      {msg.type === 'image' && msg.metadata?.caption && (
+                        <p className="text-xs opacity-70 mt-1">{msg.metadata.caption}</p>
+                      )}
                     </div>
                   </div>
                 );
@@ -432,13 +521,6 @@ export default function WhatsAppPage() {
               Sincronize o seu WhatsApp com o CRM. Leia o QR Code e centralize o seu atendimento de forma automática.
             </p>
             {errorMessage && <div className="mt-4 p-4 bg-red-500/10 text-red-500 rounded-2xl text-xs font-mono">{errorMessage}</div>}
-            
-            <button 
-              onClick={handleDisconnect}
-              className="mt-6 flex items-center gap-2 px-4 py-2 bg-zinc-100 dark:bg-zinc-900 rounded-xl text-xs font-bold hover:bg-red-500/10 hover:text-red-500 transition-colors"
-            >
-              <Unplug size={14} /> Forçar Limpeza da Sessão
-            </button>
           </div>
         </div>
 
