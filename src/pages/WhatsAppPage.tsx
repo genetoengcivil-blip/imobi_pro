@@ -6,8 +6,9 @@ import {
 } from 'lucide-react';
 import { useGlobal } from '../context/GlobalContext';
 
-// 🔒 CONFIGURAÇÕES DO SERVIDOR (Via Vercel Rewrite)
-const EVO_URL = "/evo-api"; 
+// 🔒 CONFIGURAÇÕES DO SERVIDOR (CORRIGIDO)
+// ⚠️ IMPORTANTE: Substitua pela URL da sua Oracle Cloud
+const EVO_URL = process.env.REACT_APP_EVO_API_URL || "/evo-api"; 
 const EVO_GLOBAL_KEY = "MIIEowIBAAKCAQEAuI+VrfEFvd8JKK7JVftIwUmTgS3ezht3TFdHuMjp1EH/z5UPVuOwmLb0eYsY0vSqRGXUqeWgN4JcNtKgBI9nGuW6yyj47Jga3HglqQJsneVQdRu/KZMhrz1qVtaLuAsxieVyGetpgz45WlTpavADoybeQpopESH4QhXkKEogjBbgSSXPRiOtfgTtcFC7ji4H9ZqNLWO9cdxR6I9WOgILONUz6PDfvzxGPuRXr61JVzMVjUDtZ/qsP1IPm8Mg+D8+yCK0D7O1UUa3Ih6PK3NRRYf2p+zxoCTjUp+caGB6o4LlrgmhEvJnHkGDrmyucKV46o4HKv3txyC1AINXV+5uPQIDAQABAoIBAAQkfOiVk1pqqir2mWBLrptgCmaI4ApiRXA6OUrlf5IbFSHUp658l9clrCEaRSlfAn9chcR2ef0k+OrmGV9g1KCe7W1n8wZkd53hOH8tpcB5iC/Iuqa1PblQOJXQZPxxi+AbfU8loI2olOL5KvASiRJdafm2uhs/VvIsyZ055LcgNpBISnmAIAQlzv4meYMu0K2ABgN38c8KSBUuMSVCWIeLtSqPwLZLK6KYlpqJg+sR3RC2vEkChXq4mfRLIiB5YiB5DPuPcgPe+81c5rPF5BHaA+LW+gK0ELnupSIu3LkfQg3IYPHni1TWOUz+1h42I+OzF38J+uTA5B16uYeiyUECgYEA3JcEVLt/+ywmprb6SWn602KW6FrOmdM3XP9d5lUPotHe6cDOjCf/xUM2IwtB/Ghi9W8VScMu3HkSeP+vVDkxlcyaNMKZzY5PiVWUTig0pQwRMZkXfyAiim4NPU+rOvcQkGev0UcRp+cSh35T9a8wWMifKJsSRuBvqHepjMFFfBECgYEA1i/7D1/lvQ/w34fU2exz+CFsfsxTIg5bUe/uufQAiof8mtxFQlqFFle0QxClWQNi+/4u8i0Ypfb2jTrz4QCTCZhN8YiLnyKu1rkZpPacgMLvEi3V0kXemJa3FKQbmG6rNfEsnGhrwcJ8Z7N3X/3NKvNLxJvYhS95Yb7UC/Yl620CgYA6Naew7GGTWE1CxRo68Tp9OZD087F9Kh177u9KbrvXjWYzbOuUVKHL3jaU/M2G28zxU0Tc2CKvj0tunpoXsZgCHaG7tnZ7pcgbR3gBP97UhuCqo+ltZH945B2eRj27K6M1WAcvRH/GPNXI528kb/xkEVzejD1Acs1EOX+GYyIA4QKBgCJeSJbK+H5B1JDJpung+yrRkis2dhB85UJckZ3c/Uk9UNc4iRSAmeJf6Fjqjt2doYB15OqPOelHm4BF+WQdR3q+qaMcGetLEWr7AJZry+kNXnc4S5sWAwXRCUeSnarz9x0Mue/PAZtxraymK32HqChAKeQ+bZvRZlS83iGdObBxAoGBANH4GiJM+DBK6ktrzoCxY1fuHcU554MdhpWpu+QSohDLnlJcvvCVF2JwIc2qXBLqMIEjzMU2+4j8PTXyAQtavTriiCjH4ORoHZtwfWxFIMVBnCGZ4s2EyMmpjPoG/tHgUrPRxTEgmr4UAXK14yMu8XdBa7MTB5kgnphJ4KZXruiA";
 
 export default function WhatsAppPage() {
@@ -18,11 +19,13 @@ export default function WhatsAppPage() {
   const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'generating' | 'waiting_scan'>('disconnected');
   const [qrCodeBase64, setQrCodeBase64] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isCheckingInstance, setIsCheckingInstance] = useState(false);
   
-  // Instância única por usuário baseada no ID do Supabase
+  // Instância única por usuário
   const instanceName = useMemo(() => `imobipro_user_${user?.id?.split('-')[0] || 'corretor'}`, [user]);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
+  // Theme configurations
   const theme = {
     bgApp: darkMode ? 'bg-zinc-950' : 'bg-zinc-50',
     bgCard: darkMode ? 'bg-black' : 'bg-white',
@@ -45,22 +48,92 @@ export default function WhatsAppPage() {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [selectedLead, activeMessages, markAsRead]);
 
-  // Função para limpar o estado de erro e tentar novamente
+  // ✅ VERIFICAR INSTÂNCIA AO CARREGAR
+  useEffect(() => {
+    const checkExistingInstance = async () => {
+      if (!user?.id) return;
+      
+      setIsCheckingInstance(true);
+      try {
+        const response = await fetch(`${EVO_URL}/instance/fetchInstances`, {
+          method: 'GET',
+          headers: { 
+            'apikey': EVO_GLOBAL_KEY,
+            'Content-Type': 'application/json'
+          }
+        });
+
+        if (response.ok) {
+          const instances = await response.json();
+          const existingInstance = instances.find((inst: any) => 
+            inst.instance?.instanceName === instanceName || inst.name === instanceName
+          );
+
+          if (existingInstance) {
+            // Verifica se já está conectada
+            const stateResponse = await fetch(`${EVO_URL}/instance/connectionState/${instanceName}`, {
+              headers: { 'apikey': EVO_GLOBAL_KEY }
+            });
+            
+            if (stateResponse.ok) {
+              const stateData = await stateResponse.json();
+              if (stateData.instance?.state === 'open' || stateData.status === 'open') {
+                setWhatsappConnected(true);
+              }
+            }
+          }
+        }
+      } catch (error) {
+        console.error("Erro ao verificar instância:", error);
+        setErrorMessage("Não foi possível conectar à Evolution API. Verifique se o servidor está rodando.");
+      } finally {
+        setIsCheckingInstance(false);
+      }
+    };
+
+    checkExistingInstance();
+  }, [user, instanceName, setWhatsappConnected]);
+
+  // Reset connection state
   const resetConnectionState = () => {
     setConnectionStatus('disconnected');
     setQrCodeBase64(null);
     setErrorMessage(null);
   };
 
-  // 1. GERAR QR CODE REAL
+  // ✅ FUNÇÃO CORRIGIDA PARA GERAR QR CODE
   const handleGenerateQR = async () => {
     setConnectionStatus('generating');
     setQrCodeBase64(null);
     setErrorMessage(null);
 
     try {
-      // Tenta criar ou recuperar a instância
-      const response = await fetch(`${EVO_URL}/instance/create`, {
+      // Primeiro tenta conectar se a instância já existe
+      const connectResponse = await fetch(`${EVO_URL}/instance/connect/${instanceName}`, {
+        method: 'GET',
+        headers: { 
+          'apikey': EVO_GLOBAL_KEY,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (connectResponse.ok) {
+        const connectData = await connectResponse.json();
+        
+        if (connectData.base64) {
+          setQrCodeBase64(connectData.base64);
+          setConnectionStatus('waiting_scan');
+          startConnectionWatcher();
+          return;
+        } else if (connectData.status === "open") {
+          setWhatsappConnected(true);
+          setConnectionStatus('disconnected');
+          return;
+        }
+      }
+
+      // Se não conseguiu conectar, cria nova instância
+      const createResponse = await fetch(`${EVO_URL}/instance/create`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -68,73 +141,58 @@ export default function WhatsAppPage() {
         },
         body: JSON.stringify({
           instanceName: instanceName,
-          token: instanceName + "_token",
           qrcode: true,
           integration: "WHATSAPP-BAILEYS"
         })
       });
 
-      const data = await response.json();
+      if (!createResponse.ok) {
+        throw new Error(`Erro HTTP: ${createResponse.status}`);
+      }
 
-      if (data.qrcode?.base64) {
-        setQrCodeBase64(data.qrcode.base64);
+      const createData = await createResponse.json();
+      
+      if (createData.qrcode?.base64) {
+        setQrCodeBase64(createData.qrcode.base64);
         setConnectionStatus('waiting_scan');
         startConnectionWatcher();
-      } else if (data.instance?.status === 'open') {
-        setWhatsappConnected(true);
-        setConnectionStatus('disconnected');
       } else {
-        // Se a instância já existe mas não mandou QR, tentamos forçar a conexão
-        fetchConnectInstance();
+        setErrorMessage("QR Code não gerado. Verifique a Evolution API.");
+        setConnectionStatus('disconnected');
       }
     } catch (error: any) {
-      console.error("Erro na conexão:", error);
-      setErrorMessage("Erro de comunicação com o servidor. Verifique o vercel.json e o IP da Oracle.");
+      console.error("Erro detalhado:", error);
+      setErrorMessage(`Erro de conexão: ${error.message}. Verifique se a Evolution API está rodando na Oracle Cloud.`);
       setConnectionStatus('disconnected');
     }
   };
 
-  const fetchConnectInstance = async () => {
-    try {
-      const res = await fetch(`${EVO_URL}/instance/connect/${instanceName}`, {
-        method: 'GET',
-        headers: { 'apikey': EVO_GLOBAL_KEY }
-      });
-      const data = await res.json();
-      if (data.base64) {
-        setQrCodeBase64(data.base64);
-        setConnectionStatus('waiting_scan');
-        startConnectionWatcher();
-      } else if (data.status === "open") {
-        setWhatsappConnected(true);
-        setConnectionStatus('disconnected');
-      }
-    } catch (e) {
-      setErrorMessage("Falha ao recuperar QR Code de conexão.");
-      setConnectionStatus('disconnected');
-    }
-  };
-
+  // ✅ FUNÇÃO CORRIGIDA PARA VERIFICAR STATUS
   const startConnectionWatcher = () => {
     const interval = setInterval(async () => {
       try {
         const res = await fetch(`${EVO_URL}/instance/connectionState/${instanceName}`, {
           method: 'GET',
-          headers: { 'apikey': EVO_GLOBAL_KEY }
+          headers: { 
+            'apikey': EVO_GLOBAL_KEY,
+            'Content-Type': 'application/json'
+          }
         });
-        const data = await res.json();
-        
-        if (data.instance?.state === 'open' || data.instance?.status === 'open') {
-          clearInterval(interval);
-          setWhatsappConnected(true);
-          setConnectionStatus('disconnected');
+
+        if (res.ok) {
+          const data = await res.json();
+          
+          if (data.instance?.state === 'open' || data.status === 'open') {
+            clearInterval(interval);
+            setWhatsappConnected(true);
+            setConnectionStatus('disconnected');
+          }
         }
       } catch (e) {
-        // Silencioso para não poluir o console durante o polling
+        // Silencioso
       }
-    }, 5000);
+    }, 3000);
 
-    // Limpa o intervalo após 2 minutos para não gastar recursos
     setTimeout(() => clearInterval(interval), 120000);
   };
 
@@ -143,7 +201,10 @@ export default function WhatsAppPage() {
       try {
         await fetch(`${EVO_URL}/instance/logout/${instanceName}`, {
           method: 'DELETE',
-          headers: { 'apikey': EVO_GLOBAL_KEY }
+          headers: { 
+            'apikey': EVO_GLOBAL_KEY,
+            'Content-Type': 'application/json'
+          }
         });
       } catch (e) {}
       setWhatsappConnected(false);
@@ -161,7 +222,7 @@ export default function WhatsAppPage() {
 
     try {
       const cleanPhone = selectedLead.phone.replace(/\D/g, '');
-      await fetch(`${EVO_URL}/message/sendText/${instanceName}`, {
+      const response = await fetch(`${EVO_URL}/message/sendText/${instanceName}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -169,14 +230,27 @@ export default function WhatsAppPage() {
         },
         body: JSON.stringify({
           number: `55${cleanPhone}`,
-          options: { delay: 1200, presence: 'composing' },
-          textMessage: { text: messageText }
+          text: messageText,
+          delay: 1200
         })
       });
+
+      if (!response.ok) {
+        console.error("Erro ao enviar mensagem:", await response.text());
+      }
     } catch (error) {
       console.error("Erro ao enviar:", error);
     }
   };
+
+  if (isCheckingInstance) {
+    return (
+      <div className={`p-8 pb-32 min-h-[calc(100vh-80px)] flex flex-col items-center justify-center animate-fade-in font-sans ${theme.textMain}`}>
+        <Loader2 size={48} className="text-emerald-500 animate-spin mb-4" />
+        <p className="text-zinc-500">Verificando conexão...</p>
+      </div>
+    );
+  }
 
   if (!whatsappConnected) {
     return (
@@ -203,7 +277,11 @@ export default function WhatsAppPage() {
             {connectionStatus === 'disconnected' && (
               <div className="text-center space-y-6">
                 <QrCode size={64} className={`${theme.textMuted} mx-auto opacity-50`} />
-                <button onClick={handleGenerateQR} className="px-8 py-4 bg-emerald-500 text-white rounded-2xl font-black uppercase tracking-widest text-xs hover:scale-105 shadow-xl shadow-emerald-500/20 transition-all">
+                <button 
+                  onClick={handleGenerateQR} 
+                  disabled={isCheckingInstance}
+                  className="px-8 py-4 bg-emerald-500 text-white rounded-2xl font-black uppercase tracking-widest text-xs hover:scale-105 shadow-xl shadow-emerald-500/20 transition-all disabled:opacity-50 disabled:hover:scale-100"
+                >
                   Gerar QR Code
                 </button>
               </div>
@@ -241,11 +319,19 @@ export default function WhatsAppPage() {
         <div className="p-6 border-b border-zinc-200 dark:border-white/5">
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-xl font-black italic tracking-tighter uppercase">Conversas</h2>
-            <button onClick={handleDisconnect} title="Desconectar" className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            <button 
+              onClick={handleDisconnect} 
+              title="Desconectar" 
+              className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"
+            />
           </div>
           <div className="relative">
             <Search className={`absolute left-4 top-1/2 -translate-y-1/2 ${theme.textMuted}`} size={16} />
-            <input type="text" placeholder="Procurar chat..." className={`w-full ${theme.inputBg} border ${theme.border} rounded-xl py-3 pl-10 pr-4 text-sm focus:outline-none focus:border-emerald-500 transition-colors ${theme.textMain}`} />
+            <input 
+              type="text" 
+              placeholder="Procurar chat..." 
+              className={`w-full ${theme.inputBg} border ${theme.border} rounded-xl py-3 pl-10 pr-4 text-sm focus:outline-none focus:border-emerald-500 transition-colors ${theme.textMain}`} 
+            />
           </div>
         </div>
 
@@ -254,13 +340,23 @@ export default function WhatsAppPage() {
             const leadMsgs = (messages || []).filter((m: any) => m.leadId === lead.id);
             const lastMsg = leadMsgs[leadMsgs.length - 1];
             return (
-              <button key={lead.id} onClick={() => setSelectedLead(lead)} className={`w-full p-4 border-b ${theme.border} flex items-start gap-4 transition-colors ${selectedLead?.id === lead.id ? (darkMode ? 'bg-zinc-900' : 'bg-zinc-100') : theme.bgHover}`}>
+              <button 
+                key={lead.id} 
+                onClick={() => setSelectedLead(lead)} 
+                className={`w-full p-4 border-b ${theme.border} flex items-start gap-4 transition-colors ${
+                  selectedLead?.id === lead.id 
+                    ? (darkMode ? 'bg-zinc-900' : 'bg-zinc-100') 
+                    : darkMode ? 'hover:bg-zinc-900/50' : 'hover:bg-zinc-100'
+                }`}
+              >
                 <div className="w-12 h-12 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center font-black text-lg">
-                  {lead.name.charAt(0).toUpperCase()}
+                  {lead.name?.charAt(0).toUpperCase()}
                 </div>
                 <div className="flex-1 text-left">
                   <div className="font-bold text-sm truncate">{lead.name}</div>
-                  <p className={`text-xs ${theme.textMuted} truncate`}>{lastMsg ? lastMsg.content : 'Sem mensagens...'}</p>
+                  <p className={`text-xs ${theme.textMuted} truncate`}>
+                    {lastMsg ? lastMsg.content : 'Sem mensagens...'}
+                  </p>
                 </div>
               </button>
             );
@@ -274,11 +370,13 @@ export default function WhatsAppPage() {
           <div className={`h-20 border-b ${theme.border} ${theme.bgCard} flex items-center justify-between px-6`}>
             <div className="flex items-center gap-4">
               <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center font-black">
-                {selectedLead.name.charAt(0).toUpperCase()}
+                {selectedLead.name?.charAt(0).toUpperCase()}
               </div>
               <div>
                 <h3 className={`font-bold ${theme.textMain}`}>{selectedLead.name}</h3>
-                <p className={`text-[10px] font-black ${theme.textMuted} uppercase tracking-widest`}>{selectedLead.phone || 'Sem número'}</p>
+                <p className={`text-[10px] font-black ${theme.textMuted} uppercase tracking-widest`}>
+                  {selectedLead.phone || 'Sem número'}
+                </p>
               </div>
             </div>
             <MoreVertical className={theme.textMuted} size={20} />
@@ -289,7 +387,11 @@ export default function WhatsAppPage() {
               const isSent = msg.direction === 'sent';
               return (
                 <div key={msg.id} className={`flex flex-col ${isSent ? 'items-end' : 'items-start'}`}>
-                  <div className={`max-w-[70%] p-4 ${isSent ? `${theme.msgSentBg} text-white rounded-2xl rounded-tr-sm shadow-lg` : `${theme.msgReceivedBg} border ${theme.border} ${theme.textMain} rounded-2xl rounded-tl-sm shadow-sm`}`}>
+                  <div className={`max-w-[70%] p-4 ${
+                    isSent 
+                      ? `${theme.msgSentBg} text-white rounded-2xl rounded-tr-sm shadow-lg` 
+                      : `${theme.msgReceivedBg} border ${theme.border} ${theme.textMain} rounded-2xl rounded-tl-sm shadow-sm`
+                  }`}>
                     <p className="text-sm font-medium">{msg.content}</p>
                   </div>
                 </div>
@@ -301,11 +403,17 @@ export default function WhatsAppPage() {
           <div className={`p-4 ${theme.bgCard} border-t ${theme.border}`}>
             <form onSubmit={handleSendMessage} className="flex gap-3">
               <input 
-                type="text" placeholder="Escreva uma mensagem..." 
+                type="text" 
+                placeholder="Escreva uma mensagem..." 
                 className={`flex-1 ${theme.inputBg} border ${theme.border} rounded-2xl px-6 focus:outline-none focus:border-emerald-500 transition-colors ${theme.textMain} text-sm font-medium`}
-                value={newMessage} onChange={e => setNewMessage(e.target.value)}
+                value={newMessage} 
+                onChange={e => setNewMessage(e.target.value)}
               />
-              <button type="submit" disabled={!newMessage.trim()} className="p-4 bg-emerald-500 text-white rounded-2xl disabled:opacity-50 hover:scale-105 transition-all shadow-lg shadow-emerald-500/20">
+              <button 
+                type="submit" 
+                disabled={!newMessage.trim()} 
+                className="p-4 bg-emerald-500 text-white rounded-2xl disabled:opacity-50 hover:scale-105 transition-all shadow-lg shadow-emerald-500/20"
+              >
                 <Send size={20} className="ml-1" />
               </button>
             </form>
