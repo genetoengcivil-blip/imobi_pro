@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { useGlobal } from '../context/GlobalContext';
 
-// 🔗 OBRIGATÓRIO SER /evo-api PARA NÃO DAR ERRO "Failed to fetch"
+// 🔗 ESTE TEM QUE SER OBRIGATORIAMENTE /evo-api PARA O VERCEL.JSON FUNCIONAR
 const EVO_URL = "/evo-api"; 
 const EVO_GLOBAL_KEY = "minha_chave_simples_123";
 const INSTANCE_NAME = "imobipro";
@@ -45,7 +45,7 @@ export default function WhatsAppPage() {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [selectedLead, activeMessages, markAsRead]);
 
-  // 👀 WATCHER: Fica verificando se o usuário leu o QR Code
+  // 👀 WATCHER: Aguarda a leitura do QR Code pelo seu telemóvel
   const startConnectionWatcher = () => {
     const interval = setInterval(async () => {
       try {
@@ -61,14 +61,14 @@ export default function WhatsAppPage() {
           setConnectionStatus('disconnected');
         }
       } catch (e) {
-        // Ignora erros silenciosos durante a verificação
+        // Ignorar para não travar o console
       }
     }, 3000);
 
     setTimeout(() => clearInterval(interval), 120000); // Para após 2 min
   };
 
-  // ✅ GERAR QR CODE COM TRAVA DE LOOP INFINITO
+  // ✅ GERAR QR CODE COM REDIRECIONAMENTO VERCEL
   const handleGenerateQR = async () => {
     setConnectionStatus('generating');
     setErrorMessage(null);
@@ -89,7 +89,7 @@ export default function WhatsAppPage() {
       } else if (connectData.instance?.status === 'open' || connectData.status === 'open') {
         setWhatsappConnected(true);
       } else {
-        // SE NÃO EXISTE, CRIA A INSTÂNCIA E PEGA O QR CODE DIRETAMENTE DA RESPOSTA (SEM RECURSÃO)
+        // Se a instância não existe, cria ela no momento
         const createRes = await fetch(`${EVO_URL}/instance/create`, {
           method: 'POST',
           headers: {
@@ -116,7 +116,7 @@ export default function WhatsAppPage() {
         }
       }
     } catch (error: any) {
-      setErrorMessage("Erro de proxy. Verifique se o vercel.json está ativo e configurado corretamente.");
+      setErrorMessage("Erro de proxy. Verifique se a chave API está certa ou se o servidor está ativo.");
       setConnectionStatus('disconnected');
     }
   };

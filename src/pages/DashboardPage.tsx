@@ -20,9 +20,13 @@ export default function DashboardPage() {
   const [viewType, setViewType] = useState<ViewOption>('mensal');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   
-  // 🛡️ VACINA CONTRA O ERRO DE WIDTH(-1)
+  // 🛡️ A VACINA DEFINITIVA CONTRA O WIDTH(-1)
   const [isMounted, setIsMounted] = useState(false);
-  useEffect(() => { setIsMounted(true); }, []);
+  useEffect(() => { 
+    // Aguarda 100ms para garantir que o CSS do Tailwind já definiu as larguras reais
+    const timer = setTimeout(() => setIsMounted(true), 100);
+    return () => clearTimeout(timer);
+  }, []);
 
   const options: { value: ViewOption; label: string }[] = [
     { value: 'mensal', label: 'Visão Mensal' },
@@ -131,12 +135,12 @@ export default function DashboardPage() {
       
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className={`text-3xl font-black ${darkMode ? 'text-white' : 'text-zinc-900'}`}>Dashboard</h1>
+          <h1 className={`text-3xl font-black italic uppercase tracking-tighter ${darkMode ? 'text-white' : 'text-zinc-900'}`}>Dashboard</h1>
           <p className="text-zinc-500 font-medium">Análise financeira integrada em tempo real.</p>
         </div>
         <button 
           onClick={() => navigate('/leads')}
-          className="flex items-center gap-2 px-6 py-3 bg-[#0217ff] text-white rounded-2xl font-black hover:bg-[#0211bf] transition-all active:scale-95 shadow-lg shadow-[#0217ff]/20"
+          className="flex items-center gap-2 px-6 py-3 bg-[#0217ff] text-white rounded-2xl font-black hover:bg-[#0211bf] transition-all shadow-lg shadow-[#0217ff]/20"
         >
           <Plus className="w-5 h-5" /> Novo Lead
         </button>
@@ -165,7 +169,7 @@ export default function DashboardPage() {
           <div className={cardClass}>
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-8 gap-4">
               <div>
-                <h2 className="text-xl font-bold">Volume de Negócios</h2>
+                <h2 className="text-xl font-bold italic uppercase tracking-tighter">Volume de Negócios</h2>
                 <p className="text-xs text-zinc-500 font-medium uppercase tracking-wider">Entrada de VGV (R$)</p>
               </div>
 
@@ -185,9 +189,7 @@ export default function DashboardPage() {
                 {isDropdownOpen && (
                   <>
                     <div className="fixed inset-0 z-40" onClick={() => setIsDropdownOpen(false)} />
-                    <div className={`absolute right-0 mt-2 w-48 rounded-2xl shadow-2xl z-50 overflow-hidden border animate-in fade-in zoom-in duration-200 ${
-                      darkMode ? 'bg-zinc-900 border-white/10' : 'bg-white border-zinc-100'
-                    }`}>
+                    <div className={`absolute right-0 mt-2 w-48 rounded-2xl shadow-2xl z-50 overflow-hidden border ${darkMode ? 'bg-zinc-900 border-white/10' : 'bg-white border-zinc-100'}`}>
                       {options.map((option) => (
                         <button
                           key={option.value}
@@ -210,10 +212,10 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* 🛡️ AQUI O GRÁFICO SÓ RENDERIZA DEPOIS DO LAYOUT ESTAR PRONTO */}
-            <div className="w-full relative" style={{ height: '350px', minHeight: '350px' }}>
+            {/* 🛡️ CONTAINER 100% BLINDADO (Com minWidth e minHeight no ResponsiveContainer) */}
+            <div className="w-full relative" style={{ height: '350px', minHeight: '350px', minWidth: 0 }}>
               {isMounted && (
-                <ResponsiveContainer width="99%" height="100%">
+                <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
                   <AreaChart data={chartData}>
                     <defs>
                       <linearGradient id="colorVgv" x1="0" y1="0" x2="0" y2="1">
@@ -228,14 +230,13 @@ export default function DashboardPage() {
                       contentStyle={{ borderRadius: '20px', border: 'none', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)', backgroundColor: darkMode ? '#111' : '#fff' }}
                       formatter={(value: number) => [formatCurrency(value), 'VGV']}
                     />
-                    <Area type="monotone" dataKey="vgv" stroke="#0217ff" strokeWidth={4} fillOpacity={1} fill="url(#colorVgv)" />
+                    <Area type="monotone" dataKey="vgv" stroke="#0217ff" strokeWidth={4} fillOpacity={1} fill="url(#colorVgv)" isAnimationActive={false} />
                   </AreaChart>
                 </ResponsiveContainer>
               )}
             </div>
           </div>
 
-          {/* Últimos Leads */}
           <div className="space-y-4">
             <h2 className="text-xl font-bold flex items-center gap-3 italic px-2">
               <Users className="w-6 h-6 text-[#0217ff]" /> Últimas Capturas
@@ -267,7 +268,6 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Sidebar Lateral */}
         <div className="space-y-8">
           <div className="space-y-4">
             <h2 className="text-xl font-bold flex items-center gap-3 italic px-2">
@@ -298,7 +298,6 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* Resumo Financeiro */}
           <div className={cardClass}>
             <h3 className="font-black text-xs mb-6 flex items-center gap-2 uppercase tracking-widest">
               <DollarSign className="w-4 h-4 text-green-600" /> Fluxo do Período
@@ -315,7 +314,7 @@ export default function DashboardPage() {
                 </span>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-[10px] text-zinc-500 font-black uppercase text-green-600">Comissão Ganhos (Leads)</span>
+                <span className="text-[10px] text-zinc-500 font-black uppercase text-green-600">Comissão Ganhos</span>
                 <span className="font-black text-green-600 text-sm">{formatCurrency(dynamicMetrics.comissoesFechadas)}</span>
               </div>
               <div className="pt-4 border-t border-zinc-100 dark:border-white/5 flex justify-between items-center">
