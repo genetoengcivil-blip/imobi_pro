@@ -25,11 +25,12 @@ export default function WhatsAppPage() {
   const [initialCheckDone, setInitialCheckDone] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [sending, setSending] = useState(false);
+  const [error, setError] = useState('');
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const processedMessagesRef = useRef<Set<string>>(new Set());
 
-  // ✅ CORES CLARAS para garantir visibilidade
+  // ✅ CORES
   const colors = {
     bg: darkMode ? '#111827' : '#f9fafb',
     card: darkMode ? '#1f2937' : '#ffffff',
@@ -44,19 +45,26 @@ export default function WhatsAppPage() {
   // ✅ CARREGAR MENSAGENS
   const loadMessages = useCallback(async (leadId: string) => {
     try {
-      const { data } = await supabase
+      console.log('📥 Carregando mensagens do lead:', leadId);
+      const { data, error } = await supabase
         .from('whatsapp_messages')
         .select('*')
         .eq('lead_id', leadId)
         .order('created_at', { ascending: true });
       
+      if (error) {
+        console.error('❌ Erro ao carregar mensagens:', error);
+        return;
+      }
+      
       if (data) {
+        console.log(`✅ ${data.length} mensagens carregadas`);
         processedMessagesRef.current.clear();
         data.forEach(msg => processedMessagesRef.current.add(msg.id));
         setMessages(data);
       }
     } catch (e) {
-      console.error("Erro ao carregar mensagens:", e);
+      console.error("❌ Erro ao carregar mensagens:", e);
     }
   }, []);
 
@@ -74,6 +82,7 @@ export default function WhatsAppPage() {
         table: 'whatsapp_messages',
         filter: `lead_id=eq.${selectedLead.id}`
       }, (payload: any) => {
+        console.log('📨 Nova mensagem recebida via Supabase:', payload.new);
         if (!processedMessagesRef.current.has(payload.new.id)) {
           processedMessagesRef.current.add(payload.new.id);
           setMessages(prev => [...prev, payload.new]);
@@ -94,14 +103,25 @@ export default function WhatsAppPage() {
   // ✅ VERIFICAR STATUS
   const checkStatus = async () => {
     try {
+      console.log('🔍 Verificando status da conexão...');
       const res = await fetch(`${EVO_URL}/instance/connectionState/${INSTANCE_NAME}`, {
         headers: { 'apikey': EVO_GLOBAL_KEY }
       });
+      
+      if (!res.ok) {
+        console.log('❌ Erro na verificação de status:', res.status);
+        setIsConnected(false);
+        return;
+      }
+      
       const data = await res.json();
+      console.log('📊 Status da conexão:', data);
+      
       const state = data.instance?.state || data.state || data.status;
       setIsConnected(state === 'open');
+      console.log('✅ Conectado:', state === 'open');
     } catch (e) {
-      console.log("Erro ao conectar com API Oracle");
+      console.log("❌ Erro ao conectar com API Oracle:", e);
       setIsConnected(false);
     } finally {
       setInitialCheckDone(true);
@@ -118,19 +138,29 @@ export default function WhatsAppPage() {
   const handleGenerateQR = async () => {
     setLoading(true);
     setQrCode('');
+    setError('');
+    
     try {
+      console.log('🔄 Gerando QR Code...');
       const res = await fetch(`${EVO_URL}/instance/connect/${INSTANCE_NAME}`, {
         headers: { 'apikey': EVO_GLOBAL_KEY }
       });
       
+      console.log('📊 Resposta do connect:', res.status);
+      
       if (res.ok) {
         const data = await res.json();
+        console.log('📊 Dados recebidos:', data);
+        
         if (data.base64) {
+          console.log('✅ QR Code gerado com sucesso');
           setQrCode(data.base64);
         } else if (data.status === 'open') {
+          console.log('✅ Instância já está aberta');
           setIsConnected(true);
         }
       } else {
+        console.log('🔄 Criando nova instância...');
         const createRes = await fetch(`${EVO_URL}/instance/create`, {
           method: 'POST',
           headers: {
@@ -145,19 +175,25 @@ export default function WhatsAppPage() {
         
         if (createRes.ok) {
           const createData = await createRes.json();
+          console.log('📊 Dados da criação:', createData);
           if (createData.qrcode?.base64) {
             setQrCode(createData.qrcode.base64);
           }
+        } else {
+          const errorText = await createRes.text();
+          console.error('❌ Erro ao criar instância:', errorText);
+          setError('Erro ao criar instância no servidor');
         }
       }
-    } catch (e) {
-      alert("Erro ao gerar QR Code. Verifique o servidor Oracle.");
+    } catch (e: any) {
+      console.error('❌ Erro ao gerar QR Code:', e);
+      setError(e.message || 'Erro ao conectar com servidor');
     } finally {
       setLoading(false);
     }
   };
 
-  // ✅ ENVIAR MENSAGEM
+  // ✅ ENVIAR MENSAGEM - CORRIGIDO
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newMessage.trim() || !selectedLead || sending) return;
@@ -166,12 +202,16 @@ export default function WhatsAppPage() {
     const phone = selectedLead.phone?.replace(/\D/g, '');
     const cleanPhone = phone?.startsWith('55') ? phone : `55${phone}`;
     
+    console.log('📤 Enviando mensagem:', { text, phone: cleanPhone, lead: selectedLead.name });
+    
     setNewMessage('');
     setSending(true);
+    setError('');
 
-    // Salva no Supabase primeiro
     try {
-      const { data: savedMsg, error } = await supabase
+      // 1. Salva no Supabase
+      console.log('💾 Salvando no Supabase...');
+      const { data: savedMsg, error: dbError } = await supabase
         .from('whatsapp_messages')
         .insert({
           lead_id: selectedLead.id,
@@ -182,15 +222,21 @@ export default function WhatsAppPage() {
         .select()
         .single();
 
-      if (error) throw error;
+      if (dbError) {
+        console.error('❌ Erro ao salvar no Supabase:', dbError);
+        throw new Error('Erro ao salvar mensagem no banco');
+      }
+
+      console.log('✅ Mensagem salva no Supabase:', savedMsg);
 
       if (savedMsg) {
         processedMessagesRef.current.add(savedMsg.id);
         setMessages(prev => [...prev, savedMsg]);
       }
 
-      // Envia via Evolution API
-      await fetch(`${EVO_URL}/message/sendText/${INSTANCE_NAME}`, {
+      // 2. Envia via Evolution API
+      console.log('📤 Enviando para Evolution API...');
+      const response = await fetch(`${EVO_URL}/message/sendText/${INSTANCE_NAME}`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json', 
@@ -202,9 +248,22 @@ export default function WhatsAppPage() {
         })
       });
 
-    } catch (e) {
-      console.error('Erro ao enviar:', e);
-      alert("Falha ao enviar mensagem.");
+      const responseData = await response.json().catch(() => ({}));
+      console.log('📊 Resposta da Evolution:', { status: response.status, data: responseData });
+
+      if (!response.ok) {
+        console.error('❌ Erro na Evolution API:', responseData);
+        throw new Error(`Erro ${response.status}: ${responseData.message || 'Falha no envio'}`);
+      }
+
+      console.log('✅ Mensagem enviada com sucesso!');
+
+    } catch (e: any) {
+      console.error('❌ Erro ao enviar mensagem:', e);
+      setError(e.message || 'Erro ao enviar mensagem');
+      
+      // Remove a mensagem em caso de erro
+      setMessages(prev => prev.filter(m => m.id !== prev[prev.length-1]?.id));
     } finally {
       setSending(false);
     }
@@ -388,6 +447,18 @@ export default function WhatsAppPage() {
                   {loading ? 'GERANDO...' : 'GERAR QR CODE'}
                 </button>
               )}
+              {error && (
+                <div style={{
+                  marginTop: '16px',
+                  padding: '12px',
+                  backgroundColor: '#ef4444',
+                  color: 'white',
+                  borderRadius: '8px',
+                  fontSize: '12px'
+                }}>
+                  {error}
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -423,7 +494,7 @@ export default function WhatsAppPage() {
               </div>
             </div>
 
-            {/* Messages Area - CORRIGIDA (VISÍVEL) */}
+            {/* Messages Area */}
             <div style={{
               flex: 1,
               overflowY: 'auto',
