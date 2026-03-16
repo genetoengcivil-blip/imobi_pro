@@ -7,22 +7,25 @@ const supabase = createClient(
 );
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Método não permitido' });
+  if (req.method !== 'POST') return res.status(200).send('OK');
 
   try {
-    const payload = req.body;
+    const { event, data } = req.body;
     
-    // Captura mensagens novas e confirmações de envio
-    if (payload.event === 'messages.upsert' || payload.event === 'messages.send') {
-      const msg = payload.data;
-      if (!msg) return res.status(200).send('OK');
+    // Captura mensagens recebidas (upsert) e enviadas (send)
+    if (event === 'messages.upsert' || event === 'messages.send' || event === 'send.message') {
+      const msg = data;
+      if (!msg?.key?.remoteJid) return res.status(200).send('OK');
 
-      const phone = (msg.key?.remoteJid || '').split('@')[0];
-      const isFromMe = msg.key?.fromMe || false;
+      const phone = msg.key.remoteJid.split('@')[0];
+      const isFromMe = msg.key.fromMe || false;
+      const messageId = msg.key.id;
+      
       const content = msg.message?.conversation || 
                     msg.message?.extendedTextMessage?.text || 
-                    "📎 Arquivo de mídia";
+                    msg.content || "📎 Mídia";
 
+      // 1. Localizar o Lead pelo telefone (últimos 8 dígitos para evitar erro de 9º dígito)
       const { data: lead } = await supabase
         .from('leads')
         .select('id')
@@ -30,9 +33,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         .single();
 
       if (lead) {
-        // ✅ UPSERT: Evita duplicados comparando o message_id
+        // 2. UPSERT: Se o message_id já existir, ele não duplica a linha
         await supabase.from('whatsapp_messages').upsert({
-          message_id: msg.key?.id,
+          message_id: messageId,
           lead_id: lead.id,
           content: content,
           direction: isFromMe ? 'sent' : 'received',
@@ -40,8 +43,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }, { onConflict: 'message_id' });
       }
     }
-    return res.status(200).json({ success: true });
-  } catch (error: any) {
+
+    return res.status(200).send('OK');
+  } catch (error) {
     return res.status(200).send('OK');
   }
 }
