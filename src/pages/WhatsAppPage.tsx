@@ -3,17 +3,15 @@ import { useGlobal } from '../context/GlobalContext';
 import { supabase } from '../lib/supabase';
 import { Virtuoso, VirtuosoHandle } from 'react-virtuoso';
 import { 
-  MessageSquare, Send, Search, Loader2, Wifi, WifiOff, RefreshCw, AlertCircle
+  MessageSquare, Send, Search, Loader2, Wifi, WifiOff, AlertCircle
 } from 'lucide-react';
 
 export default function WhatsAppPage() {
-  // 1. DADOS GLOBAIS COM PROTEÇÃO CONTRA UNDEFINED
   const context = useGlobal() as any;
   const leads = context?.leads || [];
   const darkMode = context?.darkMode || false;
   const user = context?.user;
 
-  // 2. ESTADOS DA PÁGINA
   const [messages, setMessages] = useState<any[]>([]);
   const [selectedLead, setSelectedLead] = useState<any>(null);
   const [newMessage, setNewMessage] = useState('');
@@ -23,42 +21,37 @@ export default function WhatsAppPage() {
   
   const virtuosoRef = useRef<VirtuosoHandle>(null);
 
-  // 3. FILTRO DE LEADS (Protegido)
+  // Filtro Seguro
   const filteredLeads = leads.filter((lead: any) => {
+    if (!lead) return false;
     const search = searchQuery.toLowerCase();
-    const nameMatch = lead?.name?.toLowerCase().includes(search);
-    const phoneMatch = lead?.phone?.includes(searchQuery);
+    const nameMatch = lead.name ? lead.name.toLowerCase().includes(search) : false;
+    const phoneMatch = lead.phone ? lead.phone.includes(searchQuery) : false;
     return nameMatch || phoneMatch;
   });
 
-  // 4. VERIFICAÇÃO DE STATUS DA EDGE FUNCTION
+  // Verificação de Status do WhatsApp
   const checkWhatsAppStatus = useCallback(async () => {
     if (!user?.id) return;
-    setConnectionStatus('loading');
     try {
       const { data, error } = await supabase.functions.invoke('whatsapp-proxy', {
         body: { instance: user.id, action: 'status' }
       });
-      
       if (error) throw error;
-      
-      if (data?.instance?.state === 'open') {
-        setConnectionStatus('connected');
-      } else {
-        setConnectionStatus('disconnected');
-      }
+      setConnectionStatus(data?.instance?.state === 'open' ? 'connected' : 'disconnected');
     } catch (err) {
-      console.error("Erro ao verificar WhatsApp:", err);
       setConnectionStatus('error');
     }
   }, [user]);
 
-  // Executa ao abrir a página
   useEffect(() => {
     checkWhatsAppStatus();
+    // Verifica a cada 15 segundos silenciosamente
+    const interval = setInterval(checkWhatsAppStatus, 15000);
+    return () => clearInterval(interval);
   }, [checkWhatsAppStatus]);
 
-  // 5. CARREGAR MENSAGENS E ESCUTAR O SUPABASE
+  // Carregar e Sincronizar Mensagens
   const loadMessages = useCallback(async (leadId: string) => {
     const { data } = await supabase
       .from('whatsapp_messages')
@@ -74,10 +67,7 @@ export default function WhatsAppPage() {
     
     const channel = supabase.channel(`chat-${selectedLead.id}`)
       .on('postgres_changes', { 
-        event: 'INSERT', 
-        schema: 'public', 
-        table: 'whatsapp_messages', 
-        filter: `lead_id=eq.${selectedLead.id}` 
+        event: 'INSERT', schema: 'public', table: 'whatsapp_messages', filter: `lead_id=eq.${selectedLead.id}` 
       }, (payload) => {
         setMessages(prev => [...prev, payload.new]);
       }).subscribe();
@@ -85,42 +75,33 @@ export default function WhatsAppPage() {
     return () => { supabase.removeChannel(channel); };
   }, [selectedLead, loadMessages]);
 
-  // Faz scroll para baixo quando chegam novas mensagens
   useEffect(() => {
     if (messages.length > 0) {
       virtuosoRef.current?.scrollToIndex({ index: messages.length - 1, behavior: 'smooth' });
     }
   }, [messages]);
 
-  // 6. ENVIO DE MENSAGEM
+  // Enviar Mensagem
   const handleSendMessage = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!newMessage.trim() || !selectedLead || !user || isSending) return;
+    if (!newMessage.trim() || !selectedLead || !user || isSending || connectionStatus !== 'connected') return;
     
     const msg = newMessage.trim();
     setNewMessage('');
     setIsSending(true);
 
     try {
-      // Tenta enviar via Edge Function
       const { error } = await supabase.functions.invoke('whatsapp-proxy', {
         body: { instance: user.id, number: selectedLead.phone, text: msg }
       });
-
       if (error) throw error;
 
-      // Se sucesso, guarda no banco
       await supabase.from('whatsapp_messages').insert([{ 
-        lead_id: selectedLead.id, 
-        content: msg, 
-        direction: 'sent', 
-        user_id: user.id 
+        lead_id: selectedLead.id, content: msg, direction: 'sent', user_id: user.id 
       }]);
-
     } catch (err) { 
-      console.error(err);
-      alert("Falha ao enviar. Verifique o status da conexão.");
-      setNewMessage(msg); // Devolve o texto em caso de erro
+      setNewMessage(msg);
+      alert("Falha ao enviar. Verifique se o telemóvel está conectado.");
     } finally {
       setIsSending(false);
     }
@@ -133,56 +114,51 @@ export default function WhatsAppPage() {
     }
   };
 
-  // 7. RENDERIZAÇÃO (ESTILOS PROTEGIDOS E CONSISTENTES)
-  const bgMain = darkMode ? 'bg-black text-white' : 'bg-zinc-50 text-zinc-900';
-  const borderCol = darkMode ? 'border-white/10' : 'border-zinc-200';
-  const bgPanel = darkMode ? 'bg-zinc-950' : 'bg-white';
-  const bgHover = darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50';
+  // VARIÁVEIS DE TEMA SEGURAS (Evita conflitos de classes)
+  const theme = {
+    bg: darkMode ? 'bg-[#09090b]' : 'bg-[#f8fafc]',
+    panelBg: darkMode ? 'bg-[#18181b]' : 'bg-white',
+    border: darkMode ? 'border-white/5' : 'border-zinc-200',
+    text: darkMode ? 'text-zinc-100' : 'text-zinc-900',
+    textMuted: darkMode ? 'text-zinc-500' : 'text-zinc-400',
+    hover: darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50',
+    inputBg: darkMode ? 'bg-[#09090b]' : 'bg-zinc-50',
+  };
 
   return (
-    <div className={`flex h-[calc(100vh-120px)] rounded-[32px] overflow-hidden border shadow-sm ${bgPanel} ${borderCol} ${darkMode ? 'text-white' : 'text-zinc-900'}`}>
+    <div className={`flex h-[calc(100vh-120px)] rounded-[32px] overflow-hidden border shadow-sm ${theme.panelBg} ${theme.border} ${theme.text} font-['Inter',sans-serif]`}>
       
-      {/* --- COLUNA ESQUERDA: LISTA DE LEADS --- */}
-      <div className={`w-80 border-r flex flex-col ${borderCol} ${bgMain}`}>
-        
-        {/* Cabeçalho Esquerdo */}
-        <div className={`p-6 border-b space-y-4 ${borderCol}`}>
+      {/* LADO ESQUERDO: LISTA DE LEADS */}
+      <div className={`w-80 border-r flex flex-col ${theme.border} ${theme.bg}`}>
+        <div className={`p-6 border-b space-y-5 ${theme.border}`}>
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-black italic uppercase tracking-tighter flex items-center gap-2">
               <MessageSquare className="text-[#0217ff]" size={20} /> Chats
             </h2>
-            
-            {/* Ícone de Status do WhatsApp */}
-            <div className="flex items-center gap-2">
-              <button onClick={checkWhatsAppStatus} className="p-1 hover:opacity-70 transition-opacity" title="Atualizar Status">
-                <RefreshCw size={14} className={`text-zinc-500 ${connectionStatus === 'loading' ? 'animate-spin' : ''}`} />
-              </button>
-              {connectionStatus === 'connected' && <Wifi className="text-green-500" size={18} title="Conectado" />}
-              {connectionStatus === 'disconnected' && <WifiOff className="text-yellow-500" size={18} title="Desconectado" />}
-              {connectionStatus === 'error' && <AlertCircle className="text-red-500" size={18} title="Erro na API" />}
+            <div title="Status do Servidor">
+              {connectionStatus === 'connected' && <Wifi className="text-green-500" size={18} />}
+              {connectionStatus === 'disconnected' && <WifiOff className="text-red-500" size={18} />}
+              {connectionStatus === 'error' && <AlertCircle className="text-yellow-500" size={18} />}
+              {connectionStatus === 'loading' && <Loader2 className="text-[#0217ff] animate-spin" size={18} />}
             </div>
           </div>
           
-          {/* Barra de Busca */}
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" size={16} />
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400" size={16} />
             <input 
               type="text" 
-              placeholder="Buscar cliente..." 
+              placeholder="Pesquisar cliente..." 
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className={`w-full py-3 pl-10 pr-4 rounded-xl text-xs font-bold outline-none border transition-all ${
-                darkMode ? 'bg-zinc-900 border-white/5 focus:border-[#0217ff]' : 'bg-white border-zinc-200 focus:border-[#0217ff]'
-              }`}
+              className={`w-full py-3.5 pl-10 pr-4 rounded-xl text-xs font-bold outline-none border transition-all ${theme.inputBg} ${theme.border} focus:border-[#0217ff]/50`}
             />
           </div>
         </div>
         
-        {/* Lista de Leads */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto custom-scrollbar">
           {filteredLeads.length === 0 ? (
-            <div className="p-6 text-center text-zinc-500 text-[10px] font-black uppercase tracking-widest">
-              Nenhum cliente encontrado.
+            <div className={`p-8 text-center text-[10px] font-black uppercase tracking-widest ${theme.textMuted}`}>
+              Nenhum contacto encontrado
             </div>
           ) : (
             filteredLeads.map((lead: any) => {
@@ -191,20 +167,18 @@ export default function WhatsAppPage() {
                 <button 
                   key={lead.id} 
                   onClick={() => setSelectedLead(lead)} 
-                  className={`w-full p-4 flex items-center gap-4 border-b transition-all ${borderCol} ${
-                    isSelected 
-                      ? (darkMode ? 'bg-[#0217ff]/20 border-l-4 border-l-[#0217ff]' : 'bg-blue-50 border-l-4 border-l-[#0217ff]') 
-                      : `${bgHover} border-l-4 border-l-transparent`
+                  className={`w-full p-4 flex items-center gap-4 border-b transition-all ${theme.border} ${
+                    isSelected ? 'bg-[#0217ff]/10 border-l-4 border-l-[#0217ff]' : `${theme.hover} border-l-4 border-l-transparent`
                   }`}
                 >
-                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center font-black text-xl shrink-0 ${
-                    darkMode ? 'bg-zinc-800 text-zinc-400' : 'bg-zinc-200 text-zinc-500'
+                  <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black text-lg shrink-0 ${
+                    darkMode ? 'bg-zinc-800 text-zinc-300' : 'bg-zinc-100 text-zinc-600'
                   }`}>
                     {lead.name ? lead.name.charAt(0).toUpperCase() : '?'}
                   </div>
                   <div className="text-left overflow-hidden">
-                    <div className="font-bold text-sm truncate">{lead.name || 'Sem Nome'}</div>
-                    <div className="text-[10px] text-zinc-500 font-bold truncate mt-1">{lead.phone || 'Sem Número'}</div>
+                    <div className="font-[900] text-sm truncate">{lead.name || 'Sem Nome'}</div>
+                    <div className={`text-[10px] font-bold truncate mt-1 ${theme.textMuted}`}>{lead.phone || 'Sem Número'}</div>
                   </div>
                 </button>
               );
@@ -213,41 +187,35 @@ export default function WhatsAppPage() {
         </div>
       </div>
 
-      {/* --- COLUNA DIREITA: ÁREA DO CHAT --- */}
-      <div className={`flex-1 flex flex-col relative ${bgPanel}`}>
+      {/* LADO DIREITO: CHAT */}
+      <div className={`flex-1 flex flex-col relative ${theme.panelBg}`}>
         {selectedLead ? (
           <>
-            {/* Cabeçalho do Chat */}
-            <div className={`px-8 py-5 border-b flex justify-between items-center z-10 ${borderCol}`}>
+            <div className={`px-8 py-6 border-b flex justify-between items-center z-10 ${theme.panelBg} ${theme.border}`}>
               <div>
                 <div className="font-black text-lg uppercase tracking-tight">{selectedLead.name}</div>
-                <div className={`text-[10px] font-black uppercase tracking-widest mt-1 ${
-                  connectionStatus === 'connected' ? 'text-green-500' : 'text-red-500'
-                }`}>
-                  {connectionStatus === 'connected' ? 'SISTEMA ONLINE' : 'SISTEMA OFFLINE / VERIFICANDO...'}
+                <div className={`text-[10px] font-black uppercase tracking-widest mt-1 ${connectionStatus === 'connected' ? 'text-green-500' : 'text-red-500'}`}>
+                  {connectionStatus === 'connected' ? '● Online' : '● Offline / A verificar...'}
                 </div>
               </div>
             </div>
             
-            {/* Histórico de Mensagens */}
-            <div className={`flex-1 overflow-hidden px-4 ${darkMode ? 'bg-zinc-950' : 'bg-zinc-50'}`}>
+            <div className={`flex-1 overflow-hidden px-4 ${theme.bg}`}>
               <Virtuoso
                 ref={virtuosoRef}
                 data={messages}
-                className="h-full py-6"
-                itemContent={(index, m) => {
+                className="h-full py-6 custom-scrollbar"
+                itemContent={(_, m) => {
                   const isSent = m.direction === 'sent';
                   return (
-                    <div className={`flex w-full mb-2 ${isSent ? 'justify-end' : 'justify-start'}`}>
-                      <div className={`max-w-[75%] px-5 py-3 rounded-2xl shadow-sm ${
+                    <div className={`flex w-full mb-3 ${isSent ? 'justify-end' : 'justify-start'}`}>
+                      <div className={`max-w-[70%] px-5 py-3.5 rounded-2xl shadow-sm ${
                         isSent 
                         ? 'bg-[#0217ff] text-white rounded-br-none' 
-                        : (darkMode ? 'bg-zinc-800 text-white rounded-bl-none' : 'bg-white text-black border border-zinc-200 rounded-bl-none')
+                        : (darkMode ? 'bg-zinc-800 text-white rounded-bl-none' : 'bg-white text-zinc-900 border border-zinc-200 rounded-bl-none')
                       }`}>
-                        <p className="text-sm font-medium whitespace-pre-wrap leading-relaxed">{m.content}</p>
-                        <div className={`text-[9px] mt-1 font-bold uppercase text-right ${
-                          isSent ? 'text-blue-200' : 'text-zinc-500'
-                        }`}>
+                        <p className="text-[13px] font-medium whitespace-pre-wrap leading-relaxed">{m.content}</p>
+                        <div className={`text-[9px] mt-2 font-bold uppercase text-right ${isSent ? 'text-blue-200' : theme.textMuted}`}>
                           {new Date(m.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
                         </div>
                       </div>
@@ -257,11 +225,8 @@ export default function WhatsAppPage() {
               />
             </div>
 
-            {/* Input de Envio */}
-            <div className={`p-4 border-t flex gap-3 items-end ${borderCol}`}>
-              <div className={`flex-1 rounded-[24px] border overflow-hidden flex items-end transition-all focus-within:border-[#0217ff] ${
-                darkMode ? 'bg-zinc-900 border-white/10' : 'bg-white border-zinc-300'
-              }`}>
+            <div className={`p-5 border-t flex gap-3 items-end ${theme.panelBg} ${theme.border}`}>
+              <div className={`flex-1 rounded-2xl border overflow-hidden flex items-end transition-all focus-within:border-[#0217ff] ${theme.inputBg} ${theme.border}`}>
                 <textarea 
                   value={newMessage} 
                   onChange={e => {
@@ -270,8 +235,9 @@ export default function WhatsAppPage() {
                     e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`;
                   }} 
                   onKeyDown={handleKeyDown}
-                  placeholder="Escreva a mensagem... (Shift + Enter para pular linha)" 
-                  className="w-full max-h-[120px] p-4 bg-transparent outline-none font-medium text-sm resize-none" 
+                  disabled={connectionStatus !== 'connected'}
+                  placeholder={connectionStatus === 'connected' ? "Escreva a sua mensagem..." : "Aguardando conexão com o telemóvel..."}
+                  className="w-full max-h-[120px] p-4 bg-transparent outline-none font-medium text-sm resize-none custom-scrollbar disabled:opacity-50" 
                   rows={1}
                 />
               </div>
@@ -279,7 +245,7 @@ export default function WhatsAppPage() {
               <button 
                 onClick={handleSendMessage}
                 disabled={!newMessage.trim() || isSending || connectionStatus !== 'connected'}
-                className="p-4 bg-[#0217ff] text-white rounded-2xl hover:scale-105 active:scale-95 transition-all disabled:opacity-50 disabled:hover:scale-100 shrink-0"
+                className="p-4 bg-[#0217ff] text-white rounded-2xl hover:scale-105 active:scale-95 transition-all disabled:opacity-50 disabled:hover:scale-100 shrink-0 shadow-lg shadow-[#0217ff]/20"
               >
                 {isSending ? <Loader2 className="animate-spin" size={20} /> : <Send size={20}/>}
               </button>
@@ -287,14 +253,21 @@ export default function WhatsAppPage() {
           </>
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center text-center p-10 opacity-60">
-            <MessageSquare size={64} className="mb-6 text-[#0217ff]" />
-            <h3 className="text-2xl font-black italic uppercase tracking-tighter mb-2">Central de Atendimento</h3>
-            <p className="text-zinc-500 text-sm font-medium max-w-sm">
-              Selecione um cliente na lista à esquerda para começar a trocar mensagens.
+            <div className="w-24 h-24 bg-[#0217ff]/10 rounded-[32px] flex items-center justify-center mb-6">
+              <MessageSquare size={40} className="text-[#0217ff]" />
+            </div>
+            <h3 className="text-2xl font-black italic uppercase tracking-tighter mb-2">Central de Comunicação</h3>
+            <p className={`text-sm font-medium max-w-sm ${theme.textMuted}`}>
+              Selecione um cliente na lista à esquerda para iniciar o atendimento.
             </p>
           </div>
         )}
       </div>
+      <style>{`
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 4px; }
+      `}</style>
     </div>
   );
 }
