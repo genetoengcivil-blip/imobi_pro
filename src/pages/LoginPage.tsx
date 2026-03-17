@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useGlobal } from '../context/GlobalContext';
-import { Lock, Mail, Eye, EyeOff, Loader2, ShieldAlert } from 'lucide-react';
+import { Lock, Mail, Eye, EyeOff, Loader2, ShieldAlert, ArrowRight } from 'lucide-react';
+import { Logo } from '../components/Logo';
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -16,7 +17,7 @@ export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
-  // 1️⃣ MUDA DE /app/dashboard PARA /dashboard
+  // Redirecionamento automático se já estiver logado
   useEffect(() => {
     if (!globalLoading && user && user.status !== 'bloqueado') {
       const from = (location.state as any)?.from?.pathname || "/dashboard";
@@ -32,58 +33,110 @@ export default function LoginPage() {
     setError(null);
 
     try {
-      const { data, error: signInError } = await supabase.auth.signInWithPassword({ email, password });
-      if (signInError) throw signInError;
-      // O useEffect acima faz o redirecionamento assim que o estado atualizar.
+      const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+      if (signInError) {
+        if (signInError.message === 'Invalid login credentials') {
+          throw new Error('E-mail ou senha incorretos.');
+        }
+        throw signInError;
+      }
     } catch (err: any) {
-      setError(err.message === 'Invalid login credentials' ? 'E-mail ou senha incorretos.' : err.message);
+      setError(err.message);
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center p-6 font-sans">
-      <div className="w-full max-w-[440px]">
-        <div className="bg-zinc-950 border border-white/5 rounded-[48px] p-10 shadow-2xl">
-          <form onSubmit={handleLogin} className="space-y-8">
-            <div className="text-center">
-              <h2 className="text-3xl font-black italic uppercase tracking-tighter">Área <span className="text-[#0217ff]">Exclusiva</span></h2>
-              <p className="text-zinc-500 text-[10px] font-black uppercase tracking-widest mt-2 italic">Identifique-se para entrar</p>
+    <div className="min-h-screen bg-black text-white flex items-center justify-center p-6 selection:bg-[#0217ff]/30 relative overflow-hidden font-['Inter',sans-serif]">
+      
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+      `}</style>
+
+      {/* Background Glow */}
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-[#0217ff]/10 blur-[120px] rounded-full pointer-events-none" />
+
+      <div className="max-w-md w-full space-y-10 relative z-10 animate-in fade-in slide-in-from-bottom-10 duration-700">
+        
+        {/* Header do Login */}
+        <div className="text-center space-y-4">
+          <div className="flex justify-center mb-6">
+            <Logo className="w-12 h-12" />
+          </div>
+          <h1 className="text-4xl font-[900] uppercase italic tracking-tighter">
+            Aceder ao <span className="text-[#0217ff]">Painel</span>
+          </h1>
+          <p className="text-zinc-500 text-sm font-medium italic">
+            Insira as suas credenciais para gerir o seu ecossistema.
+          </p>
+        </div>
+
+        {/* Formulário */}
+        <form onSubmit={handleLogin} className="space-y-4">
+          <div className="space-y-2">
+            <div className="relative group">
+              <Mail className="absolute left-5 top-1/2 -translate-y-1/2 text-zinc-600 group-focus-within:text-[#0217ff] transition-colors" size={20} />
+              <input 
+                type="email" 
+                required 
+                placeholder="E-mail profissional"
+                className="w-full bg-zinc-950 border border-white/5 rounded-[24px] py-5 pl-14 pr-6 outline-none focus:border-[#0217ff]/50 transition-all font-bold text-sm"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+              />
             </div>
 
-            <div className="space-y-4">
-              <div className="relative">
-                <Mail className="absolute left-6 top-1/2 -translate-y-1/2 text-zinc-600" size={18} />
-                <input 
-                  type="email" required placeholder="E-mail"
-                  className="w-full bg-black border-2 border-white/5 rounded-2xl py-5 pl-16 pr-6 outline-none focus:border-[#0217ff] transition-all font-bold"
-                  value={email} onChange={e => setEmail(e.target.value)}
-                />
-              </div>
-              <div className="relative">
-                <Lock className="absolute left-6 top-1/2 -translate-y-1/2 text-zinc-600" size={18} />
-                <input 
-                  type={showPassword ? "text" : "password"} required placeholder="Senha"
-                  className="w-full bg-black border-2 border-white/5 rounded-2xl py-5 pl-16 pr-6 outline-none focus:border-[#0217ff] transition-all font-bold"
-                  value={password} onChange={e => setPassword(e.target.value)}
-                />
-                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-6 top-1/2 -translate-y-1/2 text-zinc-600 hover:text-white">
-                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                </button>
-              </div>
+            <div className="relative group">
+              <Lock className="absolute left-5 top-1/2 -translate-y-1/2 text-zinc-600 group-focus-within:text-[#0217ff] transition-colors" size={20} />
+              <input 
+                type={showPassword ? "text" : "password"} 
+                required 
+                placeholder="Palavra-passe"
+                className="w-full bg-zinc-950 border border-white/5 rounded-[24px] py-5 pl-14 pr-14 outline-none focus:border-[#0217ff]/50 transition-all font-bold text-sm"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+              />
+              <button 
+                type="button" 
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-5 top-1/2 -translate-y-1/2 text-zinc-600 hover:text-white transition-colors"
+              >
+                {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+              </button>
             </div>
+          </div>
 
-            {error && (
-              <div className="bg-red-500/10 border border-red-500/20 p-4 rounded-xl flex items-center gap-3">
-                <ShieldAlert className="text-red-500" size={18} />
-                <p className="text-red-500 text-[10px] font-black uppercase italic">{error}</p>
-              </div>
+          {/* Erro de Autenticação */}
+          {error && (
+            <div className="bg-red-500/10 border border-red-500/20 p-4 rounded-2xl flex items-center gap-3 animate-shake">
+              <ShieldAlert className="text-red-500 shrink-0" size={18} />
+              <p className="text-red-500 text-[10px] font-black uppercase italic tracking-tight">{error}</p>
+            </div>
+          )}
+
+          <button 
+            disabled={loading} 
+            type="submit" 
+            className="w-full py-6 bg-[#0217ff] text-white rounded-[24px] font-[900] uppercase text-xs tracking-[0.2em] shadow-xl shadow-blue-600/20 hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-3"
+          >
+            {loading ? (
+              <Loader2 className="animate-spin" size={20} />
+            ) : (
+              <>Entrar no Sistema <ArrowRight size={18} /></>
             )}
+          </button>
+        </form>
 
-            <button disabled={loading} type="submit" className="w-full py-6 bg-white text-black rounded-2xl font-black uppercase text-xs tracking-widest hover:scale-105 transition-all">
-              {loading ? <Loader2 className="animate-spin mx-auto" /> : "Entrar no Sistema"}
-            </button>
-          </form>
+        {/* Footer do Login */}
+        <div className="pt-8 text-center space-y-6">
+          <p className="text-zinc-600 text-[10px] font-black uppercase tracking-widest">
+            Não tem acesso? <a href="/#plans" className="text-white hover:text-[#0217ff] underline transition-colors">Assinar ImobiPro</a>
+          </p>
+          
+          <div className="flex justify-center gap-6 text-[9px] font-black uppercase tracking-widest text-zinc-800">
+            <Link to="/terms" className="hover:text-zinc-500 transition-colors">Termos</Link>
+            <Link to="/privacy" className="hover:text-zinc-500 transition-colors">Privacidade</Link>
+          </div>
         </div>
       </div>
     </div>
