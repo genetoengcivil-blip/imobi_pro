@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { 
   Users, Target, TrendingUp, Clock, ArrowUpRight, 
   ArrowDownRight, ChevronDown, Plus, DollarSign, 
-  Briefcase, Calendar, MessageSquare 
+  Briefcase, Calendar, MessageSquare, Zap // Adicionado Zap
 } from 'lucide-react';
 import { 
   AreaChart, Area, XAxis, YAxis, CartesianGrid, 
@@ -19,7 +19,6 @@ export default function DashboardPage() {
   const [viewType, setViewType] = useState<ViewOption>('mensal');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   
-  // Atraso de montagem para o CSS do Tailwind calcular os tamanhos reais
   const [isMounted, setIsMounted] = useState(false);
   useEffect(() => { 
     const timer = setTimeout(() => setIsMounted(true), 150);
@@ -36,6 +35,15 @@ export default function DashboardPage() {
   const safeLeads = useMemo(() => leads || [], [leads]);
   const safeTransactions = useMemo(() => transactions || [], [transactions]);
   const safeAppointments = useMemo(() => appointments || [], [appointments]);
+
+  // --- MÉTRICAS DE AUTOMAÇÃO (Calculadas do Contexto) ---
+  const automationMetrics = useMemo(() => {
+    const leadsSite = safeLeads.filter(l => l.source === 'site_publico');
+    const totalAuto = leadsSite.length;
+    const engajados = leadsSite.filter(l => l.status !== 'novo').length;
+    const taxa = totalAuto > 0 ? Math.round((engajados / totalAuto) * 100) : 0;
+    return { totalAuto, taxa };
+  }, [safeLeads]);
 
   const dynamicMetrics = useMemo(() => {
     const now = new Date();
@@ -144,6 +152,7 @@ export default function DashboardPage() {
         </button>
       </div>
 
+      {/* BLOCO DE MÉTRICAS PRINCIPAIS (ORIGINAL) */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {[
           { label: 'VGV Ativo', val: formatCurrency(dynamicMetrics.vgvAtivo), icon: Briefcase, color: 'text-[#0217ff]', bg: 'bg-[#0217ff]/10' },
@@ -161,8 +170,31 @@ export default function DashboardPage() {
         ))}
       </div>
 
+      {/* NOVO BLOCO: IMPACTO DA AUTOMAÇÃO (DIFERENCIAL) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className={`${cardClass} flex items-center gap-6 border-l-4 border-l-[#0217ff]`}>
+          <div className="p-4 bg-[#0217ff]/10 rounded-3xl text-[#0217ff]">
+            <Zap className="w-8 h-8" />
+          </div>
+          <div>
+            <div className="text-zinc-400 text-[10px] font-black uppercase tracking-widest">Impacto IA</div>
+            <div className="text-3xl font-black italic tracking-tighter">{automationMetrics.totalAuto}</div>
+            <p className="text-[10px] text-zinc-500 font-bold uppercase mt-1">Leads respondidos automaticamente</p>
+          </div>
+        </div>
+        <div className={`${cardClass} flex items-center gap-6 border-l-4 border-l-green-500`}>
+          <div className="p-4 bg-green-500/10 rounded-3xl text-green-500">
+            <TrendingUp className="w-8 h-8" />
+          </div>
+          <div>
+            <div className="text-zinc-400 text-[10px] font-black uppercase tracking-widest">Engajamento</div>
+            <div className="text-3xl font-black italic tracking-tighter">{automationMetrics.taxa}%</div>
+            <p className="text-[10px] text-zinc-500 font-bold uppercase mt-1">Taxa de resposta dos novos leads</p>
+          </div>
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        
         <div className="lg:col-span-2 space-y-6">
           <div className={cardClass}>
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-8 gap-4">
@@ -210,7 +242,6 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* 🛡️ CORREÇÃO DEFINITIVA DO GRÁFICO (minWidth={0} minHeight={0}) */}
             <div className="w-full relative" style={{ height: '350px' }}>
               {isMounted && (
                 <ResponsiveContainer width="100%" height={350} minWidth={0} minHeight={0}>
@@ -276,14 +307,14 @@ export default function DashboardPage() {
                 <div className="space-y-4">
                   {safeAppointments.slice(0, 3).map((app, i) => (
                     <div key={i} className="flex gap-4 p-4 rounded-2xl bg-zinc-50 dark:bg-white/5 border border-transparent hover:border-[#0217ff]/30 transition-all">
-                       <div className="font-black text-[#0217ff] text-center pr-3 border-r border-zinc-200 dark:border-white/10">
-                         <div className="text-[9px] uppercase">{new Date(app.date).toLocaleString('pt-BR', { month: 'short' }).toUpperCase()}</div>
-                         <div className="text-lg leading-none">{new Date(app.date).getDate()}</div>
-                       </div>
-                       <div>
-                         <div className="font-bold text-xs truncate">{app.title}</div>
-                         <div className="text-[10px] font-black text-zinc-400 mt-1 uppercase">{app.time}</div>
-                       </div>
+                        <div className="font-black text-[#0217ff] text-center pr-3 border-r border-zinc-200 dark:border-white/10">
+                          <div className="text-[9px] uppercase">{new Date(app.date).toLocaleString('pt-BR', { month: 'short' }).toUpperCase()}</div>
+                          <div className="text-lg leading-none">{new Date(app.date).getDate()}</div>
+                        </div>
+                        <div>
+                          <div className="font-bold text-xs truncate">{app.title}</div>
+                          <div className="text-[10px] font-black text-zinc-400 mt-1 uppercase">{app.time}</div>
+                        </div>
                     </div>
                   ))}
                 </div>
