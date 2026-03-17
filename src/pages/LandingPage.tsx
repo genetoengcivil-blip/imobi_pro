@@ -93,11 +93,7 @@ export default function LandingPage() {
           <div className="flex items-center gap-3">
             <Logo className="w-8 h-8" />
             <span className="text-2xl font-[900] tracking-tighter italic uppercase">IMOBI<span className="text-[#0217ff]">PRO</span></span>
-          </div>
-          <div className="flex items-center gap-4">
-            <button onClick={() => navigate('/login')} className="text-[10px] font-black uppercase tracking-widest hover:text-[#0217ff] transition-colors">Aceder CRM</button>
-            <button onClick={scrollToPlans} className="px-8 py-3 bg-[#0217ff] text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-blue-600/20">Assinar</button>
-          </div>
+          </div>          
         </div>
       </nav>
 
