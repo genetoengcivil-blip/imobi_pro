@@ -16,27 +16,52 @@ serve(async (req: Request) => {
 
     if (!API_KEY || !API_URL) throw new Error("Secrets não configurados no Supabase.")
 
-    // Ação: Verificar Status e gerar QR Code
+    // 🚀 AÇÃO: VERIFICAR STATUS E GERAR/CRIAR QR CODE
     if (action === 'status') {
-      const res = await fetch(`${API_URL}/instance/connectionState/${instance}`, {
+      let res = await fetch(`${API_URL}/instance/connectionState/${instance}`, {
         headers: { 'apikey': API_KEY }
       })
-      const statusData = await res.json()
-
+      let statusData = await res.json()
       let qrcode = null;
-      if (statusData?.instance?.state !== 'open') {
+
+      // SE A INSTÂNCIA NÃO EXISTIR (Erro 404), VAMOS CRIÁ-LA AGORA!
+      if (res.status === 404 || statusData.error || statusData.status === 404) {
+        const createRes = await fetch(`${API_URL}/instance/create`, {
+          method: 'POST',
+          headers: { 'apikey': API_KEY, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            instanceName: instance,
+            qrcode: true,
+            integration: "WHATSAPP-BAILEYS"
+          })
+        });
+        const createData = await createRes.json();
+        qrcode = createData.qrcode || createData;
+        statusData = { instance: { state: 'connecting' } }; // Força o status para não dar erro no front
+      } 
+      // SE JÁ EXISTE MAS ESTÁ DESCONECTADA, PEDE O QR CODE
+      else if (statusData?.instance?.state !== 'open') {
         const resQr = await fetch(`${API_URL}/instance/connect/${instance}`, {
           headers: { 'apikey': API_KEY }
-        })
-        qrcode = await resQr.json()
+        });
+        qrcode = await resQr.json();
       }
 
-      return new Response(JSON.stringify({ ...statusData, qrcode }), { 
+      // Tratamento para garantir que extraímos o Base64 corretamente (Compatível com Evolution v1 e v2)
+      let base64 = null;
+      if (qrcode?.base64) base64 = qrcode.base64;
+      else if (qrcode?.qrcode?.base64) base64 = qrcode.qrcode.base64;
+      else if (qrcode?.code) base64 = qrcode.code;
+
+      return new Response(JSON.stringify({ 
+        ...statusData, 
+        qrcode: { base64: base64 } 
+      }), { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       })
     }
 
-    // Ação: Enviar Mensagem
+    // 🚀 AÇÃO: ENVIAR MENSAGEM
     const cleanNumber = number.replace(/\D/g, "")
     const response = await fetch(`${API_URL}/message/sendText/${instance}`, {
       method: "POST",
