@@ -7,32 +7,36 @@ const corsHeaders = {
 }
 
 serve(async (req: Request) => {
-  // Tratamento de CORS para o Navegador
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
-  }
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   try {
     const { instance, number, text, action } = await req.json()
     const API_KEY = Deno.env.get('EVOLUTION_API_KEY')
     const API_URL = Deno.env.get('EVOLUTION_API_URL')
 
-    if (!API_KEY || !API_URL) {
-      throw new Error("Secrets não configurados no Supabase.")
-    }
+    if (!API_KEY || !API_URL) throw new Error("Secrets não configurados no Supabase.")
 
-    // Ação para verificar se o WhatsApp está ligado
+    // Ação: Verificar Status e gerar QR Code
     if (action === 'status') {
       const res = await fetch(`${API_URL}/instance/connectionState/${instance}`, {
         headers: { 'apikey': API_KEY }
       })
-      const data = await res.json()
-      return new Response(JSON.stringify(data), { 
+      const statusData = await res.json()
+
+      let qrcode = null;
+      if (statusData?.instance?.state !== 'open') {
+        const resQr = await fetch(`${API_URL}/instance/connect/${instance}`, {
+          headers: { 'apikey': API_KEY }
+        })
+        qrcode = await resQr.json()
+      }
+
+      return new Response(JSON.stringify({ ...statusData, qrcode }), { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       })
     }
 
-    // Ação para enviar mensagem de texto
+    // Ação: Enviar Mensagem
     const cleanNumber = number.replace(/\D/g, "")
     const response = await fetch(`${API_URL}/message/sendText/${instance}`, {
       method: "POST",
@@ -45,15 +49,9 @@ serve(async (req: Request) => {
     })
 
     const result = await response.json()
-    return new Response(JSON.stringify(result), { 
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      status: 200 
-    })
+    return new Response(JSON.stringify(result), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
 
   } catch (error) {
-    return new Response(JSON.stringify({ error: error.message }), { 
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      status: 200
-    })
+    return new Response(JSON.stringify({ error: error.message }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 })
   }
 })
