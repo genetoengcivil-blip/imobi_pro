@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useGlobal } from '../context/GlobalContext';
 import { supabase } from '../lib/supabase';
+import { Virtuoso, VirtuosoHandle } from 'react-virtuoso'; // Importação para Virtualização
 import { 
   MessageSquare, Send, QrCode, Loader2, Smartphone, User 
 } from 'lucide-react';
@@ -12,22 +13,13 @@ export default function WhatsAppPage() {
   const user = context?.user;
 
   const [isConnected, setIsConnected] = useState(false);
-  const [qrCode, setQrCode] = useState('');
-  const [loading, setLoading] = useState(false);
   const [messages, setMessages] = useState<any[]>([]);
   const [selectedLead, setSelectedLead] = useState<any>(null);
   const [newMessage, setNewMessage] = useState('');
   const [initialCheckDone, setInitialCheckDone] = useState(false);
 
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
-
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+  // Referência para controlo do scroll na lista virtualizada
+  const virtuosoRef = useRef<VirtuosoHandle>(null);
 
   // ✅ 1. GERIR MENSAGENS COM REALTIME
   const loadMessages = useCallback(async (leadId: string) => {
@@ -43,7 +35,6 @@ export default function WhatsAppPage() {
     if (!selectedLead) return;
     loadMessages(selectedLead.id);
 
-    // Ouvinte em tempo real para novas mensagens deste lead
     const channel = supabase
       .channel(`chat-${selectedLead.id}`)
       .on('postgres_changes', { 
@@ -59,16 +50,20 @@ export default function WhatsAppPage() {
     return () => { supabase.removeChannel(channel); };
   }, [selectedLead, loadMessages]);
 
-  // ✅ 2. STATUS DA INSTÂNCIA (Via Proxy Seguro ou Status Local)
+  // Scroll automático para a última mensagem quando as mensagens mudam
+  useEffect(() => {
+    if (messages.length > 0) {
+      virtuosoRef.current?.scrollToIndex({
+        index: messages.length - 1,
+        behavior: 'smooth',
+      });
+    }
+  }, [messages]);
+
+  // ✅ 2. STATUS DA INSTÂNCIA
   const checkStatus = useCallback(async () => {
     if (!user?.id) return;
-    try {
-      // Aqui você pode implementar uma chamada ao proxy para checar status sem vazar a chave
-      // Por enquanto, manteremos a lógica de UI simplificada
-      setIsConnected(true);
-    } catch (e) {
-      setIsConnected(false);
-    }
+    setIsConnected(true); // Lógica de UI simplificada
   }, [user]);
 
   useEffect(() => {
@@ -80,19 +75,18 @@ export default function WhatsAppPage() {
     return () => clearInterval(interval);
   }, [checkStatus, initialCheckDone]);
 
-  // ✅ 3. ENVIO SEGURO (USANDO EDGE FUNCTION PROXY)
+  // ✅ 3. ENVIO SEGURO (VIA PROXY)
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newMessage.trim() || !selectedLead || !user) return;
 
     const messageContent = newMessage;
-    setNewMessage(''); // Limpeza imediata (UX Premium)
+    setNewMessage('');
 
     try {
-      // CHAMADA SEGURA: A chave da API fica protegida no Supabase
-      const { data, error } = await supabase.functions.invoke('whatsapp-proxy', {
+      const { error } = await supabase.functions.invoke('whatsapp-proxy', {
         body: {
-          instance: user.id, // Instância isolada por corretor
+          instance: user.id,
           number: selectedLead.phone.replace(/\D/g, ""),
           text: messageContent
         }
@@ -100,7 +94,6 @@ export default function WhatsAppPage() {
 
       if (error) throw error;
 
-      // Salva no banco para histórico (O Realtime cuidará de mostrar na tela)
       await supabase.from('whatsapp_messages').insert([{
         lead_id: selectedLead.id,
         content: messageContent,
@@ -109,8 +102,7 @@ export default function WhatsAppPage() {
       }]);
 
     } catch (err) {
-      console.error("Falha ao enviar mensagem:", err);
-      // Aqui você poderia adicionar um Toast de erro
+      console.error("Erro no envio:", err);
     }
   };
 
@@ -147,30 +139,36 @@ export default function WhatsAppPage() {
         </div>
       </div>
 
-      {/* ÁREA DO CHAT (DIREITA) */}
+      {/* ÁREA DO CHAT VIRTUALIZADO (DIREITA) */}
       <div className="flex-1 flex flex-col bg-transparent relative">
         {selectedLead ? (
           <>
-            <div className={`p-6 border-b font-black uppercase tracking-widest text-[11px] ${darkMode ? 'border-white/5 text-white bg-zinc-900' : 'bg-white shadow-sm'}`}>
+            <div className={`p-6 border-b font-black uppercase tracking-widest text-[11px] z-10 ${darkMode ? 'border-white/5 text-white bg-zinc-900' : 'bg-white shadow-sm'}`}>
               Conversa com: <span className="text-[#0217ff]">{selectedLead.name}</span>
             </div>
             
-            <div className="flex-1 overflow-y-auto p-6 space-y-4">
-              {messages.map((m: any) => (
-                <div key={m.id} className={`flex ${m.direction === 'sent' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[75%] p-4 rounded-[24px] shadow-sm ${
-                    m.direction === 'sent' 
-                    ? 'bg-[#0217ff] text-white rounded-br-none' 
-                    : (darkMode ? 'bg-zinc-800 border-zinc-700 text-white rounded-bl-none' : 'bg-white border text-zinc-900 rounded-bl-none')
-                  }`}>
-                    <p className="text-sm whitespace-pre-wrap leading-relaxed font-medium">{m.content}</p>
-                    <div className={`text-[9px] mt-1 opacity-50 font-black uppercase ${m.direction === 'sent' ? 'text-right' : 'text-left'}`}>
-                      {new Date(m.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+            {/* COMPONENTE DE VIRTUALIZAÇÃO */}
+            <div className="flex-1 overflow-hidden">
+              <Virtuoso
+                ref={virtuosoRef}
+                data={messages}
+                initialTopMostItemIndex={messages.length - 1}
+                followOutput="smooth"
+                itemContent={(index, m) => (
+                  <div className={`flex p-4 ${m.direction === 'sent' ? 'justify-end' : 'justify-start'}`}>
+                    <div className={`max-w-[75%] p-4 rounded-[24px] shadow-sm ${
+                      m.direction === 'sent' 
+                      ? 'bg-[#0217ff] text-white rounded-br-none' 
+                      : (darkMode ? 'bg-zinc-800 border-zinc-700 text-white rounded-bl-none' : 'bg-white border text-zinc-900 rounded-bl-none')
+                    }`}>
+                      <p className="text-sm whitespace-pre-wrap leading-relaxed font-medium">{m.content}</p>
+                      <div className={`text-[9px] mt-1 opacity-50 font-black uppercase ${m.direction === 'sent' ? 'text-right' : 'text-left'}`}>
+                        {new Date(m.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
-              <div ref={messagesEndRef} />
+                )}
+              />
             </div>
 
             <form onSubmit={handleSendMessage} className={`p-6 border-t flex gap-3 ${darkMode ? 'bg-zinc-950 border-white/5' : 'bg-white'}`}>
