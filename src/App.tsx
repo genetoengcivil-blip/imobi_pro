@@ -1,5 +1,8 @@
+// Substitua o seu arquivo App.tsx completo por este:
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { useEffect } from 'react';
 import { GlobalProvider, useGlobal } from './context/GlobalContext';
+import { supabase } from './lib/supabase';
 import Layout from './components/Layout';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
@@ -13,6 +16,7 @@ import SettingsPage from './pages/SettingsPage';
 import SitePage from './pages/SitePage';
 import ContractsPage from './pages/ContractsPage';
 import WhatsAppPage from './pages/WhatsAppPage';
+import ConnectPage from './pages/ConnectPage'; // Importado
 import LandingPage from './pages/LandingPage';
 import WelcomePage from './pages/WelcomePage';
 import SuccessPage from './pages/SuccessPage'; 
@@ -24,24 +28,27 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useGlobal();
   const location = useLocation();
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-black flex flex-col items-center justify-center">
-        <div className="w-12 h-12 border-4 border-[#0217ff] border-t-transparent rounded-full animate-spin"></div>
-      </div>
-    );
-  }
+  useEffect(() => {
+    if (user && 'serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js')
+        .then(reg => console.log('SW registrado!', reg.scope))
+        .catch(err => console.error('Erro SW:', err));
+    }
+  }, [user]);
 
-  if (!user) {
-    return <Navigate to="/login" state={{ from: location }} replace />;
-  }
+  if (loading) return (
+    <div className="min-h-screen bg-black flex flex-col items-center justify-center">
+      <div className="w-12 h-12 border-4 border-[#0217ff] border-t-transparent rounded-full animate-spin"></div>
+    </div>
+  );
+
+  if (!user) return <Navigate to="/login" state={{ from: location }} replace />;
 
   if (user.status === 'bloqueado') {
     return (
-      <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center p-6 text-center font-sans">
-        <h1 className="text-4xl font-black mb-4 uppercase italic">Acesso Suspenso</h1>
-        <p className="text-zinc-500 max-w-md mb-8 italic">Identificamos uma pendência na sua assinatura. Regularize o seu pagamento para retomar o acesso aos seus dados.</p>
-        <a href="https://wa.me/5583986667292" className="px-8 py-4 bg-[#0217ff] rounded-2xl font-black uppercase text-[10px] tracking-widest hover:scale-105 transition-all">Falar com Suporte</a>
+      <div className="min-h-screen bg-black flex flex-col items-center justify-center p-6 text-center">
+        <h1 className="text-2xl font-black italic uppercase text-white mb-2">Acesso Suspenso</h1>
+        <button onClick={() => supabase.auth.signOut()} className="px-8 py-3 bg-white text-black rounded-xl font-black uppercase text-[10px]">Sair</button>
       </div>
     );
   }
@@ -54,7 +61,6 @@ export default function App() {
     <GlobalProvider>
       <Router>
         <Routes>
-          {/* ROTAS PÚBLICAS */}
           <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/terms" element={<TermsPage />} />
@@ -63,12 +69,12 @@ export default function App() {
           <Route path="/welcome" element={<WelcomePage />} />
           <Route path="/v/:slug" element={<PublicSitePage />} />
           
-          {/* ROTAS PRIVADAS DO CRM (Acessadas diretamente, ex: /dashboard) */}
           <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/leads" element={<LeadsListPage />} />
             <Route path="/pipeline" element={<PipelinePage />} />
             <Route path="/whatsapp" element={<WhatsAppPage />} />
+            <Route path="/connect" element={<ConnectPage />} /> {/* ROTA ADICIONADA */}
             <Route path="/properties" element={<PropertiesPage />} />
             <Route path="/contracts" element={<ContractsPage />} />
             <Route path="/calendar" element={<CalendarPage />} />
@@ -78,7 +84,6 @@ export default function App() {
             <Route path="/site" element={<SitePage />} />
           </Route>
 
-          {/* Se a rota não existir, joga para a Landing Page */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Router>
