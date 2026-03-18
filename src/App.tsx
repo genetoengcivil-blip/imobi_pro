@@ -1,6 +1,4 @@
-// Substitua o seu arquivo App.tsx completo por este:
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
-import { useEffect } from 'react';
 import { GlobalProvider, useGlobal } from './context/GlobalContext';
 import { supabase } from './lib/supabase';
 import Layout from './components/Layout';
@@ -15,8 +13,6 @@ import ProfilePage from './pages/ProfilePage';
 import SettingsPage from './pages/SettingsPage';
 import SitePage from './pages/SitePage';
 import ContractsPage from './pages/ContractsPage';
-import WhatsAppPage from './pages/WhatsAppPage';
-import ConnectPage from './pages/ConnectPage'; // Importado
 import LandingPage from './pages/LandingPage';
 import WelcomePage from './pages/WelcomePage';
 import SuccessPage from './pages/SuccessPage'; 
@@ -28,13 +24,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useGlobal();
   const location = useLocation();
 
-  useEffect(() => {
-    if (user && 'serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js')
-        .then(reg => console.log('SW registrado!', reg.scope))
-        .catch(err => console.error('Erro SW:', err));
-    }
-  }, [user]);
+  // REMOVIDO: Registo do Service Worker para evitar erros de Cache e Lock
 
   if (loading) return (
     <div className="min-h-screen bg-black flex flex-col items-center justify-center">
@@ -73,8 +63,6 @@ export default function App() {
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/leads" element={<LeadsListPage />} />
             <Route path="/pipeline" element={<PipelinePage />} />
-            <Route path="/whatsapp" element={<WhatsAppPage />} />
-            <Route path="/connect" element={<ConnectPage />} /> {/* ROTA ADICIONADA */}
             <Route path="/properties" element={<PropertiesPage />} />
             <Route path="/contracts" element={<ContractsPage />} />
             <Route path="/calendar" element={<CalendarPage />} />
