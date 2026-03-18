@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { 
   Plus, Home, MapPin, Bed, Bath, Trash2, Edit3, 
   Image as ImageIcon, X, Loader2, PlusCircle, Check, 
-  Globe, AlertCircle, Search, Map as MapIcon
+  Globe, AlertCircle, Map as MapIcon, ChevronDown
 } from 'lucide-react';
 import { useGlobal } from '../context/GlobalContext';
 import { supabase } from '../lib/supabase';
@@ -16,12 +16,16 @@ export default function PropertiesPage() {
   const [cepLoading, setCepLoading] = useState(false);
 
   const [formData, setFormData] = useState({
-    title: '', price: '', type: 'venda',
+    title: '', price: '', condo_fee: '', type: 'venda',
     bedrooms: '', bathrooms: '', suites: '', area: '',
     description: '', images: [] as string[],
-    // Novos campos de endereço
-    cep: '', address: '', number: '', neighborhood: '', city: '', state: '',
-    location: '' // Este é o campo que vai para o site público
+    cep: '', street: '', number: '', neighborhood: '', city: '', state: '',
+    location: '',
+    // Diferenciais
+    has_elevator: false,
+    has_bbq: false,
+    has_pool: false,
+    has_gym: false
   });
 
   useEffect(() => { if (user) loadProperties(); }, [user]);
@@ -35,32 +39,24 @@ export default function PropertiesPage() {
     setProperties(data || []);
   }
 
-  // FUNÇÃO BUSCA CEP (ViaCEP)
   const handleCEPBlur = async () => {
     const cep = formData.cep.replace(/\D/g, '');
     if (cep.length !== 8) return;
-
     setCepLoading(true);
     try {
       const response = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
       const data = await response.json();
-
       if (!data.erro) {
         setFormData(prev => ({
           ...prev,
-          address: data.logradouro,
+          street: data.logradouro,
           neighborhood: data.bairro,
           city: data.localidade,
           state: data.uf,
-          // Define a localização pública (apenas bairro e cidade)
           location: `${data.bairro}, ${data.localidade} - ${data.uf}`
         }));
       }
-    } catch (error) {
-      console.error("Erro ao buscar CEP", error);
-    } finally {
-      setCepLoading(false);
-    }
+    } catch (error) { console.error(error); } finally { setCepLoading(false); }
   };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -68,10 +64,8 @@ export default function PropertiesPage() {
     setUploading(true);
     const files = Array.from(e.target.files);
     const uploadedUrls: string[] = [...formData.images];
-
     for (const file of files) {
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${Math.random()}.${fileExt}`;
+      const fileName = `${Math.random()}.${file.name.split('.').pop()}`;
       const filePath = `${user?.id}/${fileName}`;
       const { error: uploadError } = await supabase.storage.from('properties').upload(filePath, file);
       if (!uploadError) {
@@ -87,37 +81,32 @@ export default function PropertiesPage() {
     e.preventDefault();
     setLoading(true);
     try {
-      const propertyToSave = {
+      const { error } = await supabase.from('properties').insert([{
         user_id: user?.id,
         title: formData.title,
-        location: formData.location, // Público: Bairro, Cidade
-        type: formData.type,
+        price: parseFloat(String(formData.price).replace(/\D/g, '')) || 0,
+        condo_fee: parseFloat(String(formData.condo_fee).replace(/\D/g, '')) || 0,
+        area: parseInt(formData.area) || 0,
+        bedrooms: parseInt(formData.bedrooms) || 0,
+        bathrooms: parseInt(formData.bathrooms) || 0,
+        suites: parseInt(formData.suites) || 0,
+        location: formData.location,
         description: formData.description,
         images: formData.images,
-        price: parseFloat(String(formData.price).replace(/\D/g, '')) || 0,
-        bedrooms: parseInt(formData.bedrooms as string) || 0,
-        bathrooms: parseInt(formData.bathrooms as string) || 0,
-        suites: parseInt(formData.suites as string) || 0,
-        area: parseInt(formData.area as string) || 0,
-        // Dados privados que podemos salvar como metadados ou colunas extras se houver
-        full_address_json: {
-          cep: formData.cep,
-          rua: formData.address,
-          numero: formData.number,
-          bairro: formData.neighborhood
-        },
+        cep: formData.cep,
+        street: formData.street,
+        number: formData.number,
+        neighborhood: formData.neighborhood,
+        city: formData.city,
+        state: formData.state,
+        has_elevator: formData.has_elevator,
+        has_bbq: formData.has_bbq,
+        has_pool: formData.has_pool,
+        has_gym: formData.has_gym,
         created_at: new Date()
-      };
-
-      const { error } = await supabase.from('properties').insert([propertyToSave]);
+      }]);
       if (error) throw error;
-
       setShowModal(false);
-      setFormData({ 
-        title: '', price: '', type: 'venda', bedrooms: '', bathrooms: '', 
-        suites: '', area: '', description: '', images: [],
-        cep: '', address: '', number: '', neighborhood: '', city: '', state: '', location: ''
-      });
       loadProperties();
     } catch (err: any) { alert(err.message); } finally { setLoading(false); }
   };
@@ -127,166 +116,122 @@ export default function PropertiesPage() {
     modal: darkMode ? 'bg-zinc-950 border-white/10' : 'bg-white border-zinc-200',
     input: darkMode ? 'bg-zinc-900 border-white/10 text-white placeholder-zinc-600' : 'bg-zinc-50 border-zinc-200 text-zinc-900 placeholder-zinc-400',
     textMain: darkMode ? 'text-white' : 'text-zinc-900',
-    textMuted: 'text-zinc-500 font-medium',
   };
 
   return (
     <div className="p-6 md:p-10 space-y-10 animate-fade-in">
-      
-      {/* HEADER */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
-        <div className="space-y-2">
-          <div className="flex items-center gap-2 text-[#0217ff] font-black text-[10px] uppercase tracking-[0.3em]">
-            <Globe size={14} /> Site Público Ativo
+      <div className="flex justify-between items-end">
+        <div>
+          <div className="flex items-center gap-2 text-[#0217ff] font-black text-[10px] uppercase tracking-widest mb-1">
+            <Globe size={12} /> Portfólio Público
           </div>
-          <h1 className={`text-4xl font-black italic uppercase tracking-tighter ${theme.textMain}`}>
-            Meus <span className="text-[#0217ff]">Imóveis</span>
-          </h1>
+          <h1 className={`text-4xl font-black italic uppercase tracking-tighter ${theme.textMain}`}>Meus Imóveis</h1>
         </div>
-        <button onClick={() => setShowModal(true)} className="px-8 py-4 bg-[#0217ff] text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-2xl shadow-[#0217ff]/20 flex items-center gap-3">
-          <Plus size={18} /> Novo Ativo
+        <button onClick={() => setShowModal(true)} className="px-8 py-4 bg-[#0217ff] text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl shadow-[#0217ff]/20">
+          Novo Ativo
         </button>
       </div>
 
-      {/* GRID */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
         {properties.map((p) => (
-          <div key={p.id} className={`${theme.card} rounded-[40px] border p-4 group transition-all duration-500`}>
-            <div className="relative aspect-[4/3] rounded-[32px] overflow-hidden mb-6">
-              {p.images?.[0] ? (
-                <img src={p.images[0]} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt="" />
-              ) : (
-                <div className="w-full h-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center"><Home className="text-zinc-400" size={40} /></div>
-              )}
+          <div key={p.id} className={`${theme.card} rounded-[40px] border p-4 group overflow-hidden`}>
+            <div className="aspect-[4/3] rounded-[32px] overflow-hidden mb-4 relative">
+              <img src={p.images?.[0] || 'https://via.placeholder.com/400'} className="w-full h-full object-cover group-hover:scale-110 transition-all duration-500" />
+              <div className="absolute top-4 left-4 px-3 py-1 bg-black/50 backdrop-blur-md text-white text-[9px] font-black uppercase rounded-full">R$ {Number(p.price).toLocaleString('pt-BR')}</div>
             </div>
-            <div className="px-4 pb-4 space-y-2">
-              <h3 className={`text-xl font-black uppercase italic tracking-tighter truncate ${theme.textMain}`}>{p.title}</h3>
-              <div className="flex items-center gap-2 text-xs text-zinc-500 font-bold">
-                <MapPin size={14} className="text-[#0217ff]" /> {p.location}
-              </div>
-              <div className="pt-4 flex justify-between items-center">
-                <span className="text-[#0217ff] font-black italic text-lg">R$ {Number(p.price).toLocaleString('pt-BR')}</span>
-                <button onClick={() => { if(confirm('Excluir?')) supabase.from('properties').delete().eq('id', p.id).then(() => loadProperties()) }} className="p-2 text-red-500/50 hover:text-red-500 transition-colors"><Trash2 size={18} /></button>
-              </div>
+            <div className="px-2">
+              <h3 className={`font-black uppercase italic truncate ${theme.textMain}`}>{p.title}</h3>
+              <p className="text-zinc-500 text-[10px] font-bold uppercase">{p.location}</p>
             </div>
           </div>
         ))}
       </div>
 
-      {/* MODAL PREMIUM */}
       {showModal && (
         <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-xl flex items-center justify-center p-4">
           <div className={`${theme.modal} w-full max-w-5xl max-h-[90vh] overflow-hidden rounded-[48px] border shadow-2xl flex flex-col`}>
-            
-            <div className="p-8 border-b border-zinc-200 dark:border-white/5 flex justify-between items-center bg-zinc-50/50 dark:bg-white/5">
-              <div>
-                <h2 className={`text-2xl font-black uppercase italic tracking-tighter ${theme.textMain}`}>Cadastro de Ativo</h2>
-                <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest mt-1">Os dados de endereço completo são <span className="text-[#0217ff]">privados</span>.</p>
-              </div>
-              <button onClick={() => setShowModal(false)} className="p-2 text-red-500 hover:bg-red-500/10 rounded-full transition-all"><X size={28} /></button>
+            <div className="p-8 border-b border-white/5 flex justify-between items-center">
+              <h2 className={`text-2xl font-black uppercase italic tracking-tighter ${theme.textMain}`}>Cadastro Premium</h2>
+              <button onClick={() => setShowModal(false)} className="p-2 text-red-500"><X size={28} /></button>
             </div>
 
             <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-8 md:p-12 space-y-12 no-scrollbar">
               
-              {/* SEÇÃO 1: LOCALIZAÇÃO PRIVADA */}
+              {/* LOCALIZAÇÃO */}
               <div className="space-y-6">
-                <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.2em] text-[#0217ff]">
-                  <MapIcon size={16} /> Localização e Privacidade
-                </div>
-                
+                <div className="text-[10px] font-black uppercase tracking-widest text-[#0217ff]">1. Localização e Privacidade</div>
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase text-zinc-500 ml-2">CEP</label>
-                    <div className="relative">
-                      <input className={`w-full ${theme.input} px-6 py-4 rounded-2xl outline-none focus:ring-2 ring-[#0217ff]/20`} 
-                        value={formData.cep} onChange={e => setFormData({...formData, cep: e.target.value})} onBlur={handleCEPBlur} placeholder="00000-000" />
-                      {cepLoading && <Loader2 className="absolute right-4 top-4 animate-spin text-[#0217ff]" size={20} />}
-                    </div>
-                  </div>
-                  <div className="md:col-span-2 space-y-2">
-                    <label className="text-[10px] font-black uppercase text-zinc-500 ml-2">Logradouro (Privado)</label>
-                    <input className={`w-full ${theme.input} px-6 py-4 rounded-2xl outline-none`} value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} placeholder="Rua, Avenida..." />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase text-zinc-500 ml-2">Número</label>
-                    <input className={`w-full ${theme.input} px-6 py-4 rounded-2xl outline-none`} value={formData.number} onChange={e => setFormData({...formData, number: e.target.value})} placeholder="123" />
-                  </div>
+                  <input className={`${theme.input} px-6 py-4 rounded-2xl outline-none`} placeholder="CEP" value={formData.cep} onChange={e => setFormData({...formData, cep: e.target.value})} onBlur={handleCEPBlur} />
+                  <input className={`md:col-span-2 ${theme.input} px-6 py-4 rounded-2xl outline-none`} placeholder="Rua (Privado)" value={formData.street} onChange={e => setFormData({...formData, street: e.target.value})} />
+                  <input className={`${theme.input} px-6 py-4 rounded-2xl outline-none`} placeholder="Nº" value={formData.number} onChange={e => setFormData({...formData, number: e.target.value})} />
                 </div>
-
-                <div className="p-6 rounded-[32px] border-2 border-dashed border-[#0217ff]/20 bg-[#0217ff]/5 flex flex-col md:flex-row gap-6 items-center">
-                  <div className="shrink-0 w-12 h-12 bg-[#0217ff] text-white rounded-2xl flex items-center justify-center shadow-lg shadow-[#0217ff]/30">
-                    <Globe size={24} />
-                  </div>
-                  <div className="flex-1">
-                    <h4 className={`text-xs font-black uppercase ${theme.textMain}`}>Visualização no Anúncio Público:</h4>
-                    <p className="text-lg font-black italic text-[#0217ff] tracking-tighter">
-                      {formData.location || "Aguardando preenchimento do endereço..."}
-                    </p>
-                  </div>
-                </div>
-
-                {/* MAPA DINÂMICO (Para o Corretor) */}
-                {formData.address && formData.city && (
-                  <div className="rounded-[32px] overflow-hidden border-4 border-white/5 h-64 bg-zinc-200">
-                    <iframe width="100%" height="100%" frameBorder="0" style={{ border: 0 }}
-                      src={`https://www.google.com/maps/embed/v1/place?key=SEU_GOOGLE_MAPS_KEY_AQUI&q=${encodeURIComponent(`${formData.address}, ${formData.number} - ${formData.neighborhood}, ${formData.city}`)}`}
-                      allowFullScreen>
-                    </iframe>
-                    {/* Nota: Substitua pela sua Key se tiver, ou use este iframe apenas como placeholder visual */}
-                  </div>
-                )}
-              </div>
-
-              {/* SEÇÃO 2: DETALHES DO IMÓVEL */}
-              <div className="space-y-8">
-                <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.2em] text-[#0217ff]">
-                  <Home size={16} /> Atributos do Imóvel
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase text-zinc-500 ml-2">Título do Anúncio</label>
-                  <input required className={`w-full ${theme.input} px-6 py-4 rounded-2xl text-lg font-bold outline-none`} value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} placeholder="Ex: Mansão Suspensa com Vista para o Mar" />
-                </div>
-
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase text-zinc-500 ml-2">Preço (R$)</label>
-                    <input required className={`w-full ${theme.input} px-6 py-4 rounded-2xl font-black text-[#0217ff] outline-none`} value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} placeholder="0,00" />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase text-zinc-500 ml-2">Área (m²)</label>
-                    <input type="number" className={`w-full ${theme.input} px-6 py-4 rounded-2xl text-center outline-none`} value={formData.area} onChange={e => setFormData({...formData, area: e.target.value})} />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase text-zinc-500 ml-2">Quartos</label>
-                    <input type="number" className={`w-full ${theme.input} px-6 py-4 rounded-2xl text-center outline-none`} value={formData.bedrooms} onChange={e => setFormData({...formData, bedrooms: e.target.value})} />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase text-zinc-500 ml-2">Suítes</label>
-                    <input type="number" className={`w-full ${theme.input} px-6 py-4 rounded-2xl text-center outline-none`} value={formData.suites} onChange={e => setFormData({...formData, suites: e.target.value})} />
-                  </div>
+                <div className="p-6 rounded-3xl bg-[#0217ff]/5 border border-[#0217ff]/20">
+                  <p className="text-[9px] font-black uppercase text-zinc-500 mb-1">Aparecerá no site como:</p>
+                  <p className="text-lg font-black italic text-[#0217ff] uppercase">{formData.location || "Preencha o CEP..."}</p>
                 </div>
               </div>
 
-              {/* SEÇÃO 3: IMAGENS */}
-              <div className="space-y-4">
-                <label className="text-[11px] font-black uppercase tracking-[0.2em] text-[#0217ff]">Galeria de Luxo</label>
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                  {formData.images.map((img, i) => (
-                    <div key={i} className="aspect-square rounded-3xl overflow-hidden relative group border border-white/10 shadow-lg">
-                      <img src={img} className="w-full h-full object-cover" alt="" />
-                      <button type="button" onClick={() => setFormData({...formData, images: formData.images.filter((_, idx) => idx !== i)})} className="absolute inset-0 bg-red-500/80 text-white opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center font-black uppercase text-[10px]">Remover</button>
+              {/* DADOS TÉCNICOS E FINANCEIRO */}
+              <div className="space-y-6">
+                <div className="text-[10px] font-black uppercase tracking-widest text-[#0217ff]">2. Detalhes Financeiros e Técnicos</div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <input required className={`${theme.input} px-6 py-4 rounded-2xl outline-none`} placeholder="Título do Anúncio" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} />
+                  <div className="grid grid-cols-2 gap-4">
+                    <input className={`${theme.input} px-6 py-4 rounded-2xl outline-none font-bold text-[#0217ff]`} placeholder="Valor Venda" value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} />
+                    <input className={`${theme.input} px-6 py-4 rounded-2xl outline-none`} placeholder="Condomínio" value={formData.condo_fee} onChange={e => setFormData({...formData, condo_fee: e.target.value})} />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+                  {['area', 'bedrooms', 'bathrooms', 'suites'].map(field => (
+                    <div key={field} className="space-y-2">
+                      <label className="text-[9px] font-black uppercase text-zinc-500">{field.replace('area', 'm²')}</label>
+                      <input type="number" className={`${theme.input} w-full py-4 rounded-xl text-center font-bold`} value={(formData as any)[field]} onChange={e => setFormData({...formData, [field]: e.target.value})} />
                     </div>
                   ))}
-                  <label className={`aspect-square rounded-3xl border-4 border-dashed ${theme.input} flex flex-col items-center justify-center cursor-pointer hover:border-[#0217ff] hover:bg-[#0217ff]/5 transition-all`}>
-                    {uploading ? <Loader2 className="animate-spin text-[#0217ff]" /> : <PlusCircle size={40} className="text-zinc-500" />}
+                </div>
+              </div>
+
+              {/* DIFERENCIAIS */}
+              <div className="space-y-6">
+                <div className="text-[10px] font-black uppercase tracking-widest text-[#0217ff]">3. Diferenciais do Condomínio/Imóvel</div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  {[
+                    { id: 'has_elevator', label: 'Elevador' },
+                    { id: 'has_bbq', label: 'Churrasqueira' },
+                    { id: 'has_pool', label: 'Piscina' },
+                    { id: 'has_gym', label: 'Academia' }
+                  ].map(item => (
+                    <button 
+                      key={item.id} type="button"
+                      onClick={() => setFormData({...formData, [item.id]: !(formData as any)[item.id]})}
+                      className={`p-4 rounded-2xl border-2 transition-all flex items-center justify-center gap-2 font-black uppercase text-[10px] ${
+                        (formData as any)[item.id] ? 'border-[#0217ff] bg-[#0217ff] text-white' : 'border-zinc-200 dark:border-white/5 text-zinc-500'
+                      }`}
+                    >
+                      {(formData as any)[item.id] && <Check size={14} />} {item.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* IMAGENS */}
+              <div className="space-y-4">
+                <div className="text-[10px] font-black uppercase tracking-widest text-[#0217ff]">4. Fotos do Imóvel</div>
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                  {formData.images.map((img, i) => (
+                    <div key={i} className="aspect-square rounded-2xl overflow-hidden border border-white/10">
+                      <img src={img} className="w-full h-full object-cover" />
+                    </div>
+                  ))}
+                  <label className={`aspect-square rounded-2xl border-2 border-dashed ${theme.input} flex flex-col items-center justify-center cursor-pointer hover:border-[#0217ff]`}>
+                    {uploading ? <Loader2 className="animate-spin text-[#0217ff]" /> : <Plus size={32} className="text-zinc-500" />}
                     <input type="file" hidden multiple onChange={handleImageUpload} />
                   </label>
                 </div>
               </div>
 
-              <button disabled={loading || uploading} className="w-full py-8 bg-[#0217ff] text-white rounded-[32px] font-black uppercase text-sm tracking-[0.3em] shadow-2xl shadow-[#0217ff]/40 hover:scale-[1.01] active:scale-95 transition-all flex items-center justify-center gap-4">
-                {loading ? <Loader2 className="animate-spin" /> : "Publicar no Portfólio Profissional"}
+              <button disabled={loading || uploading} className="w-full py-8 bg-[#0217ff] text-white rounded-[32px] font-black uppercase text-sm tracking-widest shadow-2xl hover:scale-[1.01] transition-all">
+                {loading ? <Loader2 className="animate-spin mx-auto" /> : "Publicar no Site Profissional"}
               </button>
             </form>
           </div>
