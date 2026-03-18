@@ -17,14 +17,13 @@ import LandingPage from './pages/LandingPage';
 import WelcomePage from './pages/WelcomePage';
 import SuccessPage from './pages/SuccessPage'; 
 import PublicSitePage from './pages/PublicSitePage';
-import TermsPage from './pages/TermsPage';
-import PrivacyPage from './pages/PrivacyPage';
 
-// Mata o loop de carregamento limpando Service Workers antigos
-const clearCaches = () => {
+// Mata o loop de carregamento limpando Service Workers e Caches antigos
+const forceReset = () => {
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.getRegistrations().then(regs => regs.forEach(r => r.unregister()));
   }
+  if (window.location.href.includes('reload=true')) return;
 };
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -42,7 +41,8 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
-  clearCaches();
+  forceReset();
+
   return (
     <GlobalProvider>
       <Router>
@@ -50,6 +50,7 @@ export default function App() {
           <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/v/:slug" element={<PublicSitePage />} />
+          
           <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/leads" element={<LeadsListPage />} />
