@@ -14,46 +14,45 @@ export default function ConnectPage() {
 
   // Lógica de verificação robusta com alertas de erro
   const checkConnection = useCallback(async () => {
-    // 1. Rastreio no Console (F12) para sabermos quem está logado
-    console.log("Dados do utilizador atual:", user);
+    // SE JÁ ESTIVER A CARREGAR, NÃO FAZ NADA (O CADEADO)
+    if (loading || !user?.id) return;
 
-    if (!user || !user.id) {
-      alert("⚠️ ERRO CRÍTICO: O sistema não conseguiu encontrar o seu ID de utilizador. Faça login novamente ou verifique se o utilizador está a ser passado no GlobalContext.");
-      setLoading(false);
-      setStatus('disconnected');
-      return;
-    }
+    setLoading(true);
+    console.log("Iniciando verificação para:", user.id);
     
     try {
+      // Usamos um timeout manual no frontend para não deixar o navegador "desistir" sozinho
       const { data, error } = await supabase.functions.invoke('whatsapp-proxy', {
-        body: { 
-          instance: user.id, 
-          action: 'status'
-        }
+        body: { instance: user.id, action: 'status' }
       });
 
-      if (error) throw error;
+      if (error) {
+        // Se for um erro de "Abort", ignoramos porque foi apenas o sistema a limpar pedidos velhos
+        if (error.message?.includes('Abort')) return;
+        throw error;
+      }
 
-      if (data?.instance?.state === 'open') {
+      if (data?.status === 'creating') {
+        setStatus('disconnected');
+        setQrCode(null); // Instância está a ser criada, aguarde
+      } else if (data?.instance?.state === 'open') {
         setStatus('connected');
         setQrCode(null);
       } else {
         setStatus('disconnected');
-        // Tratamento da imagem Base64 do QR Code para Evolution v1 e v2
-        if (data?.qrcode?.base64) {
-          setQrCode(data.qrcode.base64);
-        } else if (data?.qrcode) {
-          setQrCode(data.qrcode);
-        }
+        const base64 = data?.qrcode?.base64 || data?.qrcode;
+        if (base64) setQrCode(base64);
       }
-    } catch (err) {
-      console.error("Erro na comunicação com a Edge Function:", err);
-      alert("❌ A Edge Function falhou ao tentar comunicar com a Evolution API. Prima F12 e verifique a aba Console para mais detalhes.");
-      setStatus('disconnected');
+    } catch (err: any) {
+      console.error("Erro real detetado:", err);
+      // Só mostramos o alerta se não for um erro de cancelamento automático
+      if (!err.message?.includes('Abort')) {
+        alert("Erro de conexão. Tente atualizar a página em 5 segundos.");
+      }
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, [user, loading]);
 
   // Executa ao abrir a página e a cada 20 segundos
   useEffect(() => {
