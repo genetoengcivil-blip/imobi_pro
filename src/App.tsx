@@ -20,6 +20,15 @@ import PublicSitePage from './pages/PublicSitePage';
 import TermsPage from './pages/TermsPage';
 import PrivacyPage from './pages/PrivacyPage';
 
+// FUNÇÃO PARA LIMPAR TUDO O QUE CAUSA LOOP
+const clearAllLocks = () => {
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.getRegistrations().then((registrations) => {
+      for (const registration of registrations) { registration.unregister(); }
+    });
+  }
+};
+
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useGlobal();
   const location = useLocation();
@@ -31,30 +40,18 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   );
 
   if (!user) return <Navigate to="/login" state={{ from: location }} replace />;
-
-  if (user.status === 'bloqueado') {
-    return (
-      <div className="min-h-screen bg-black flex flex-col items-center justify-center p-6 text-center">
-        <h1 className="text-2xl font-black italic uppercase text-white mb-2">Acesso Suspenso</h1>
-        <button onClick={() => supabase.auth.signOut()} className="px-8 py-3 bg-white text-black rounded-xl font-black uppercase text-[10px]">Sair</button>
-      </div>
-    );
-  }
-
   return <>{children}</>;
 }
 
 export default function App() {
+  clearAllLocks(); // Executa a limpeza ao iniciar
+
   return (
     <GlobalProvider>
       <Router>
         <Routes>
           <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<LoginPage />} />
-          <Route path="/terms" element={<TermsPage />} />
-          <Route path="/privacy" element={<PrivacyPage />} />
-          <Route path="/success" element={<SuccessPage />} />
-          <Route path="/welcome" element={<WelcomePage />} />
           <Route path="/v/:slug" element={<PublicSitePage />} />
           
           <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
