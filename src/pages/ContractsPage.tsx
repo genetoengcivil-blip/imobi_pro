@@ -1,176 +1,226 @@
-import { useState, useMemo } from 'react';
-import { Plus, Search, FileText, DollarSign, Calendar, Trash2, X } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { 
+  Plus, Search, FileText, DollarSign, Calendar, Trash2, X, 
+  Upload, CheckCircle2, Clock, AlertCircle, ExternalLink, 
+  FileCheck, Download, Filter, Loader2
+} from 'lucide-react';
 import { useGlobal } from '../context/GlobalContext';
-import { Contract } from '../types';
+import { supabase } from '../lib/supabase';
 
 export default function ContractsPage() {
-  const { contracts, addContract, deleteContract, properties, darkMode } = useGlobal();
-  const [searchTerm, setSearchTerm] = useState('');
+  const { user, darkMode } = useGlobal();
+  const [loading, setLoading] = useState(false);
+  const [contracts, setContracts] = useState<any[]>([]);
+  const [properties, setProperties] = useState<any[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [newContract, setNewApp] = useState<Omit<Contract, 'id'>>({
-    clientName: '', propertyId: '', propertyName: '', value: 0, commission: 0,
-    status: 'rascunho', startDate: new Date().toISOString().split('T')[0], endDate: '', type: 'venda', notes: ''
+  const [searchTerm, setSearchTerm] = useState('');
+  const [uploading, setUploading] = useState(false);
+
+  const [formData, setFormData] = useState({
+    client_name: '', property_id: '', value: '', commission_percent: '6',
+    status: 'rascunho', start_date: new Date().toISOString().split('T')[0],
+    type: 'venda', contract_url: '', notes: ''
   });
 
-  const safeContracts = contracts || [];
-  const safeProperties = properties || [];
+  useEffect(() => { if (user) { loadData(); } }, [user]);
 
-  const filteredContracts = useMemo(() => {
-    return safeContracts.filter(c => 
-      (c?.clientName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (c?.propertyName || '').toLowerCase().includes(searchTerm.toLowerCase())
-    );
-  }, [safeContracts, searchTerm]);
+  async function loadData() {
+    setLoading(true);
+    const [contractsRes, propertiesRes] = await Promise.all([
+      supabase.from('contracts').select('*, properties(title)').eq('user_id', user?.id).order('created_at', { ascending: false }),
+      supabase.from('properties').select('id, title').eq('user_id', user?.id)
+    ]);
+    setContracts(contractsRes.data || []);
+    setProperties(propertiesRes.data || []);
+    setLoading(false);
+  }
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const property = safeProperties.find(p => p.id === newContract.propertyId);
-    addContract({
-      ...newContract,
-      propertyName: property?.title || 'Imóvel não selecionado'
-    });
-    setIsModalOpen(false);
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files?.[0]) return;
+    setUploading(true);
+    const file = e.target.files[0];
+    const fileName = `${user?.id}/${Date.now()}-${file.name}`;
+    
+    const { error } = await supabase.storage.from('contracts').upload(fileName, file);
+    if (!error) {
+      const { data } = supabase.storage.from('contracts').getPublicUrl(fileName);
+      setFormData({ ...formData, contract_url: data.publicUrl });
+    }
+    setUploading(false);
   };
 
-  const cardStyles = darkMode ? 'bg-zinc-900 border-white/5 text-white' : 'bg-white border-zinc-200 text-zinc-900';
-  
-  // Classe de Inputs Consistente para Visibilidade Clara/Escura
-  const inputClass = "w-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-white/10 rounded-xl py-3 px-4 focus:outline-none focus:border-blue-500 text-zinc-900 dark:text-white placeholder-zinc-400";
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    const price = parseFloat(formData.value.replace(/\D/g, '')) || 0;
+    const comm = (price * (parseFloat(formData.commission_percent) / 100));
+
+    const payload = {
+      ...formData,
+      user_id: user?.id,
+      value: price,
+      commission_value: comm,
+      commission_percent: parseFloat(formData.commission_percent)
+    };
+
+    const { error } = await supabase.from('contracts').insert([payload]);
+    if (!error) {
+      setIsModalOpen(false);
+      loadData();
+    }
+    setLoading(false);
+  };
+
+  const filteredContracts = useMemo(() => {
+    return contracts.filter(c => 
+      c.client_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      c.properties?.title?.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  }, [contracts, searchTerm]);
+
+  const theme = {
+    card: darkMode ? 'bg-zinc-900 border-white/5' : 'bg-white border-zinc-200 shadow-sm',
+    input: darkMode ? 'bg-zinc-900 border-white/5 text-white' : 'bg-zinc-50 border-zinc-200 text-zinc-900',
+    text: darkMode ? 'text-white' : 'text-zinc-900',
+  };
 
   return (
-    <div className="space-y-8 animate-fade-in pb-20">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <div className="p-6 md:p-8 space-y-8 animate-fade-in pb-20">
+      
+      {/* HEADER */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
-          <h1 className={`text-3xl font-bold ${darkMode ? 'text-white' : 'text-zinc-900'}`}>Contratos</h1>
-          <p className="text-zinc-500 font-medium">Gestão de documentos e fechamentos.</p>
+          <h1 className={`text-3xl font-bold tracking-tight ${theme.text}`}>Gestão de <span className="text-[#0217ff]">Contratos</span></h1>
+          <p className="text-sm text-zinc-500 font-medium">Controle de fechamentos e comissões pendentes.</p>
         </div>
-        <button onClick={() => setIsModalOpen(true)} className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-bold flex items-center gap-2 transition-all shadow-lg shadow-blue-600/20">
-          <Plus className="w-5 h-5" /> Novo Contrato
+        <button onClick={() => setIsModalOpen(true)} className="px-6 py-3 bg-[#0217ff] text-white rounded-2xl text-[10px] font-bold uppercase tracking-widest shadow-lg shadow-[#0217ff]/20 flex items-center gap-2">
+          <Plus size={16} /> Novo Contrato
         </button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      {/* STATS RÁPIDOS */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {[
-          { label: 'Total Contratos', value: safeContracts.length, icon: FileText, color: 'text-blue-500', bg: 'bg-blue-500/10' },
-          { label: 'Valor Total', value: new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(safeContracts.reduce((acc, c) => acc + (c?.value || 0), 0)), icon: DollarSign, color: 'text-green-500', bg: 'bg-green-500/10' },
-        ].map((stat, i) => (
-          <div key={i} className={`p-6 rounded-[32px] border ${cardStyles} shadow-sm`}>
-            <div className={`w-12 h-12 rounded-2xl ${stat.bg} ${stat.color} flex items-center justify-center mb-4`}><stat.icon className="w-6 h-6" /></div>
-            <div className="text-zinc-500 text-xs font-bold uppercase tracking-widest mb-1">{stat.label}</div>
-            <div className="text-xl font-bold truncate">{stat.value}</div>
+          { label: 'Volume em Contratos', val: contracts.reduce((acc, c) => acc + c.value, 0), icon: DollarSign, color: 'text-blue-500' },
+          { label: 'Comissões Totais', val: contracts.reduce((acc, c) => acc + c.commission_value, 0), icon: FileCheck, color: 'text-green-500' },
+          { label: 'Contratos Ativos', val: contracts.filter(c => c.status === 'ativo').length, icon: Clock, color: 'text-orange-500' },
+        ].map((s, i) => (
+          <div key={i} className={`${theme.card} p-6 rounded-3xl border flex items-center gap-4`}>
+            <div className={`p-3 rounded-2xl bg-zinc-100 dark:bg-white/5 ${s.color}`}><s.icon size={24} /></div>
+            <div>
+              <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">{s.label}</p>
+              <p className={`text-xl font-bold ${theme.text}`}>{typeof s.val === 'number' && i < 2 ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(s.val) : s.val}</p>
+            </div>
           </div>
         ))}
       </div>
 
-      <div className="relative group max-w-md">
-        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-400 group-focus-within:text-blue-500 transition-colors" />
-        <input type="text" placeholder="Buscar contrato..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className={`${inputClass} pl-12`} />
+      {/* BUSCA */}
+      <div className="relative max-w-md">
+        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400" size={18} />
+        <input 
+          placeholder="Buscar por cliente ou imóvel..." 
+          className={`${theme.input} w-full pl-12 py-3.5 rounded-2xl outline-none border transition-all focus:border-[#0217ff]/50`}
+          value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
+        />
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      {/* LISTA DE CONTRATOS */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {filteredContracts.map((c) => (
-          <div key={c?.id || Math.random()} className={`p-6 rounded-[32px] border ${cardStyles} hover:shadow-xl transition-all group`}>
-            <div className="flex items-start justify-between mb-6">
+          <div key={c.id} className={`${theme.card} p-6 rounded-[32px] border group transition-all hover:border-[#0217ff]/30`}>
+            <div className="flex justify-between items-start mb-6">
               <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-2xl bg-zinc-100 dark:bg-white/5 flex items-center justify-center text-zinc-400"><FileText className="w-6 h-6" /></div>
+                <div className="w-12 h-12 bg-[#0217ff]/10 text-[#0217ff] rounded-2xl flex items-center justify-center"><FileText size={24} /></div>
                 <div>
-                  <h3 className="font-bold text-lg">{c?.clientName || 'Cliente Indefinido'}</h3>
-                  <p className="text-sm text-zinc-500 font-medium">{c?.propertyName || 'Imóvel não associado'}</p>
+                  <h3 className={`font-bold ${theme.text}`}>{c.client_name}</h3>
+                  <p className="text-xs text-zinc-500 font-bold uppercase">{c.properties?.title || 'Imóvel não definido'}</p>
                 </div>
               </div>
-              <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${
-                c?.status === 'concluido' ? 'bg-green-500/10 text-green-500' :
-                c?.status === 'ativo' ? 'bg-blue-500/10 text-blue-500' :
-                'bg-zinc-500/10 text-zinc-500'
-              }`}>
-                {c?.status || 'rascunho'}
-              </span>
+              <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-tighter ${
+                c.status === 'ativo' ? 'bg-green-500/10 text-green-500' : 'bg-zinc-500/10 text-zinc-500'
+              }`}>{c.status}</span>
             </div>
 
             <div className="grid grid-cols-2 gap-4 mb-6">
-              <div className="p-4 rounded-2xl bg-zinc-50 dark:bg-white/5 border border-zinc-100 dark:border-white/5">
-                <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1">Valor</div>
-                <div className="text-lg font-bold text-blue-600">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(c?.value || 0)}</div>
+              <div className="p-4 rounded-2xl bg-zinc-50 dark:bg-white/5">
+                <p className="text-[9px] font-bold text-zinc-400 uppercase mb-1">Valor Venda</p>
+                <p className={`font-bold ${theme.text}`}>{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(c.value)}</p>
               </div>
-              <div className="p-4 rounded-2xl bg-zinc-50 dark:bg-white/5 border border-zinc-100 dark:border-white/5">
-                <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1">Comissão</div>
-                <div className="text-lg font-bold text-green-600">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(c?.commission || 0)}</div>
+              <div className="p-4 rounded-2xl bg-zinc-50 dark:bg-white/5">
+                <p className="text-[9px] font-bold text-zinc-400 uppercase mb-1">Comissão ({c.commission_percent}%)</p>
+                <p className="font-bold text-green-500">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(c.commission_value)}</p>
               </div>
             </div>
 
-            <div className="pt-6 border-t border-zinc-100 dark:border-white/5 flex items-center justify-between">
-              <div className="flex items-center gap-4 text-xs font-bold text-zinc-400">
-                <div className="flex items-center gap-1.5">
-                  <Calendar className="w-4 h-4" />
-                  <span>{c?.startDate ? new Date(c.startDate).toLocaleDateString('pt-BR') : 'Data não definida'}</span>
-                </div>
+            <div className="flex items-center justify-between pt-4 border-t border-zinc-100 dark:border-white/5">
+              <div className="flex items-center gap-2 text-xs text-zinc-500 font-bold">
+                <Calendar size={14} /> {new Date(c.start_date).toLocaleDateString('pt-BR')}
               </div>
-              <button onClick={() => c?.id && deleteContract(c.id)} className="p-2 hover:bg-red-500/10 rounded-xl text-zinc-400 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"><Trash2 className="w-5 h-5" /></button>
+              <div className="flex gap-2">
+                {c.contract_url && <a href={c.contract_url} target="_blank" className="p-2 bg-zinc-100 dark:bg-white/5 text-zinc-500 rounded-lg hover:text-[#0217ff]"><ExternalLink size={16} /></a>}
+                <button onClick={() => supabase.from('contracts').delete().eq('id', c.id).then(() => loadData())} className="p-2 text-red-500/30 hover:text-red-500"><Trash2 size={16} /></button>
+              </div>
             </div>
           </div>
         ))}
-
-        {filteredContracts.length === 0 && (
-          <div className="col-span-full py-12 text-center text-zinc-500">
-            Nenhum contrato encontrado.
-          </div>
-        )}
       </div>
 
+      {/* MODAL DE CADASTRO */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[100] flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-zinc-950 w-full max-w-lg rounded-[32px] border border-zinc-200 dark:border-white/10 shadow-2xl flex flex-col max-h-[90vh]">
-            <div className="p-6 border-b border-zinc-200 dark:border-white/5 flex items-center justify-between bg-zinc-50 dark:bg-zinc-900/50 rounded-t-[32px]">
-              <h2 className="text-2xl font-bold dark:text-white">Novo Contrato</h2>
-              <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-zinc-200 dark:hover:bg-white/10 rounded-xl"><X className="w-5 h-5 text-zinc-400" /></button>
+        <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className={`${theme.modal} w-full max-w-2xl rounded-[40px] border shadow-2xl flex flex-col max-h-[90vh]`}>
+            <div className="p-6 border-b border-white/5 flex justify-between items-center">
+              <h2 className={`text-lg font-bold ${theme.text}`}>Gerar Novo Contrato</h2>
+              <button onClick={() => setIsModalOpen(false)} className="text-zinc-500 hover:text-red-500"><X size={28} /></button>
             </div>
 
-            <form onSubmit={handleSubmit} className="p-8 overflow-y-auto space-y-4">
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Nome do Cliente</label>
-                <input required type="text" onChange={(e) => setNewApp({...newContract, clientName: e.target.value})} className={inputClass} placeholder="Nome Completo" />
-              </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Imóvel Relacionado</label>
-                <select required onChange={(e) => setNewApp({...newContract, propertyId: e.target.value})} className={inputClass}>
-                  <option value="">Selecione um imóvel</option>
-                  {safeProperties.map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
-                </select>
-              </div>
-              
-              <div className="grid grid-cols-2 gap-4">
+            <form onSubmit={handleSubmit} className="p-8 space-y-6 overflow-y-auto no-scrollbar">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Valor do Contrato</label>
-                  <input required type="number" onChange={(e) => setNewApp({...newContract, value: parseFloat(e.target.value)})} className={inputClass} placeholder="R$ 0,00" />
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase">Nome do Cliente</label>
+                  <input required className={`${theme.input} w-full px-5 py-3 rounded-xl outline-none`} placeholder="Nome Completo" onChange={e => setFormData({...formData, client_name: e.target.value})} />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Comissão (%)</label>
-                  <input required type="number" onChange={(e) => setNewApp({...newContract, commission: parseFloat(e.target.value)})} className={inputClass} placeholder="Ex: 5000" />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Status</label>
-                  <select onChange={(e) => setNewApp({...newContract, status: e.target.value as any})} className={inputClass}>
-                    <option value="rascunho">Rascunho</option>
-                    <option value="ativo">Ativo</option>
-                    <option value="concluido">Concluído</option>
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase">Imóvel</label>
+                  <select required className={`${theme.input} w-full px-5 py-3 rounded-xl outline-none`} onChange={e => setFormData({...formData, property_id: e.target.value})}>
+                    <option value="">Selecione...</option>
+                    {properties.map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
                   </select>
                 </div>
+              </div>
+
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
                 <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Data de Início</label>
-                  <input type="date" value={newContract.startDate} onChange={(e) => setNewApp({...newContract, startDate: e.target.value})} className={inputClass} />
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase">Valor do Contrato</label>
+                  <input required className={`${theme.input} w-full px-5 py-3 rounded-xl outline-none font-bold text-[#0217ff]`} placeholder="R$ 0,00" onChange={e => setFormData({...formData, value: e.target.value})} />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase">Comissão (%)</label>
+                  <input className={`${theme.input} w-full px-5 py-3 rounded-xl outline-none`} value={formData.commission_percent} onChange={e => setFormData({...formData, commission_percent: e.target.value})} />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase">Data Início</label>
+                  <input type="date" className={`${theme.input} w-full px-5 py-3 rounded-xl outline-none`} value={formData.start_date} onChange={e => setFormData({...formData, start_date: e.target.value})} />
                 </div>
               </div>
 
-              <div className="pt-4">
-                <button type="submit" className="w-full py-5 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-bold shadow-lg transition-all">Gerar Contrato</button>
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-zinc-500 uppercase">Anexar Documento (PDF)</label>
+                <label className={`w-full h-24 border-2 border-dashed ${theme.input} rounded-2xl flex flex-col items-center justify-center cursor-pointer hover:border-[#0217ff] transition-all`}>
+                  {uploading ? <Loader2 className="animate-spin" /> : formData.contract_url ? <CheckCircle2 className="text-green-500" /> : <Upload size={24} className="text-zinc-500" />}
+                  <span className="text-[10px] font-bold uppercase mt-2 text-zinc-500">{formData.contract_url ? 'PDF Anexado' : 'Carregar Contrato Assinado'}</span>
+                  <input type="file" hidden accept=".pdf" onChange={handleFileUpload} />
+                </label>
               </div>
+
+              <button disabled={loading || uploading} className="w-full py-5 bg-[#0217ff] text-white rounded-2xl font-bold uppercase text-[10px] tracking-widest shadow-xl">
+                {loading ? <Loader2 className="animate-spin mx-auto" /> : 'Confirmar Fechamento'}
+              </button>
             </form>
           </div>
         </div>
       )}
     </div>
   );
-} 
+}
