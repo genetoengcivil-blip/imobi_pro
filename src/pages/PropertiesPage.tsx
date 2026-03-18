@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { 
   Plus, Home, MapPin, Bed, Bath, Trash2, Edit3, 
   Image as ImageIcon, X, Loader2, PlusCircle, Check, 
-  Globe, AlertCircle, Map as MapIcon, ChevronDown
+  Globe, AlertCircle, Search, Ruler, Square
 } from 'lucide-react';
 import { useGlobal } from '../context/GlobalContext';
 import { supabase } from '../lib/supabase';
@@ -13,20 +13,19 @@ export default function PropertiesPage() {
   const [properties, setProperties] = useState<any[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [cepLoading, setCepLoading] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
-  const [formData, setFormData] = useState({
+  const initialForm = {
     title: '', price: '', condo_fee: '', type: 'venda',
     bedrooms: '', bathrooms: '', suites: '', area: '',
     description: '', images: [] as string[],
-    cep: '', street: '', number: '', neighborhood: '', city: '', state: '',
-    location: '',
-    // Diferenciais
-    has_elevator: false,
-    has_bbq: false,
-    has_pool: false,
-    has_gym: false
-  });
+    cep: '', street: '', number: '', neighborhood: '', city: '', state: '', location: '',
+    has_elevator: false, has_bbq: false, has_pool: false, has_gym: false,
+    has_games: false, has_party: false, has_spa: false, has_playground: false,
+    has_court: false, has_gourmet: false
+  };
+
+  const [formData, setFormData] = useState(initialForm);
 
   useEffect(() => { if (user) loadProperties(); }, [user]);
 
@@ -42,196 +41,175 @@ export default function PropertiesPage() {
   const handleCEPBlur = async () => {
     const cep = formData.cep.replace(/\D/g, '');
     if (cep.length !== 8) return;
-    setCepLoading(true);
     try {
-      const response = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
-      const data = await response.json();
+      const res = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
+      const data = await res.json();
       if (!data.erro) {
         setFormData(prev => ({
-          ...prev,
-          street: data.logradouro,
-          neighborhood: data.bairro,
-          city: data.localidade,
-          state: data.uf,
+          ...prev, street: data.logradouro, neighborhood: data.bairro, city: data.localidade, state: data.uf,
           location: `${data.bairro}, ${data.localidade} - ${data.uf}`
         }));
       }
-    } catch (error) { console.error(error); } finally { setCepLoading(false); }
+    } catch (e) { console.error(e); }
   };
 
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files || e.target.files.length === 0) return;
-    setUploading(true);
-    const files = Array.from(e.target.files);
-    const uploadedUrls: string[] = [...formData.images];
-    for (const file of files) {
-      const fileName = `${Math.random()}.${file.name.split('.').pop()}`;
-      const filePath = `${user?.id}/${fileName}`;
-      const { error: uploadError } = await supabase.storage.from('properties').upload(filePath, file);
-      if (!uploadError) {
-        const { data: { publicUrl } } = supabase.storage.from('properties').getPublicUrl(filePath);
-        uploadedUrls.push(publicUrl);
-      }
-    }
-    setFormData({ ...formData, images: uploadedUrls });
-    setUploading(false);
+  const handleEdit = (p: any) => {
+    setEditingId(p.id);
+    setFormData({
+      ...p,
+      price: p.price.toString(),
+      condo_fee: p.condo_fee?.toString() || ''
+    });
+    setShowModal(true);
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Excluir permanentemente este imóvel?')) return;
+    const { error } = await supabase.from('properties').delete().eq('id', id);
+    if (!error) loadProperties();
+    else alert("Erro ao excluir. Verifique as permissões.");
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    const payload = {
+      ...formData,
+      user_id: user?.id,
+      price: parseFloat(formData.price.replace(/\D/g, '')),
+      condo_fee: parseFloat(formData.condo_fee.replace(/\D/g, '')) || 0,
+      bedrooms: parseInt(formData.bedrooms) || 0,
+      bathrooms: parseInt(formData.bathrooms) || 0,
+      suites: parseInt(formData.suites) || 0,
+      area: parseInt(formData.area) || 0,
+      updated_at: new Date()
+    };
+
     try {
-      const { error } = await supabase.from('properties').insert([{
-        user_id: user?.id,
-        title: formData.title,
-        price: parseFloat(String(formData.price).replace(/\D/g, '')) || 0,
-        condo_fee: parseFloat(String(formData.condo_fee).replace(/\D/g, '')) || 0,
-        area: parseInt(formData.area) || 0,
-        bedrooms: parseInt(formData.bedrooms) || 0,
-        bathrooms: parseInt(formData.bathrooms) || 0,
-        suites: parseInt(formData.suites) || 0,
-        location: formData.location,
-        description: formData.description,
-        images: formData.images,
-        cep: formData.cep,
-        street: formData.street,
-        number: formData.number,
-        neighborhood: formData.neighborhood,
-        city: formData.city,
-        state: formData.state,
-        has_elevator: formData.has_elevator,
-        has_bbq: formData.has_bbq,
-        has_pool: formData.has_pool,
-        has_gym: formData.has_gym,
-        created_at: new Date()
-      }]);
+      const { error } = editingId 
+        ? await supabase.from('properties').update(payload).eq('id', editingId)
+        : await supabase.from('properties').insert([payload]);
+
       if (error) throw error;
       setShowModal(false);
+      setEditingId(null);
+      setFormData(initialForm);
       loadProperties();
     } catch (err: any) { alert(err.message); } finally { setLoading(false); }
   };
 
   const theme = {
-    card: darkMode ? 'bg-zinc-900/50 border-white/5' : 'bg-white border-zinc-200 shadow-sm',
+    card: darkMode ? 'bg-zinc-900 border-white/5' : 'bg-white border-zinc-200 shadow-sm',
     modal: darkMode ? 'bg-zinc-950 border-white/10' : 'bg-white border-zinc-200',
-    input: darkMode ? 'bg-zinc-900 border-white/10 text-white placeholder-zinc-600' : 'bg-zinc-50 border-zinc-200 text-zinc-900 placeholder-zinc-400',
-    textMain: darkMode ? 'text-white' : 'text-zinc-900',
+    input: darkMode ? 'bg-zinc-900 border-white/5 text-white' : 'bg-zinc-50 border-zinc-200 text-zinc-900',
+    text: darkMode ? 'text-white' : 'text-zinc-900',
   };
 
+  const AMENITIES = [
+    { id: 'has_pool', label: 'Piscina' }, { id: 'has_gym', label: 'Academia' },
+    { id: 'has_bbq', label: 'Churrasqueira' }, { id: 'has_elevator', label: 'Elevador' },
+    { id: 'has_games', label: 'Salão Jogos' }, { id: 'has_party', label: 'Salão Festas' },
+    { id: 'has_spa', label: 'Spa/Sauna' }, { id: 'has_playground', label: 'Playground' },
+    { id: 'has_court', label: 'Quadra' }, { id: 'has_gourmet', label: 'Varanda Gourmet' }
+  ];
+
   return (
-    <div className="p-6 md:p-10 space-y-10 animate-fade-in">
-      <div className="flex justify-between items-end">
+    <div className="p-6 md:p-8 space-y-8 animate-fade-in">
+      <div className="flex justify-between items-center">
         <div>
-          <div className="flex items-center gap-2 text-[#0217ff] font-black text-[10px] uppercase tracking-widest mb-1">
-            <Globe size={12} /> Portfólio Público
-          </div>
-          <h1 className={`text-4xl font-black italic uppercase tracking-tighter ${theme.textMain}`}>Meus Imóveis</h1>
+          <h1 className={`text-2xl font-bold tracking-tight ${theme.text}`}>Imóveis</h1>
+          <p className="text-sm text-zinc-500">Gerencie seu catálogo público.</p>
         </div>
-        <button onClick={() => setShowModal(true)} className="px-8 py-4 bg-[#0217ff] text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl shadow-[#0217ff]/20">
-          Novo Ativo
+        <button onClick={() => { setEditingId(null); setFormData(initialForm); setShowModal(true); }} className="px-5 py-2.5 bg-[#0217ff] text-white rounded-xl text-xs font-bold uppercase tracking-wider hover:opacity-90 transition-all flex items-center gap-2">
+          <Plus size={16} /> Adicionar
         </button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {properties.map((p) => (
-          <div key={p.id} className={`${theme.card} rounded-[40px] border p-4 group overflow-hidden`}>
-            <div className="aspect-[4/3] rounded-[32px] overflow-hidden mb-4 relative">
-              <img src={p.images?.[0] || 'https://via.placeholder.com/400'} className="w-full h-full object-cover group-hover:scale-110 transition-all duration-500" />
-              <div className="absolute top-4 left-4 px-3 py-1 bg-black/50 backdrop-blur-md text-white text-[9px] font-black uppercase rounded-full">R$ {Number(p.price).toLocaleString('pt-BR')}</div>
+          <div key={p.id} className={`${theme.card} rounded-3xl border overflow-hidden transition-all hover:border-[#0217ff]/40`}>
+            <div className="aspect-video relative group">
+              <img src={p.images?.[0] || ''} className="w-full h-full object-cover" />
+              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                <button onClick={() => handleEdit(p)} className="p-3 bg-white text-black rounded-full hover:scale-110 transition-transform"><Edit3 size={18} /></button>
+                <button onClick={() => handleDelete(p.id)} className="p-3 bg-red-500 text-white rounded-full hover:scale-110 transition-transform"><Trash2 size={18} /></button>
+              </div>
             </div>
-            <div className="px-2">
-              <h3 className={`font-black uppercase italic truncate ${theme.textMain}`}>{p.title}</h3>
-              <p className="text-zinc-500 text-[10px] font-bold uppercase">{p.location}</p>
+            <div className="p-5 space-y-4">
+              <div>
+                <h3 className={`font-bold truncate ${theme.text}`}>{p.title}</h3>
+                <p className="text-[10px] text-zinc-500 font-bold uppercase">{p.location}</p>
+              </div>
+              
+              <div className="flex flex-wrap gap-1">
+                {AMENITIES.filter(a => p[a.id]).slice(0, 4).map(a => (
+                  <span key={a.id} className="px-2 py-0.5 bg-zinc-100 dark:bg-white/5 rounded text-[8px] font-bold text-zinc-500 uppercase">{a.label}</span>
+                ))}
+                {AMENITIES.filter(a => p[a.id]).length > 4 && <span className="text-[8px] font-bold text-[#0217ff]">+ {AMENITIES.filter(a => p[a.id]).length - 4}</span>}
+              </div>
+
+              <div className="flex items-center justify-between pt-2 border-t border-zinc-100 dark:border-white/5">
+                <span className="text-lg font-bold text-[#0217ff]">R$ {Number(p.price).toLocaleString('pt-BR')}</span>
+                <div className="flex gap-3 text-zinc-500">
+                   <div className="flex items-center gap-1 text-xs"><Bed size={14}/> {p.bedrooms}</div>
+                   <div className="flex items-center gap-1 text-xs"><Square size={12}/> {p.area}m²</div>
+                </div>
+              </div>
             </div>
           </div>
         ))}
       </div>
 
       {showModal && (
-        <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-xl flex items-center justify-center p-4">
-          <div className={`${theme.modal} w-full max-w-5xl max-h-[90vh] overflow-hidden rounded-[48px] border shadow-2xl flex flex-col`}>
-            <div className="p-8 border-b border-white/5 flex justify-between items-center">
-              <h2 className={`text-2xl font-black uppercase italic tracking-tighter ${theme.textMain}`}>Cadastro Premium</h2>
-              <button onClick={() => setShowModal(false)} className="p-2 text-red-500"><X size={28} /></button>
+        <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className={`${theme.modal} w-full max-w-4xl max-h-[90vh] overflow-hidden rounded-3xl border shadow-xl flex flex-col`}>
+            <div className="p-6 border-b border-zinc-100 dark:border-white/5 flex justify-between items-center">
+              <h2 className={`text-lg font-bold ${theme.text}`}>{editingId ? 'Editar Imóvel' : 'Novo Imóvel'}</h2>
+              <button onClick={() => setShowModal(false)} className="text-zinc-500 hover:text-red-500"><X size={24} /></button>
             </div>
 
-            <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-8 md:p-12 space-y-12 no-scrollbar">
-              
-              {/* LOCALIZAÇÃO */}
-              <div className="space-y-6">
-                <div className="text-[10px] font-black uppercase tracking-widest text-[#0217ff]">1. Localização e Privacidade</div>
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                  <input className={`${theme.input} px-6 py-4 rounded-2xl outline-none`} placeholder="CEP" value={formData.cep} onChange={e => setFormData({...formData, cep: e.target.value})} onBlur={handleCEPBlur} />
-                  <input className={`md:col-span-2 ${theme.input} px-6 py-4 rounded-2xl outline-none`} placeholder="Rua (Privado)" value={formData.street} onChange={e => setFormData({...formData, street: e.target.value})} />
-                  <input className={`${theme.input} px-6 py-4 rounded-2xl outline-none`} placeholder="Nº" value={formData.number} onChange={e => setFormData({...formData, number: e.target.value})} />
-                </div>
-                <div className="p-6 rounded-3xl bg-[#0217ff]/5 border border-[#0217ff]/20">
-                  <p className="text-[9px] font-black uppercase text-zinc-500 mb-1">Aparecerá no site como:</p>
-                  <p className="text-lg font-black italic text-[#0217ff] uppercase">{formData.location || "Preencha o CEP..."}</p>
-                </div>
-              </div>
-
-              {/* DADOS TÉCNICOS E FINANCEIRO */}
-              <div className="space-y-6">
-                <div className="text-[10px] font-black uppercase tracking-widest text-[#0217ff]">2. Detalhes Financeiros e Técnicos</div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <input required className={`${theme.input} px-6 py-4 rounded-2xl outline-none`} placeholder="Título do Anúncio" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} />
-                  <div className="grid grid-cols-2 gap-4">
-                    <input className={`${theme.input} px-6 py-4 rounded-2xl outline-none font-bold text-[#0217ff]`} placeholder="Valor Venda" value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} />
-                    <input className={`${theme.input} px-6 py-4 rounded-2xl outline-none`} placeholder="Condomínio" value={formData.condo_fee} onChange={e => setFormData({...formData, condo_fee: e.target.value})} />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
-                  {['area', 'bedrooms', 'bathrooms', 'suites'].map(field => (
-                    <div key={field} className="space-y-2">
-                      <label className="text-[9px] font-black uppercase text-zinc-500">{field.replace('area', 'm²')}</label>
-                      <input type="number" className={`${theme.input} w-full py-4 rounded-xl text-center font-bold`} value={(formData as any)[field]} onChange={e => setFormData({...formData, [field]: e.target.value})} />
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* DIFERENCIAIS */}
-              <div className="space-y-6">
-                <div className="text-[10px] font-black uppercase tracking-widest text-[#0217ff]">3. Diferenciais do Condomínio/Imóvel</div>
+            <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 md:p-10 space-y-10 no-scrollbar">
+              <section className="space-y-4">
+                <p className="text-[10px] font-bold uppercase text-[#0217ff] tracking-widest">Endereço & Privacidade</p>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  {[
-                    { id: 'has_elevator', label: 'Elevador' },
-                    { id: 'has_bbq', label: 'Churrasqueira' },
-                    { id: 'has_pool', label: 'Piscina' },
-                    { id: 'has_gym', label: 'Academia' }
-                  ].map(item => (
-                    <button 
-                      key={item.id} type="button"
-                      onClick={() => setFormData({...formData, [item.id]: !(formData as any)[item.id]})}
-                      className={`p-4 rounded-2xl border-2 transition-all flex items-center justify-center gap-2 font-black uppercase text-[10px] ${
-                        (formData as any)[item.id] ? 'border-[#0217ff] bg-[#0217ff] text-white' : 'border-zinc-200 dark:border-white/5 text-zinc-500'
+                  <input className={`${theme.input} px-4 py-3 rounded-xl outline-none text-sm`} placeholder="CEP" value={formData.cep} onChange={e => setFormData({...formData, cep: e.target.value})} onBlur={handleCEPBlur} />
+                  <input className={`md:col-span-2 ${theme.input} px-4 py-3 rounded-xl outline-none text-sm`} placeholder="Rua (Privado)" value={formData.street} onChange={e => setFormData({...formData, street: e.target.value})} />
+                  <input className={`${theme.input} px-4 py-3 rounded-xl outline-none text-sm`} placeholder="Nº" value={formData.number} onChange={e => setFormData({...formData, number: e.target.value})} />
+                </div>
+                <div className="p-4 bg-zinc-50 dark:bg-white/5 rounded-2xl flex items-center justify-between">
+                   <span className="text-[10px] font-bold text-zinc-400 uppercase">Visto no site:</span>
+                   <span className="text-sm font-bold text-[#0217ff]">{formData.location || '---'}</span>
+                </div>
+              </section>
+
+              <section className="space-y-4">
+                <p className="text-[10px] font-bold uppercase text-[#0217ff] tracking-widest">Informações Básicas</p>
+                <input required className={`w-full ${theme.input} px-4 py-3 rounded-xl outline-none font-bold`} placeholder="Título do Anúncio" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} />
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <input className={`${theme.input} px-4 py-3 rounded-xl outline-none`} placeholder="Preço" value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} />
+                  <input className={`${theme.input} px-4 py-3 rounded-xl outline-none`} placeholder="Condomínio" value={formData.condo_fee} onChange={e => setFormData({...formData, condo_fee: e.target.value})} />
+                  <input type="number" className={`${theme.input} px-4 py-3 rounded-xl text-center`} placeholder="m²" value={formData.area} onChange={e => setFormData({...formData, area: e.target.value})} />
+                  <input type="number" className={`${theme.input} px-4 py-3 rounded-xl text-center`} placeholder="Quartos" value={formData.bedrooms} onChange={e => setFormData({...formData, bedrooms: e.target.value})} />
+                </div>
+              </section>
+
+              <section className="space-y-4">
+                <p className="text-[10px] font-bold uppercase text-[#0217ff] tracking-widest">Características & Lazer</p>
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                  {AMENITIES.map(item => (
+                    <button key={item.id} type="button" onClick={() => setFormData({...formData, [item.id]: !(formData as any)[item.id]})}
+                      className={`py-2.5 rounded-xl border text-[9px] font-bold uppercase transition-all ${
+                        (formData as any)[item.id] ? 'border-[#0217ff] bg-[#0217ff] text-white' : 'border-zinc-100 dark:border-white/5 text-zinc-500'
                       }`}
                     >
-                      {(formData as any)[item.id] && <Check size={14} />} {item.label}
+                      {item.label}
                     </button>
                   ))}
                 </div>
-              </div>
+              </section>
 
-              {/* IMAGENS */}
-              <div className="space-y-4">
-                <div className="text-[10px] font-black uppercase tracking-widest text-[#0217ff]">4. Fotos do Imóvel</div>
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                  {formData.images.map((img, i) => (
-                    <div key={i} className="aspect-square rounded-2xl overflow-hidden border border-white/10">
-                      <img src={img} className="w-full h-full object-cover" />
-                    </div>
-                  ))}
-                  <label className={`aspect-square rounded-2xl border-2 border-dashed ${theme.input} flex flex-col items-center justify-center cursor-pointer hover:border-[#0217ff]`}>
-                    {uploading ? <Loader2 className="animate-spin text-[#0217ff]" /> : <Plus size={32} className="text-zinc-500" />}
-                    <input type="file" hidden multiple onChange={handleImageUpload} />
-                  </label>
-                </div>
-              </div>
-
-              <button disabled={loading || uploading} className="w-full py-8 bg-[#0217ff] text-white rounded-[32px] font-black uppercase text-sm tracking-widest shadow-2xl hover:scale-[1.01] transition-all">
-                {loading ? <Loader2 className="animate-spin mx-auto" /> : "Publicar no Site Profissional"}
+              <button disabled={loading} className="w-full py-4 bg-[#0217ff] text-white rounded-2xl font-bold uppercase text-xs tracking-widest shadow-lg shadow-[#0217ff]/20">
+                {loading ? <Loader2 className="animate-spin mx-auto" /> : (editingId ? 'Salvar Alterações' : 'Publicar Imóvel')}
               </button>
             </form>
           </div>
