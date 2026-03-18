@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import { 
   Plus, Home, MapPin, Bed, Bath, Trash2, Edit3, Eye,
   X, Loader2, PlusCircle, Check, Globe, Star, Square, 
-  Car, ShieldCheck, Info, ChevronLeft, ChevronRight
+  Car, ShieldCheck, Info, ChevronLeft, ChevronRight,
+  Calculator, AlertTriangle, TrendingUp // Novos ícones para a função de avaliação
 } from 'lucide-react';
 import { useGlobal } from '../context/GlobalContext';
 import { supabase } from '../lib/supabase';
@@ -16,6 +17,14 @@ export default function PropertiesPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isViewOnly, setIsViewOnly] = useState(false);
   const [currentImgIdx, setCurrentImgIdx] = useState(0);
+
+  // Estados para a Função de Avaliação Comparativa
+  const [showValuationModal, setShowValuationModal] = useState(false);
+  const [comparables, setComparables] = useState([
+    { price: '', area: '' },
+    { price: '', area: '' },
+    { price: '', area: '' },
+  ]);
 
   const initialForm = {
     title: '', price: '', condo_fee: '', type: 'venda', status: 'disponivel',
@@ -35,6 +44,23 @@ export default function PropertiesPage() {
     const { data } = await supabase.from('properties').select('*').eq('user_id', user?.id).order('created_at', { ascending: false });
     setProperties(data || []);
   }
+
+  // Lógica de Cálculo da Avaliação
+  const calculateValuation = () => {
+    const validComparables = comparables.filter(c => c.price && c.area);
+    if (validComparables.length === 0) return { avgM2: 0, total: 0 };
+
+    const sumM2 = validComparables.reduce((acc, c) => {
+      const price = parseFloat(c.price.replace(/\D/g, '')) || 0;
+      const area = parseFloat(c.area) || 1;
+      return acc + (price / area);
+    }, 0);
+
+    const avgM2 = sumM2 / validComparables.length;
+    const total = avgM2 * (parseFloat(formData.area) || 0);
+
+    return { avgM2, total };
+  };
 
   const handleCEPBlur = async () => {
     const cep = formData.cep.replace(/\D/g, '');
@@ -111,6 +137,13 @@ export default function PropertiesPage() {
           <div key={p.id} className={`${theme.card} rounded-[32px] border overflow-hidden relative group`}>
             {/* BOTÕES DE AÇÃO SEMPRE VISÍVEIS NO MOBILE */}
             <div className="absolute top-3 right-3 z-10 flex gap-2">
+               {/* Botão de Avaliação Comparativa */}
+               <button 
+                onClick={() => { setFormData({...p}); setShowValuationModal(true); }}
+                className="p-2.5 bg-[#0217ff] text-white rounded-full shadow-lg hover:scale-110 transition-all"
+               >
+                 <Calculator size={16} />
+               </button>
                <button onClick={() => { setEditingId(p.id); setFormData({...p}); setIsViewOnly(true); setShowModal(true); }} className="p-2.5 bg-white/90 backdrop-blur rounded-full text-black shadow-lg"><Eye size={16} /></button>
                <button onClick={() => { setEditingId(p.id); setFormData({...p}); setIsViewOnly(false); setShowModal(true); }} className="p-2.5 bg-white/90 backdrop-blur rounded-full text-black shadow-lg"><Edit3 size={16} /></button>
                <button onClick={async () => { if(confirm('Apagar imóvel?')) { await supabase.from('properties').delete().eq('id', p.id); loadProperties(); } }} className="p-2.5 bg-red-500 text-white rounded-full shadow-lg"><Trash2 size={16} /></button>
@@ -145,6 +178,79 @@ export default function PropertiesPage() {
         ))}
       </div>
 
+      {/* MODAL DE AVALIAÇÃO COMPARATIVA */}
+      {showValuationModal && (
+        <div className="fixed inset-0 z-[110] bg-black/90 backdrop-blur-md flex items-center justify-center p-4">
+          <div className={`${theme.modal} w-full max-w-2xl rounded-[40px] border shadow-2xl flex flex-col max-h-[90vh]`}>
+            <div className="p-8 border-b border-zinc-100 dark:border-white/5 flex justify-between items-center">
+              <div className="flex items-center gap-3">
+                <Calculator className="text-[#0217ff]" size={24} />
+                <h2 className={`text-xl font-bold ${theme.text}`}>Método Comparativo</h2>
+              </div>
+              <button onClick={() => setShowValuationModal(false)} className="text-zinc-500 hover:text-red-500"><X size={28} /></button>
+            </div>
+
+            <div className="p-8 overflow-y-auto no-scrollbar space-y-8">
+              <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-2xl flex gap-3 items-start">
+                <AlertTriangle className="text-amber-500 shrink-0" size={20} />
+                <p className="text-[10px] font-bold text-amber-600 uppercase leading-relaxed">
+                  Aviso: Esta ferramenta fornece uma estimativa baseada em dados inseridos. É de inteira responsabilidade do corretor validar as informações de mercado.
+                </p>
+              </div>
+
+              <div className="space-y-4">
+                <p className={`text-xs font-bold uppercase tracking-widest ${theme.text}`}>Imóvel Avaliado: <span className="text-[#0217ff]">{formData.title} ({formData.area}m²)</span></p>
+                {comparables.map((comp, idx) => (
+                  <div key={idx} className="grid grid-cols-2 gap-4 p-4 rounded-2xl bg-zinc-50 dark:bg-white/5 border border-zinc-100 dark:border-white/5">
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-bold text-zinc-400 uppercase">Preço Vizinho {idx + 1}</label>
+                      <input 
+                        className={`w-full ${theme.input} px-4 py-2 rounded-lg text-xs outline-none`} 
+                        placeholder="R$ 0,00"
+                        value={comp.price}
+                        onChange={(e) => {
+                          const newComps = [...comparables];
+                          newComps[idx].price = e.target.value;
+                          setComparables(newComps);
+                        }}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-bold text-zinc-400 uppercase">Área (m²)</label>
+                      <input 
+                        className={`w-full ${theme.input} px-4 py-2 rounded-lg text-xs outline-none`} 
+                        placeholder="m²"
+                        value={comp.area}
+                        onChange={(e) => {
+                          const newComps = [...comparables];
+                          newComps[idx].area = e.target.value;
+                          setComparables(newComps);
+                        }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="p-8 rounded-[32px] bg-[#0217ff] text-white space-y-4 shadow-xl">
+                <div className="flex justify-between items-end">
+                  <div>
+                    <p className="text-[10px] font-bold uppercase opacity-60 tracking-widest">Preço Médio do m²</p>
+                    <p className="text-2xl font-black">R$ {calculateValuation().avgM2.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}</p>
+                  </div>
+                  <TrendingUp size={32} className="opacity-40" />
+                </div>
+                <div className="pt-4 border-t border-white/10">
+                  <p className="text-[10px] font-bold uppercase opacity-60 tracking-widest">Avaliação Sugerida</p>
+                  <p className="text-4xl font-black">R$ {calculateValuation().total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE CADASTRO/EDIÇÃO (MANTIDO CONFORME ORIGINAL) */}
       {showModal && (
         <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-0 md:p-4">
           <div className={`${theme.modal} w-full h-full md:h-auto md:max-w-4xl md:max-h-[90vh] overflow-hidden md:rounded-[40px] flex flex-col`}>
