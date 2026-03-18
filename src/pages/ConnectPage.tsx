@@ -1,25 +1,22 @@
 import { useState, useEffect, useRef } from 'react';
 import { useGlobal } from '../context/GlobalContext';
 import { supabase } from '../lib/supabase';
-import { RefreshCw, CheckCircle2, Loader2, Smartphone, AlertTriangle } from 'lucide-react';
+import { RefreshCw, CheckCircle2, Loader2, AlertCircle } from 'lucide-react';
 
 export default function ConnectPage() {
   const { user, darkMode } = useGlobal();
   const [status, setStatus] = useState<'loading' | 'disconnected' | 'connected'>('loading');
   const [qrCode, setQrCode] = useState<string | null>(null);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   
-  // O TRINCO: Impede o loop infinito de pedidos
-  const isBusy = useRef(false);
+  // O TRINCO: Impede fisicamente qualquer loop
+  const hasInitialized = useRef(false);
 
-  const checkConnection = async (forceLoading = false) => {
-    if (isBusy.current || !user?.id) return;
-    
-    isBusy.current = true;
-    if (forceLoading) setStatus('loading');
-    setErrorMsg(null);
+  const checkConnection = async () => {
+    // Se não houver utilizador ou se já estivermos a processar, aborta
+    if (!user?.id) return;
 
-    console.log("🚀 A verificar conexão para:", user.id);
+    setStatus('loading');
+    console.log("☎️ A tentar ligar para a função...");
 
     try {
       const { data, error } = await supabase.functions.invoke('whatsapp-proxy', {
@@ -37,65 +34,50 @@ export default function ConnectPage() {
         setQrCode(base64 || null);
       }
     } catch (err: any) {
-      console.error("❌ Erro na função:", err);
-      setErrorMsg("O servidor demorou a responder. Tente novamente.");
+      console.error("❌ Erro na Edge Function:", err);
       setStatus('disconnected');
-    } finally {
-      isBusy.current = false;
     }
   };
 
-  // Efeito limpo: corre uma vez ao entrar e a cada 20s
+  // ESTE EFEITO CORRE APENAS UMA VEZ
   useEffect(() => {
-    checkConnection();
-    const timer = setInterval(() => checkConnection(), 20000);
-    return () => clearInterval(timer);
+    if (!hasInitialized.current && user?.id) {
+      hasInitialized.current = true;
+      checkConnection();
+    }
   }, [user?.id]);
 
   return (
-    <div className="max-w-4xl mx-auto p-6 space-y-8 animate-in fade-in duration-500">
+    <div className="max-w-2xl mx-auto p-10 space-y-8">
       <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-black italic uppercase tracking-tighter">Conexão</h1>
+        <h1 className="text-3xl font-black italic uppercase tracking-tighter">Conexão WhatsApp</h1>
         <button 
-          onClick={() => checkConnection(true)}
-          disabled={status === 'loading'}
-          className="p-4 bg-[#0217ff] text-white rounded-2xl hover:scale-105 active:scale-95 transition-all disabled:opacity-50"
+          onClick={checkConnection}
+          className="p-4 bg-[#0217ff] text-white rounded-2xl hover:opacity-90 active:scale-95 transition-all"
         >
           <RefreshCw size={24} className={status === 'loading' ? 'animate-spin' : ''} />
         </button>
       </div>
 
-      {errorMsg && (
-        <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-2xl flex items-center gap-3 text-red-500 font-bold text-sm">
-          <AlertTriangle size={18} /> {errorMsg}
-        </div>
-      )}
-
-      <div className={`p-12 rounded-[40px] border flex flex-col items-center justify-center min-h-[450px] transition-all ${
-        darkMode ? 'bg-zinc-950 border-white/5' : 'bg-white border-zinc-100 shadow-xl'
+      <div className={`p-12 rounded-[40px] border-2 flex flex-col items-center justify-center min-h-[400px] ${
+        darkMode ? 'bg-zinc-950 border-white/5' : 'bg-white border-zinc-100'
       }`}>
         {status === 'connected' ? (
-          <div className="text-center space-y-4">
-            <div className="w-20 h-20 bg-green-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
-              <CheckCircle2 className="text-green-500 w-10 h-10" />
-            </div>
-            <h2 className="text-2xl font-black uppercase text-green-500">WhatsApp Conectado</h2>
-            <p className="text-zinc-500 font-medium">Tudo pronto para enviar mensagens.</p>
+          <div className="text-center text-green-500 font-black uppercase tracking-tighter">
+            <CheckCircle2 size={64} className="mx-auto mb-4" />
+            <h2 className="text-3xl">Conectado</h2>
           </div>
         ) : qrCode ? (
           <div className="text-center space-y-6">
-            <div className="p-6 bg-white rounded-[32px] shadow-2xl inline-block border-8 border-zinc-50">
-              <img src={qrCode.startsWith('data') ? qrCode : `data:image/png;base64,${qrCode}`} className="w-64 h-64" alt="QR Code" />
+            <div className="bg-white p-4 rounded-3xl shadow-2xl inline-block border-8 border-zinc-50">
+              <img src={qrCode.startsWith('data') ? qrCode : `data:image/png;base64,${qrCode}`} className="w-64 h-64" alt="QR" />
             </div>
-            <div className="space-y-2">
-              <p className="text-lg font-black italic uppercase tracking-tighter">Escaneie o código</p>
-              <p className="text-sm text-zinc-500 font-medium">Abra o WhatsApp {'>'} Aparelhos Conectados</p>
-            </div>
+            <p className="font-bold text-zinc-500 italic">Leia o código no WhatsApp</p>
           </div>
         ) : (
-          <div className="text-center space-y-4 opacity-40">
-            <Loader2 className="w-12 h-12 animate-spin mx-auto text-[#0217ff]" />
-            <p className="font-black uppercase text-xs tracking-[0.2em]">A estabelecer ponte...</p>
+          <div className="text-center opacity-40">
+            <Loader2 size={48} className="animate-spin mx-auto mb-4 text-[#0217ff]" />
+            <p className="font-black uppercase text-xs tracking-widest">Aguardando Resposta...</p>
           </div>
         )}
       </div>
