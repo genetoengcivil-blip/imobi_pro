@@ -24,7 +24,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useGlobal();
   const location = useLocation();
 
-  // REMOVIDO: Registo do Service Worker para evitar erros de Cache e Lock
+  // REMOVIDO: O registro do Service Worker que causava o travamento (Lock) da tela
 
   if (loading) return (
     <div className="min-h-screen bg-black flex flex-col items-center justify-center">
@@ -63,6 +63,7 @@ export default function App() {
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/leads" element={<LeadsListPage />} />
             <Route path="/pipeline" element={<PipelinePage />} />
+            {/* REMOVIDO: Rotas de WhatsApp e Connect */}
             <Route path="/properties" element={<PropertiesPage />} />
             <Route path="/contracts" element={<ContractsPage />} />
             <Route path="/calendar" element={<CalendarPage />} />
