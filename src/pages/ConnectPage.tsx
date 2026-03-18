@@ -1,22 +1,24 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState } from 'react';
 import { useGlobal } from '../context/GlobalContext';
 import { supabase } from '../lib/supabase';
-import { RefreshCw, CheckCircle2, Loader2, AlertCircle } from 'lucide-react';
+import { RefreshCw, CheckCircle2, Loader2, AlertTriangle } from 'lucide-react';
 
 export default function ConnectPage() {
   const { user, darkMode } = useGlobal();
-  const [status, setStatus] = useState<'loading' | 'disconnected' | 'connected'>('loading');
+  const [status, setStatus] = useState<'idle' | 'loading' | 'disconnected' | 'connected'>('idle');
   const [qrCode, setQrCode] = useState<string | null>(null);
-  
-  // O TRINCO: Impede fisicamente qualquer loop
-  const hasInitialized = useRef(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const checkConnection = async () => {
-    // Se não houver utilizador ou se já estivermos a processar, aborta
-    if (!user?.id) return;
+  const startConnection = async () => {
+    if (!user?.id) {
+      alert("Erro: Utilizador não identificado. Verifique o login.");
+      return;
+    }
 
     setStatus('loading');
-    console.log("☎️ A tentar ligar para a função...");
+    setErrorMsg(null);
+    setQrCode(null);
+    console.log("🚀 Iniciando pedido MANUAL para:", user.id);
 
     try {
       const { data, error } = await supabase.functions.invoke('whatsapp-proxy', {
@@ -25,59 +27,75 @@ export default function ConnectPage() {
 
       if (error) throw error;
 
+      console.log("✅ Resposta recebida:", data);
+
       if (data?.instance?.state === 'open') {
         setStatus('connected');
-        setQrCode(null);
       } else {
         setStatus('disconnected');
         const base64 = data?.qrcode?.base64 || data?.qrcode;
-        setQrCode(base64 || null);
+        if (base64) setQrCode(base64);
       }
     } catch (err: any) {
-      console.error("❌ Erro na Edge Function:", err);
+      console.error("❌ Falha crítica:", err);
+      setErrorMsg("O servidor não respondeu. Verifique se a Edge Function está ativa.");
       setStatus('disconnected');
     }
   };
 
-  // ESTE EFEITO CORRE APENAS UMA VEZ
-  useEffect(() => {
-    if (!hasInitialized.current && user?.id) {
-      hasInitialized.current = true;
-      checkConnection();
-    }
-  }, [user?.id]);
-
   return (
-    <div className="max-w-2xl mx-auto p-10 space-y-8">
-      <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-black italic uppercase tracking-tighter">Conexão WhatsApp</h1>
-        <button 
-          onClick={checkConnection}
-          className="p-4 bg-[#0217ff] text-white rounded-2xl hover:opacity-90 active:scale-95 transition-all"
-        >
-          <RefreshCw size={24} className={status === 'loading' ? 'animate-spin' : ''} />
-        </button>
+    <div className="max-w-xl mx-auto p-10 space-y-8 mt-10">
+      <div className="text-center space-y-2">
+        <h1 className="text-4xl font-black italic uppercase tracking-tighter">WhatsApp Pro</h1>
+        <p className="text-zinc-500 font-bold uppercase text-[10px] tracking-[0.3em]">Painel de Controle</p>
       </div>
 
-      <div className={`p-12 rounded-[40px] border-2 flex flex-col items-center justify-center min-h-[400px] ${
-        darkMode ? 'bg-zinc-950 border-white/5' : 'bg-white border-zinc-100'
+      <div className={`p-10 rounded-[40px] border-4 flex flex-col items-center justify-center min-h-[400px] transition-all ${
+        darkMode ? 'bg-zinc-950 border-white/5' : 'bg-white border-zinc-100 shadow-2xl'
       }`}>
-        {status === 'connected' ? (
-          <div className="text-center text-green-500 font-black uppercase tracking-tighter">
-            <CheckCircle2 size={64} className="mx-auto mb-4" />
-            <h2 className="text-3xl">Conectado</h2>
+        
+        {status === 'idle' && (
+          <button 
+            onClick={startConnection}
+            className="group flex flex-col items-center gap-4 hover:scale-105 transition-all"
+          >
+            <div className="w-20 h-20 bg-[#0217ff] rounded-full flex items-center justify-center shadow-xl shadow-[#0217ff]/40">
+              <RefreshCw size={32} className="text-white group-hover:rotate-180 transition-all duration-500" />
+            </div>
+            <span className="font-black uppercase italic tracking-tighter text-[#0217ff]">Iniciar Conexão</span>
+          </button>
+        )}
+
+        {status === 'loading' && (
+          <div className="text-center space-y-4">
+            <Loader2 size={48} className="animate-spin text-[#0217ff] mx-auto" />
+            <p className="font-bold text-zinc-400 animate-pulse">A falar com o servidor...</p>
           </div>
-        ) : qrCode ? (
+        )}
+
+        {status === 'connected' && (
+          <div className="text-center space-y-4">
+            <CheckCircle2 size={64} className="text-green-500 mx-auto" />
+            <h2 className="text-2xl font-black uppercase text-green-500">Conectado!</h2>
+            <button onClick={() => setStatus('idle')} className="text-xs font-bold text-zinc-400 underline">Reiniciar</button>
+          </div>
+        )}
+
+        {status === 'disconnected' && qrCode && (
           <div className="text-center space-y-6">
-            <div className="bg-white p-4 rounded-3xl shadow-2xl inline-block border-8 border-zinc-50">
+            <div className="bg-white p-4 rounded-3xl shadow-2xl inline-block">
               <img src={qrCode.startsWith('data') ? qrCode : `data:image/png;base64,${qrCode}`} className="w-64 h-64" alt="QR" />
             </div>
-            <p className="font-bold text-zinc-500 italic">Leia o código no WhatsApp</p>
+            <p className="font-bold text-zinc-500 italic text-sm">Escaneie para ativar a automação</p>
+            <button onClick={startConnection} className="text-[10px] font-black uppercase tracking-widest text-[#0217ff]">Gerar Novo</button>
           </div>
-        ) : (
-          <div className="text-center opacity-40">
-            <Loader2 size={48} className="animate-spin mx-auto mb-4 text-[#0217ff]" />
-            <p className="font-black uppercase text-xs tracking-widest">Aguardando Resposta...</p>
+        )}
+
+        {errorMsg && (
+          <div className="text-center space-y-4 text-red-500">
+            <AlertTriangle size={48} className="mx-auto" />
+            <p className="font-bold text-sm">{errorMsg}</p>
+            <button onClick={startConnection} className="px-6 py-2 bg-red-500 text-white rounded-xl font-bold text-xs uppercase">Tentar de novo</button>
           </div>
         )}
       </div>
