@@ -23,7 +23,7 @@ interface Contract {
   document_type: string;
   category: string;
   value: number;
-  property_id: string;
+  property_id: string | null;
   property_name?: string;
   location?: string;
   content: string;
@@ -90,16 +90,9 @@ const formatCurrency = (value: number) => {
 
 const formatCurrencyInput = (value: string) => {
   if (!value) return '';
-  
-  // Remove tudo que não é número
   const numbers = value.replace(/\D/g, '');
-  
   if (numbers.length === 0) return '';
-  
-  // Converte para número e divide por 100 para ter centavos
   const valueFloat = parseInt(numbers) / 100;
-  
-  // Formata com 2 casas decimais
   return valueFloat.toLocaleString('pt-BR', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
@@ -110,9 +103,8 @@ const unformat = (value: string) => {
   return value.replace(/\D/g, '');
 };
 
-// --- DICIONÁRIO DE MODELOS JURÍDICOS ENRIQUECIDO ---
+// --- DICIONÁRIO DE MODELOS JURÍDICOS ---
 const DOCUMENT_TEMPLATES: Record<string, (d: any) => string> = {
-  // BLOCO 1 - INTERMEDIAÇÃO
   'autorizacao_venda': (d: any) => `AUTORIZAÇÃO EXCLUSIVA DE VENDA DE IMÓVEL\n\n` +
     `Pelo presente instrumento particular, de um lado o(a) Sr(a). ${d.client_name}, inscrito(a) no CPF/CNPJ sob nº ${d.client_document || '[________]'}, telefone ${d.client_phone || '[________]'}, doravante denominado PROPRIETÁRIO, e de outro lado [NOME DA IMOBILIÁRIA], inscrita no CNPJ sob nº [________], doravante denominada CORRETORA, têm entre si justo e acertado o seguinte:\n\n` +
     `1. OBJETO: O PROPRIETÁRIO autoriza a CORRETORA a promover a venda do imóvel ${d.property_name}, localizado em ${d.location}.\n\n` +
@@ -128,7 +120,6 @@ const DOCUMENT_TEMPLATES: Record<string, (d: any) => string> = {
     `3. Estou ciente que a intermediação é de responsabilidade da imobiliária.\n\n` +
     `Data: ${new Date().toLocaleDateString('pt-BR')}`,
   
-  // BLOCO 2 - VENDA
   'promessa_venda': (d: any) => `CONTRATO PARTICULAR DE PROMESSA DE COMPRA E VENDA DE IMÓVEL\n\n` +
     `PROMITENTE VENDEDOR: [NOME DO VENDEDOR], CPF [________]\n` +
     `PROMITENTE COMPRADOR: ${d.client_name}, CPF ${d.client_document || '[________]'}, telefone ${d.client_phone || '[________]'}\n\n` +
@@ -143,7 +134,6 @@ const DOCUMENT_TEMPLATES: Record<string, (d: any) => string> = {
     `CLÁUSULA 10ª – FORO: Fica eleito o foro da Comarca de ${d.city || '________'} para dirimir quaisquer dúvidas.\n\n` +
     `${d.location}, ${new Date().toLocaleDateString('pt-BR')}`,
   
-  // BLOCO 3 - LOCAÇÃO
   'locacao_residencial': (d: any) => `CONTRATO DE LOCAÇÃO RESIDENCIAL\n\n` +
     `LOCADOR: [NOME DO LOCADOR], CPF [________]\n` +
     `LOCATÁRIO: ${d.client_name}, CPF ${d.client_document || '[________]'}, telefone ${d.client_phone || '[________]'}\n` +
@@ -244,11 +234,13 @@ export default function ContractsPage() {
     try {
       if (!user?.id) {
         console.log('Usuário não autenticado');
+        setLoading(false);
         return;
       }
 
       console.log('Carregando contratos para usuário:', user.id);
       
+      // Carregar contratos
       const { data: contractsData, error: contractsError } = await supabase
         .from('contracts')
         .select('*, properties(*)')
@@ -261,7 +253,11 @@ export default function ContractsPage() {
       }
 
       console.log('Contratos carregados:', contractsData?.length || 0);
+      if (contractsData && contractsData.length > 0) {
+        console.log('Primeiro contrato:', contractsData[0]);
+      }
 
+      // Carregar propriedades
       const { data: propertiesData, error: propertiesError } = await supabase
         .from('properties')
         .select('id, title, location')
@@ -272,6 +268,8 @@ export default function ContractsPage() {
         console.error('Erro ao carregar propriedades:', propertiesError);
         throw propertiesError;
       }
+
+      console.log('Propriedades carregadas:', propertiesData?.length || 0);
 
       setContracts(contractsData || []);
       setProperties(propertiesData || []);
@@ -291,8 +289,8 @@ export default function ContractsPage() {
     }
 
     const filtered = contracts.filter(c => 
-      c.client_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      c.document_type?.toLowerCase().includes(searchTerm.toLowerCase())
+      (c.client_name && c.client_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (c.document_type && c.document_type.toLowerCase().includes(searchTerm.toLowerCase()))
     );
 
     console.log('Contratos após filtro:', filtered.length);
@@ -336,7 +334,7 @@ export default function ContractsPage() {
     
     const content = template({
       ...formData,
-      property_name: prop?.title,
+      property_name: prop?.title || formData.property_name,
       location: prop?.location || formData.location,
       client_document: formData.client_document,
       client_phone: formData.client_phone,
@@ -352,6 +350,16 @@ export default function ContractsPage() {
     try {
       if (!user?.id) {
         alert('Usuário não autenticado');
+        return;
+      }
+
+      if (!formData.client_name) {
+        alert('Nome do cliente é obrigatório');
+        return;
+      }
+
+      if (!formData.document_type) {
+        alert('Tipo de documento é obrigatório');
         return;
       }
 
@@ -373,14 +381,16 @@ export default function ContractsPage() {
       const cleanPhone = formData.client_phone ? unformat(formData.client_phone) : null;
       const cleanDocument = formData.client_document ? unformat(formData.client_document) : null;
       
+      const prop = properties.find(p => p.id === formData.property_id);
+      
       const payload = {
         category: formData.category,
         client_name: formData.client_name,
         client_phone: cleanPhone,
         client_document: cleanDocument,
         property_id: formData.property_id || null,
-        property_name: formData.property_name,
-        location: formData.location,
+        property_name: prop?.title || null,
+        location: prop?.location || formData.location || null,
         value: cleanValue ? parseFloat(cleanValue) / 100 : 0,
         document_type: formData.document_type,
         final_content: formData.final_content,
