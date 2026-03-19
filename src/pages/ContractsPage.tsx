@@ -50,12 +50,8 @@ interface Property {
 
 // --- FUNÇÕES DE FORMATAÇÃO ---
 const formatPhone = (value: string) => {
-  if (!value) return value;
-  
-  // Remove tudo que não é número
+  if (!value) return '';
   const numbers = value.replace(/\D/g, '');
-  
-  // Aplica a máscara (XX) XXXXX-XXXX
   if (numbers.length <= 10) {
     return numbers.replace(/(\d{2})(\d{4})(\d{4})/, '($1) $2-$3');
   } else {
@@ -64,21 +60,15 @@ const formatPhone = (value: string) => {
 };
 
 const formatDocument = (value: string) => {
-  if (!value) return value;
-  
-  // Remove tudo que não é número
+  if (!value) return '';
   const numbers = value.replace(/\D/g, '');
-  
-  // CPF: 000.000.000-00
   if (numbers.length <= 11) {
     return numbers
       .replace(/(\d{3})(\d)/, '$1.$2')
       .replace(/(\d{3})(\d)/, '$1.$2')
       .replace(/(\d{3})(\d{1,2})$/, '$1-$2')
       .replace(/(-\d{2})\d+?$/, '$1');
-  } 
-  // CNPJ: 00.000.000/0000-00
-  else {
+  } else {
     return numbers
       .replace(/(\d{2})(\d)/, '$1.$2')
       .replace(/(\d{3})(\d)/, '$1.$2')
@@ -86,6 +76,26 @@ const formatDocument = (value: string) => {
       .replace(/(\d{4})(\d{1,2})$/, '$1-$2')
       .replace(/(-\d{2})\d+?$/, '$1');
   }
+};
+
+const formatCurrency = (value: number) => {
+  if (!value || isNaN(value)) return 'R$ 0';
+  return new Intl.NumberFormat('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  }).format(value);
+};
+
+const formatCurrencyInput = (value: string) => {
+  const numbers = value.replace(/\D/g, '');
+  if (!numbers) return '';
+  const valueFloat = parseFloat(numbers) / 100;
+  return valueFloat.toLocaleString('pt-BR', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  });
 };
 
 const unformat = (value: string) => {
@@ -115,9 +125,9 @@ const DOCUMENT_TEMPLATES: Record<string, (d: any) => string> = {
     `PROMITENTE VENDEDOR: [NOME DO VENDEDOR], CPF [________]\n` +
     `PROMITENTE COMPRADOR: ${d.client_name}, CPF ${d.client_document || '[________]'}, telefone ${d.client_phone || '[________]'}\n\n` +
     `CLÁUSULA 1ª – OBJETO: O presente contrato tem por objeto o imóvel localizado em ${d.location || '________'}, matriculado sob o nº ${d.matricula || '________'} no Cartório de Registro de Imóveis da Comarca de ${d.city || '________'}.\n\n` +
-    `CLÁUSULA 2ª – PREÇO E CONDIÇÕES DE PAGAMENTO: O valor total da transação é de R$ ${d.value}, pago da seguinte forma:\n` +
-    `a) R$ ${d.sinal || '________'} como sinal e princípio de pagamento;\n` +
-    `b) R$ ${d.parcelas || '________'} no ato da escritura;\n` +
+    `CLÁUSULA 2ª – PREÇO E CONDIÇÕES DE PAGAMENTO: O valor total da transação é de R$ ${formatCurrency(parseFloat(d.value) || 0)}, pago da seguinte forma:\n` +
+    `a) R$ ${d.sinal ? formatCurrency(parseFloat(d.sinal) || 0) : '[________]'} como sinal e princípio de pagamento;\n` +
+    `b) R$ ${d.parcelas ? formatCurrency(parseFloat(d.parcelas) || 0) : '[________]'} no ato da escritura;\n` +
     `c) Saldo financiado mediante [________].\n\n` +
     `CLÁUSULA 3ª – DA COMISSÃO DE CORRETAGEM: A comissão de corretagem, no valor de [________], será paga [________].\n\n` +
     `CLÁUSULA 4ª – DA POSSE: A posse do imóvel será transmitida ao COMPRADOR após o pagamento de ${d.posse_percent || '___'}% do preço.\n\n` +
@@ -132,7 +142,7 @@ const DOCUMENT_TEMPLATES: Record<string, (d: any) => string> = {
     `FIADOR: [________], CPF [________]\n\n` +
     `CLÁUSULA 1ª – OBJETO: O presente contrato tem por objeto a locação do imóvel localizado em ${d.location}, para fins exclusivamente residenciais.\n\n` +
     `CLÁUSULA 2ª – PRAZO: O prazo da locação é de 30 (trinta) meses, iniciando-se em ${d.start_date ? format(new Date(d.start_date), 'dd/MM/yyyy') : '[________]'} e terminando em ${d.end_date ? format(new Date(d.end_date), 'dd/MM/yyyy') : '[________]'}.\n\n` +
-    `CLÁUSULA 3ª – ALUGUEL E ENCARGOS: O aluguel mensal é de R$ ${d.value}, com vencimento todo dia [________] de cada mês. O locatário pagará ainda IPTU e condomínio.\n\n` +
+    `CLÁUSULA 3ª – ALUGUEL E ENCARGOS: O aluguel mensal é de R$ ${formatCurrency(parseFloat(d.value) || 0)}, com vencimento todo dia [________] de cada mês. O locatário pagará ainda IPTU e condomínio.\n\n` +
     `CLÁUSULA 4ª – GARANTIA: A presente locação é garantida por [FIADOR / CAUÇÃO / SEGURO-FIANÇA].\n\n` +
     `CLÁUSULA 5ª – REAJUSTE: O aluguel será reajustado anualmente pelo IGP-M/FGV.\n\n` +
     `CLÁUSULA 8ª – MULTAS: Em caso de rescisão antecipada, o LOCATÁRIO pagará multa equivalente a [________].\n\n` +
@@ -204,7 +214,7 @@ export default function ContractsPage() {
     value: '', 
     document_type: '', 
     final_content: '', 
-    start_date: '', // Começa vazio
+    start_date: '',
     end_date: '',
     matricula: '',
     sinal: '',
@@ -215,27 +225,48 @@ export default function ContractsPage() {
   });
 
   useEffect(() => { 
-    if (user) loadData(); 
+    if (user) {
+      console.log('Usuário logado:', user.id);
+      loadData(); 
+    }
   }, [user]);
 
   async function loadData() {
     setLoading(true);
     try {
-      const [cRes, pRes] = await Promise.all([
-        supabase
-          .from('contracts')
-          .select('*, properties(*)')
-          .eq('user_id', user?.id)
-          .order('created_at', { ascending: false }),
-        supabase
-          .from('properties')
-          .select('id, title, location')
-          .eq('user_id', user?.id)
-          .order('title')
-      ]);
+      if (!user?.id) {
+        console.log('Usuário não autenticado');
+        return;
+      }
+
+      console.log('Carregando contratos para usuário:', user.id);
       
-      setContracts(cRes.data || []);
-      setProperties(pRes.data || []);
+      const { data: contractsData, error: contractsError } = await supabase
+        .from('contracts')
+        .select('*, properties(*)')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+
+      if (contractsError) {
+        console.error('Erro ao carregar contratos:', contractsError);
+        throw contractsError;
+      }
+
+      console.log('Contratos carregados:', contractsData?.length || 0);
+
+      const { data: propertiesData, error: propertiesError } = await supabase
+        .from('properties')
+        .select('id, title, location')
+        .eq('user_id', user.id)
+        .order('title');
+
+      if (propertiesError) {
+        console.error('Erro ao carregar propriedades:', propertiesError);
+        throw propertiesError;
+      }
+
+      setContracts(contractsData || []);
+      setProperties(propertiesData || []);
     } catch (error) {
       console.error('Erro ao carregar dados:', error);
     } finally {
@@ -244,28 +275,49 @@ export default function ContractsPage() {
   }
 
   const clientsGrouped = useMemo(() => {
+    console.log('Agrupando contratos. Total:', contracts.length);
+    
+    if (!contracts || contracts.length === 0) {
+      console.log('Nenhum contrato para agrupar');
+      return [];
+    }
+
     const filtered = contracts.filter(c => 
       c.client_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       c.document_type?.toLowerCase().includes(searchTerm.toLowerCase())
     );
 
-    const groups: any = {};
+    console.log('Contratos após filtro:', filtered.length);
+
+    const groups: { [key: string]: any } = {};
+    
     filtered.forEach(c => {
-      if (!groups[c.client_name]) {
-        groups[c.client_name] = { 
-          name: c.client_name, 
+      const clientName = c.client_name || 'Cliente não identificado';
+      
+      if (!groups[clientName]) {
+        groups[clientName] = { 
+          name: clientName, 
           docs: [],
           totalValue: 0,
           lastUpdate: c.created_at
         };
       }
-      groups[c.client_name].docs.push(c);
-      groups[c.client_name].totalValue += c.value || 0;
+      
+      groups[clientName].docs.push(c);
+      groups[clientName].totalValue += c.value || 0;
+      
+      // Atualizar lastUpdate se for mais recente
+      if (new Date(c.created_at) > new Date(groups[clientName].lastUpdate)) {
+        groups[clientName].lastUpdate = c.created_at;
+      }
     });
     
-    return Object.values(groups).sort((a: any, b: any) => 
+    const result = Object.values(groups).sort((a: any, b: any) => 
       new Date(b.lastUpdate).getTime() - new Date(a.lastUpdate).getTime()
     );
+    
+    console.log('Grupos criados:', result.length);
+    return result;
   }, [contracts, searchTerm]);
 
   const handleGenerate = () => {
@@ -279,7 +331,8 @@ export default function ContractsPage() {
       property_name: prop?.title,
       location: prop?.location || formData.location,
       client_document: formData.client_document,
-      client_phone: formData.client_phone
+      client_phone: formData.client_phone,
+      value: formData.value
     });
     
     setFormData({ ...formData, final_content: content, property_name: prop?.title });
@@ -289,10 +342,15 @@ export default function ContractsPage() {
   const handleSave = async () => {
     setLoading(true);
     try {
+      if (!user?.id) {
+        alert('Usuário não autenticado');
+        return;
+      }
+
       // Limpar e formatar os dados antes de salvar
-      const cleanValue = String(formData.value || '0')
-        .replace(/[R$\s.]/g, '')
-        .replace(',', '.');
+      const cleanValue = unformat(formData.value);
+      const cleanSinal = unformat(formData.sinal);
+      const cleanParcelas = unformat(formData.parcelas);
       
       // Tratar datas: se estiver vazio, enviar null
       const startDate = formData.start_date && formData.start_date.trim() !== '' 
@@ -315,19 +373,19 @@ export default function ContractsPage() {
         property_id: formData.property_id || null,
         property_name: formData.property_name,
         location: formData.location,
-        value: parseFloat(cleanValue) || 0,
+        value: cleanValue ? parseFloat(cleanValue) / 100 : 0,
         document_type: formData.document_type,
         final_content: formData.final_content,
         content: formData.final_content,
         start_date: startDate,
         end_date: endDate,
         matricula: formData.matricula || null,
-        sinal: formData.sinal || null,
-        parcelas: formData.parcelas || null,
+        sinal: cleanSinal ? parseFloat(cleanSinal) / 100 : null,
+        parcelas: cleanParcelas ? parseFloat(cleanParcelas) / 100 : null,
         posse_percent: formData.posse_percent || null,
         city: formData.city || null,
         status: formData.status,
-        user_id: user?.id,
+        user_id: user.id,
         checklist: [
           { task: "RG / CPF", done: false, required: true },
           { task: "Certidão de Matrícula Atualizada", done: false, required: true },
@@ -338,26 +396,33 @@ export default function ContractsPage() {
         ]
       };
 
-      console.log('Payload sendo enviado:', payload); // Debug
+      console.log('Payload sendo enviado:', payload);
 
       let error;
       if (editingContract) {
+        console.log('Atualizando contrato ID:', editingContract.id);
         ({ error } = await supabase
           .from('contracts')
           .update(payload)
           .eq('id', editingContract.id));
       } else {
+        console.log('Inserindo novo contrato');
         ({ error } = await supabase
           .from('contracts')
           .insert([payload]));
       }
 
-      if (error) throw error;
+      if (error) {
+        console.error('Erro do Supabase:', error);
+        throw error;
+      }
+      
+      console.log('Salvo com sucesso!');
       
       setShowModal(false);
       setStep(1);
       setEditingContract(null);
-      loadData();
+      await loadData(); // Recarrega os dados
     } catch (error: any) {
       console.error('Erro detalhado:', error);
       alert('Erro ao salvar: ' + error.message);
@@ -377,7 +442,7 @@ export default function ContractsPage() {
       if (error) throw error;
       
       setShowDeleteConfirm(null);
-      loadData();
+      await loadData();
     } catch (error: any) {
       alert('Erro ao deletar: ' + error.message);
     } finally {
@@ -397,7 +462,7 @@ export default function ContractsPage() {
       .update({ checklist: newChecklist })
       .eq('id', contractId);
 
-    if (!error) loadData();
+    if (!error) await loadData();
   };
 
   const getDocumentTypeLabel = (type: string) => {
@@ -489,18 +554,33 @@ export default function ContractsPage() {
         })}
       </div>
 
-      {/* LISTAGEM CRM STYLE */}
-      <div className="space-y-4">
-        {clientsGrouped.length === 0 ? (
-          <div className={`${theme.card} rounded-[32px] border p-12 text-center`}>
-            <FolderOpen size={48} className="mx-auto mb-4 text-zinc-300" />
-            <p className={`${theme.text} font-bold`}>Nenhum contrato encontrado</p>
-            <p className="text-[10px] text-zinc-500 font-bold uppercase mt-2">
-              {searchTerm ? 'Tente outros termos de busca' : 'Clique em "Novo Documento" para começar'}
-            </p>
-          </div>
-        ) : (
-          clientsGrouped.map((client: any) => (
+      {/* LISTAGEM */}
+      {loading ? (
+        <div className="flex justify-center py-20">
+          <Loader2 className="animate-spin text-[#0217ff]" size={40} />
+        </div>
+      ) : clientsGrouped.length === 0 ? (
+        <div className={`${theme.card} rounded-[32px] border p-12 text-center`}>
+          <FolderOpen size={48} className="mx-auto mb-4 text-zinc-300" />
+          <p className={`${theme.text} font-bold`}>
+            {searchTerm ? 'Nenhum contrato encontrado' : 'Nenhum contrato cadastrado'}
+          </p>
+          <p className="text-[10px] text-zinc-500 font-bold uppercase mt-2">
+            {searchTerm ? (
+              <>
+                Tente outros termos de busca ou{' '}
+                <button onClick={() => setSearchTerm('')} className="text-[#0217ff] underline">
+                  limpar busca
+                </button>
+              </>
+            ) : (
+              'Clique em "Novo Documento" para começar'
+            )}
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {clientsGrouped.map((client: any) => (
             <div key={client.name} className={`${theme.card} rounded-[32px] border overflow-hidden transition-all hover:shadow-md`}>
               {/* CLIENT HEADER */}
               <div 
@@ -519,18 +599,14 @@ export default function ContractsPage() {
                       </p>
                       <span className="w-1 h-1 rounded-full bg-zinc-300"></span>
                       <p className="text-[10px] font-bold text-[#0217ff]">
-                        {new Intl.NumberFormat('pt-BR', { 
-                          style: 'currency', 
-                          currency: 'BRL',
-                          maximumFractionDigits: 0
-                        }).format(client.totalValue)}
+                        {formatCurrency(client.totalValue)}
                       </p>
                     </div>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
                   <span className="text-[9px] text-zinc-400 font-bold">
-                    {format(new Date(client.lastUpdate), "dd/MM/yyyy", { locale: ptBR })}
+                    {client.lastUpdate ? format(new Date(client.lastUpdate), "dd/MM/yyyy", { locale: ptBR }) : ''}
                   </span>
                   <ChevronRight 
                     size={20} 
@@ -583,11 +659,7 @@ export default function ContractsPage() {
                                     <span className="w-1 h-1 rounded-full bg-zinc-300"></span>
                                     <span className="flex items-center gap-1 text-[#0217ff]">
                                       <DollarSign size={12} />
-                                      {new Intl.NumberFormat('pt-BR', { 
-                                        style: 'currency', 
-                                        currency: 'BRL',
-                                        maximumFractionDigits: 0
-                                      }).format(doc.value)}
+                                      {formatCurrency(doc.value)}
                                     </span>
                                   </>
                                 )}
@@ -625,7 +697,9 @@ export default function ContractsPage() {
                                   setEditingContract(doc);
                                   setFormData({
                                     ...doc,
-                                    value: doc.value?.toString() || '',
+                                    value: doc.value ? formatCurrencyInput(doc.value.toString()) : '',
+                                    sinal: doc.sinal ? formatCurrencyInput(doc.sinal.toString()) : '',
+                                    parcelas: doc.parcelas ? formatCurrencyInput(doc.parcelas.toString()) : '',
                                     start_date: doc.start_date || '',
                                     end_date: doc.end_date || '',
                                     client_phone: doc.client_phone ? formatPhone(doc.client_phone) : '',
@@ -645,7 +719,9 @@ export default function ContractsPage() {
                                   setEditingContract(doc);
                                   setFormData({
                                     ...doc,
-                                    value: doc.value?.toString() || '',
+                                    value: doc.value ? formatCurrencyInput(doc.value.toString()) : '',
+                                    sinal: doc.sinal ? formatCurrencyInput(doc.sinal.toString()) : '',
+                                    parcelas: doc.parcelas ? formatCurrencyInput(doc.parcelas.toString()) : '',
                                     start_date: doc.start_date || '',
                                     end_date: doc.end_date || '',
                                     client_phone: doc.client_phone ? formatPhone(doc.client_phone) : '',
@@ -734,38 +810,38 @@ export default function ContractsPage() {
                   })}
                 </div>
               )}
-
-              {/* DELETE CONFIRMATION */}
-              {showDeleteConfirm && (
-                <div className="fixed inset-0 z-[200] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
-                  <div className={`${theme.modal} max-w-md w-full rounded-[32px] p-8 text-center`}>
-                    <AlertCircle size={48} className="mx-auto mb-4 text-red-500" />
-                    <h3 className={`text-lg font-bold ${theme.text} mb-2`}>Confirmar exclusão</h3>
-                    <p className="text-sm text-zinc-500 mb-6">
-                      Esta ação não poderá ser desfeita. O documento será permanentemente removido.
-                    </p>
-                    <div className="flex gap-3">
-                      <button
-                        onClick={() => setShowDeleteConfirm(null)}
-                        className="flex-1 py-3 bg-zinc-100 dark:bg-white/5 rounded-xl font-bold text-sm"
-                      >
-                        Cancelar
-                      </button>
-                      <button
-                        onClick={() => handleDelete(showDeleteConfirm)}
-                        disabled={loading}
-                        className="flex-1 py-3 bg-red-500 text-white rounded-xl font-bold text-sm hover:bg-red-600 transition-all"
-                      >
-                        {loading ? <Loader2 className="animate-spin mx-auto" size={18} /> : 'Excluir'}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
             </div>
-          ))
-        )}
-      </div>
+          ))}
+        </div>
+      )}
+
+      {/* DELETE CONFIRMATION MODAL */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-[200] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className={`${theme.modal} max-w-md w-full rounded-[32px] p-8 text-center`}>
+            <AlertCircle size={48} className="mx-auto mb-4 text-red-500" />
+            <h3 className={`text-lg font-bold ${theme.text} mb-2`}>Confirmar exclusão</h3>
+            <p className="text-sm text-zinc-500 mb-6">
+              Esta ação não poderá ser desfeita. O documento será permanentemente removido.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowDeleteConfirm(null)}
+                className="flex-1 py-3 bg-zinc-100 dark:bg-white/5 rounded-xl font-bold text-sm"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => handleDelete(showDeleteConfirm)}
+                disabled={loading}
+                className="flex-1 py-3 bg-red-500 text-white rounded-xl font-bold text-sm hover:bg-red-600 transition-all"
+              >
+                {loading ? <Loader2 className="animate-spin mx-auto" size={18} /> : 'Excluir'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* MODAL DE CRIAÇÃO/EDIÇÃO */}
       {showModal && (
@@ -1002,7 +1078,7 @@ export default function ContractsPage() {
                           className={`${theme.input} w-full px-6 py-4 rounded-2xl outline-none font-bold text-[#0217ff]`}
                           placeholder="0,00"
                           value={formData.value}
-                          onChange={e => setFormData({...formData, value: e.target.value})}
+                          onChange={e => setFormData({...formData, value: formatCurrencyInput(e.target.value)})}
                         />
                       </div>
 
@@ -1038,7 +1114,7 @@ export default function ContractsPage() {
                             className={`${theme.input} w-full px-4 py-3 rounded-xl`}
                             placeholder="0,00"
                             value={formData.sinal}
-                            onChange={e => setFormData({...formData, sinal: e.target.value})}
+                            onChange={e => setFormData({...formData, sinal: formatCurrencyInput(e.target.value)})}
                           />
                         </div>
                         <div className="space-y-2">
