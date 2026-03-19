@@ -34,7 +34,7 @@ export default function PublicSitePage() {
         
         console.log('Buscando perfil com slug:', slug);
 
-        // Buscar perfil do corretor pelo slug - SEM AUTENTICAÇÃO
+        // Buscar perfil do corretor pelo slug
         const { data: profile, error: profileError } = await supabase
           .from('profiles')
           .select('*')
@@ -49,14 +49,14 @@ export default function PublicSitePage() {
         console.log('Perfil encontrado:', profile);
 
         if (!profile) {
-          setError('Perfil não encontrado');
+          if (isMounted) setError('Perfil não encontrado');
           return;
         }
 
         if (isMounted) {
           setBroker(profile);
           
-          // Buscar imóveis do corretor - SEM AUTENTICAÇÃO
+          // Buscar imóveis do corretor
           const { data: props, error: propsError } = await supabase
             .from('properties')
             .select('*')
@@ -101,7 +101,7 @@ export default function PublicSitePage() {
     try {
       if (!broker) return;
 
-      // Inserir lead no CRM - SEM AUTENTICAÇÃO (apenas insere, não precisa de auth)
+      // Inserir lead no CRM
       const { error } = await supabase.from('leads').insert([{
         name: leadForm.name,
         phone: leadForm.phone,
@@ -147,12 +147,20 @@ export default function PublicSitePage() {
     setShowModal(true);
   };
 
+  const formatCurrency = (value: number) => {
+    return new Intl.NumberFormat('pt-BR', {
+      style: 'currency',
+      currency: 'BRL',
+      maximumFractionDigits: 0
+    }).format(value);
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-white flex flex-col items-center justify-center p-10">
         <Loader2 className="w-10 h-10 text-[#0217ff] animate-spin mb-4" />
         <div className="w-48 h-2 bg-zinc-100 rounded-full overflow-hidden">
-          <div className="h-full bg-[#0217ff] animate-progress" style={{ width: '60%' }}></div>
+          <div className="h-full bg-[#0217ff] animate-pulse" style={{ width: '60%' }}></div>
         </div>
         <p className="mt-4 text-sm text-zinc-400">Carregando site...</p>
       </div>
@@ -164,6 +172,7 @@ export default function PublicSitePage() {
       <div className="min-h-screen flex flex-col items-center justify-center text-zinc-400 font-bold uppercase tracking-widest italic">
         <Home size={48} className="mb-4 opacity-50" />
         <p>{error || 'Perfil não encontrado'}</p>
+        <p className="text-sm text-zinc-300 mt-2">Slug: {slug}</p>
         <button 
           onClick={() => navigate('/')}
           className="mt-6 px-6 py-3 bg-[#0217ff] text-white rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-[#0217ff]/90 transition-all"
@@ -177,7 +186,7 @@ export default function PublicSitePage() {
   return (
     <div className="min-h-screen bg-[#F5F5F7] text-zinc-900 font-sans selection:bg-[#0217ff]/10">
       
-      {/* HEADER PREMIUM */}
+      {/* HEADER */}
       <nav className="fixed top-0 left-0 right-0 z-50 bg-white/80 backdrop-blur-xl border-b border-zinc-100 h-20 flex items-center px-6">
         <div className="max-w-7xl mx-auto w-full flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -235,7 +244,7 @@ export default function PublicSitePage() {
       {/* HERO SECTION */}
       <section className="pt-40 pb-20 px-6">
         <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
-          <div className="space-y-8 animate-in fade-in slide-in-from-left-10 duration-700">
+          <div className="space-y-8">
             <div className="inline-flex items-center gap-2 px-4 py-2 bg-white rounded-full border border-zinc-100 shadow-sm">
               <ShieldCheck className="w-4 h-4 text-[#0217ff]" />
               <span className="text-[10px] font-black uppercase tracking-widest text-zinc-500">
@@ -266,8 +275,8 @@ export default function PublicSitePage() {
             </div>
           </div>
 
-          {/* FORMULÁRIO DE CAPTURA RÁPIDA */}
-          <div id="contato" className="bg-white p-8 md:p-12 rounded-[48px] shadow-2xl shadow-blue-600/5 border border-zinc-100 animate-in fade-in zoom-in duration-1000">
+          {/* FORMULÁRIO */}
+          <div id="contato" className="bg-white p-8 md:p-12 rounded-[48px] shadow-2xl shadow-blue-600/5 border border-zinc-100">
             <h3 className="text-2xl font-black uppercase italic tracking-tighter mb-2">
               Agendar Consultoria
             </h3>
@@ -399,11 +408,7 @@ export default function PublicSitePage() {
                     <div>
                       <span className="text-xs text-zinc-400 block mb-1">Valor</span>
                       <div className="text-2xl font-black italic tracking-tighter text-[#0217ff]">
-                        {new Intl.NumberFormat('pt-BR', { 
-                          style: 'currency', 
-                          currency: 'BRL',
-                          maximumFractionDigits: 0 
-                        }).format(prop.price)}
+                        {formatCurrency(prop.price)}
                       </div>
                     </div>
                     <button 
@@ -440,7 +445,7 @@ export default function PublicSitePage() {
         </div>
       </section>
 
-      {/* MODAL DE DETALHES DO IMÓVEL */}
+      {/* MODAL */}
       {showModal && selectedProperty && (
         <div className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center p-4">
           <div className="bg-white rounded-[48px] max-w-4xl w-full max-h-[90vh] overflow-y-auto">
@@ -510,11 +515,7 @@ export default function PublicSitePage() {
                   <div>
                     <span className="text-sm text-zinc-500 block mb-1">Valor</span>
                     <div className="text-4xl font-black text-[#0217ff]">
-                      {new Intl.NumberFormat('pt-BR', { 
-                        style: 'currency', 
-                        currency: 'BRL',
-                        maximumFractionDigits: 0 
-                      }).format(selectedProperty.price)}
+                      {formatCurrency(selectedProperty.price)}
                     </div>
                   </div>
                   
