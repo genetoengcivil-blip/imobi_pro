@@ -26,49 +26,58 @@ export default function PublicSitePage() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
-      if (!slug) return; // Não busca se não houver slug na URL
+      let isMounted = true;
+      const controller = new AbortController(); // Gerencia cancelamentos
 
       async function loadSiteData() {
+         if (!slug) return;
+         
          setLoading(true);
-         setError(''); // Reseta o erro antes de começar
+         setError('');
 
          try {
-            // 1. Busca o Corretor pelo Slug
-            const { data: brokerData, error: brokerError } = await supabase
+            // 1. Busca o corretor pelo slug
+            const { data: brokerData, error: bError } = await supabase
             .from('profiles')
             .select('*')
             .eq('slug', slug)
-            .maybeSingle(); // maybeSingle evita erro caso não encontre nada
+            .maybeSingle();
 
-            if (brokerError) throw brokerError;
-            
+            if (bError) throw bError;
             if (!brokerData) {
-            setError('Corretor não encontrado.');
-            setLoading(false);
+            if (isMounted) setError('Corretor não encontrado.');
             return;
             }
 
-            setBroker(brokerData);
+            if (isMounted) setBroker(brokerData);
 
-            // 2. Busca os Imóveis desse Corretor
-            const { data: propsData, error: propsError } = await supabase
+            // 2. Busca os imóveis do corretor
+            const { data: pData, error: pError } = await supabase
             .from('properties')
             .select('*')
             .eq('user_id', brokerData.id)
             .order('created_at', { ascending: false });
 
-            if (propsError) throw propsError;
-            setProperties(propsData || []);
+            if (pError) throw pError;
+            if (isMounted) setProperties(pData || []);
 
          } catch (err: any) {
-            console.error("Erro detalhado:", err);
-            setError('Falha ao carregar dados do site.');
+            // Ignora erros de cancelamento normais do React
+            if (err.name !== 'AbortError' && isMounted) {
+            console.error("Erro na busca:", err);
+            setError('Ocorreu um erro ao carregar o site.');
+            }
          } finally {
-            setLoading(false);
+            if (isMounted) setLoading(false);
          }
       }
 
-   loadSiteData();
+      loadSiteData();
+
+      return () => {
+         isMounted = false;
+         controller.abort(); // Cancela requisições se o usuário sair da página
+      };
    }, [slug]);
 
   const handleLeadCapture = async (e: React.FormEvent) => {
