@@ -7,7 +7,7 @@ import {
   Download, Edit3, Eye, Clock, Tag, FolderOpen,
   Calendar, DollarSign, Home, Printer, Share2,
   Archive, Copy, FileCheck, FileMinus, FileWarning,
-  Check
+  Check, Phone, CreditCard
 } from 'lucide-react';
 import { useGlobal } from '../context/GlobalContext';
 import { supabase } from '../lib/supabase';
@@ -18,6 +18,8 @@ import { ptBR } from 'date-fns/locale';
 interface Contract {
   id: string;
   client_name: string;
+  client_phone?: string;
+  client_document?: string;
   document_type: string;
   category: string;
   value: number;
@@ -46,11 +48,55 @@ interface Property {
   location: string;
 }
 
+// --- FUNÇÕES DE FORMATAÇÃO ---
+const formatPhone = (value: string) => {
+  if (!value) return value;
+  
+  // Remove tudo que não é número
+  const numbers = value.replace(/\D/g, '');
+  
+  // Aplica a máscara (XX) XXXXX-XXXX
+  if (numbers.length <= 10) {
+    return numbers.replace(/(\d{2})(\d{4})(\d{4})/, '($1) $2-$3');
+  } else {
+    return numbers.replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3');
+  }
+};
+
+const formatDocument = (value: string) => {
+  if (!value) return value;
+  
+  // Remove tudo que não é número
+  const numbers = value.replace(/\D/g, '');
+  
+  // CPF: 000.000.000-00
+  if (numbers.length <= 11) {
+    return numbers
+      .replace(/(\d{3})(\d)/, '$1.$2')
+      .replace(/(\d{3})(\d)/, '$1.$2')
+      .replace(/(\d{3})(\d{1,2})$/, '$1-$2')
+      .replace(/(-\d{2})\d+?$/, '$1');
+  } 
+  // CNPJ: 00.000.000/0000-00
+  else {
+    return numbers
+      .replace(/(\d{2})(\d)/, '$1.$2')
+      .replace(/(\d{3})(\d)/, '$1.$2')
+      .replace(/(\d{3})(\d)/, '$1/$2')
+      .replace(/(\d{4})(\d{1,2})$/, '$1-$2')
+      .replace(/(-\d{2})\d+?$/, '$1');
+  }
+};
+
+const unformat = (value: string) => {
+  return value.replace(/\D/g, '');
+};
+
 // --- DICIONÁRIO DE MODELOS JURÍDICOS ENRIQUECIDO ---
 const DOCUMENT_TEMPLATES: Record<string, (d: any) => string> = {
   // BLOCO 1 - INTERMEDIAÇÃO
   'autorizacao_venda': (d: any) => `AUTORIZAÇÃO EXCLUSIVA DE VENDA DE IMÓVEL\n\n` +
-    `Pelo presente instrumento particular, de um lado o(a) Sr(a). ${d.client_name}, doravante denominado PROPRIETÁRIO, e de outro lado [NOME DA IMOBILIÁRIA], doravante denominada CORRETORA, têm entre si justo e acertado o seguinte:\n\n` +
+    `Pelo presente instrumento particular, de um lado o(a) Sr(a). ${d.client_name}, inscrito(a) no CPF/CNPJ sob nº ${d.client_document || '[________]'}, doravante denominado PROPRIETÁRIO, e de outro lado [NOME DA IMOBILIÁRIA], inscrita no CNPJ sob nº [________], doravante denominada CORRETORA, têm entre si justo e acertado o seguinte:\n\n` +
     `1. OBJETO: O PROPRIETÁRIO autoriza a CORRETORA a promover a venda do imóvel ${d.property_name}, localizado em ${d.location}.\n\n` +
     `2. PREÇO: O valor mínimo de venda é de R$ ${d.value}.\n\n` +
     `3. PRAZO: A presente autorização terá validade de 180 dias.\n\n` +
@@ -58,7 +104,7 @@ const DOCUMENT_TEMPLATES: Record<string, (d: any) => string> = {
     `Local e data: ${d.location || '________'}, ${new Date().toLocaleDateString('pt-BR')}`,
 
   'termo_visita': (d: any) => `TERMO DE VISITA E CIÊNCIA DE INTERMEDIAÇÃO\n\n` +
-    `Eu, ${d.client_name}, CPF [________], declaro para os devidos fins que:\n\n` +
+    `Eu, ${d.client_name}, CPF ${d.client_document || '[________]'}, telefone ${d.client_phone || '[________]'}, declaro para os devidos fins que:\n\n` +
     `1. Visitei o imóvel ${d.property_name} localizado em ${d.location}.\n` +
     `2. Fui acompanhado pelo corretor [NOME DO CORRETOR], CRECI [________].\n` +
     `3. Estou ciente que a intermediação é de responsabilidade da imobiliária.\n\n` +
@@ -67,7 +113,7 @@ const DOCUMENT_TEMPLATES: Record<string, (d: any) => string> = {
   // BLOCO 2 - VENDA
   'promessa_venda': (d: any) => `CONTRATO PARTICULAR DE PROMESSA DE COMPRA E VENDA DE IMÓVEL\n\n` +
     `PROMITENTE VENDEDOR: [NOME DO VENDEDOR], CPF [________]\n` +
-    `PROMITENTE COMPRADOR: ${d.client_name}, CPF [________]\n\n` +
+    `PROMITENTE COMPRADOR: ${d.client_name}, CPF ${d.client_document || '[________]'}, telefone ${d.client_phone || '[________]'}\n\n` +
     `CLÁUSULA 1ª – OBJETO: O presente contrato tem por objeto o imóvel localizado em ${d.location || '________'}, matriculado sob o nº ${d.matricula || '________'} no Cartório de Registro de Imóveis da Comarca de ${d.city || '________'}.\n\n` +
     `CLÁUSULA 2ª – PREÇO E CONDIÇÕES DE PAGAMENTO: O valor total da transação é de R$ ${d.value}, pago da seguinte forma:\n` +
     `a) R$ ${d.sinal || '________'} como sinal e princípio de pagamento;\n` +
@@ -82,10 +128,10 @@ const DOCUMENT_TEMPLATES: Record<string, (d: any) => string> = {
   // BLOCO 3 - LOCAÇÃO
   'locacao_residencial': (d: any) => `CONTRATO DE LOCAÇÃO RESIDENCIAL\n\n` +
     `LOCADOR: [NOME DO LOCADOR], CPF [________]\n` +
-    `LOCATÁRIO: ${d.client_name}, CPF [________]\n` +
+    `LOCATÁRIO: ${d.client_name}, CPF ${d.client_document || '[________]'}, telefone ${d.client_phone || '[________]'}\n` +
     `FIADOR: [________], CPF [________]\n\n` +
     `CLÁUSULA 1ª – OBJETO: O presente contrato tem por objeto a locação do imóvel localizado em ${d.location}, para fins exclusivamente residenciais.\n\n` +
-    `CLÁUSULA 2ª – PRAZO: O prazo da locação é de 30 (trinta) meses, iniciando-se em ${d.start_date || '________'} e terminando em ${d.end_date || '________'}.\n\n` +
+    `CLÁUSULA 2ª – PRAZO: O prazo da locação é de 30 (trinta) meses, iniciando-se em ${d.start_date ? format(new Date(d.start_date), 'dd/MM/yyyy') : '[________]'} e terminando em ${d.end_date ? format(new Date(d.end_date), 'dd/MM/yyyy') : '[________]'}.\n\n` +
     `CLÁUSULA 3ª – ALUGUEL E ENCARGOS: O aluguel mensal é de R$ ${d.value}, com vencimento todo dia [________] de cada mês. O locatário pagará ainda IPTU e condomínio.\n\n` +
     `CLÁUSULA 4ª – GARANTIA: A presente locação é garantida por [FIADOR / CAUÇÃO / SEGURO-FIANÇA].\n\n` +
     `CLÁUSULA 5ª – REAJUSTE: O aluguel será reajustado anualmente pelo IGP-M/FGV.\n\n` +
@@ -95,7 +141,7 @@ const DOCUMENT_TEMPLATES: Record<string, (d: any) => string> = {
   'termo_entrega_chaves': (d: any) => `TERMO DE ENTREGA E RECEBIMENTO DE CHAVES\n\n` +
     `Pelo presente instrumento, as partes abaixo qualificadas:\n\n` +
     `ENTREGADOR: [NOME], CPF [________]\n` +
-    `RECEBEDOR: ${d.client_name}, CPF [________]\n\n` +
+    `RECEBEDOR: ${d.client_name}, CPF ${d.client_document || '[________]'}, telefone ${d.client_phone || '[________]'}\n\n` +
     `Declaram que nesta data, o ENTREGADOR entrega e o RECEBEDOR recebe as chaves do imóvel localizado em ${d.location}.\n\n` +
     `O imóvel encontra-se em perfeito estado de conservação e limpeza, conforme vistoria realizada em [________].\n\n` +
     `Por estarem justos e contratados, assinam o presente termo.\n\n` +
@@ -150,6 +196,8 @@ export default function ContractsPage() {
   const [formData, setFormData] = useState({
     category: '', 
     client_name: '', 
+    client_phone: '',
+    client_document: '',
     property_id: '', 
     property_name: '', 
     location: '',
@@ -229,7 +277,9 @@ export default function ContractsPage() {
     const content = template({
       ...formData,
       property_name: prop?.title,
-      location: prop?.location || formData.location
+      location: prop?.location || formData.location,
+      client_document: formData.client_document,
+      client_phone: formData.client_phone
     });
     
     setFormData({ ...formData, final_content: content, property_name: prop?.title });
@@ -253,9 +303,15 @@ export default function ContractsPage() {
         ? formData.end_date 
         : null;
       
+      // Limpar telefone e documento (remover formatação)
+      const cleanPhone = formData.client_phone ? unformat(formData.client_phone) : null;
+      const cleanDocument = formData.client_document ? unformat(formData.client_document) : null;
+      
       const payload = {
         category: formData.category,
         client_name: formData.client_name,
+        client_phone: cleanPhone,
+        client_document: cleanDocument,
         property_id: formData.property_id || null,
         property_name: formData.property_name,
         location: formData.location,
@@ -388,9 +444,9 @@ export default function ContractsPage() {
             onClick={() => {
               setEditingContract(null);
               setFormData({
-                category: '', client_name: '', property_id: '', property_name: '',
-                location: '', value: '', document_type: '', final_content: '',
-                start_date: '', end_date: '',
+                category: '', client_name: '', client_phone: '', client_document: '',
+                property_id: '', property_name: '', location: '', value: '', 
+                document_type: '', final_content: '', start_date: '', end_date: '',
                 matricula: '', sinal: '', parcelas: '', posse_percent: '', city: '',
                 status: 'rascunho'
               });
@@ -541,6 +597,24 @@ export default function ContractsPage() {
                                   {format(new Date(doc.created_at), "dd/MM/yyyy")}
                                 </span>
                               </div>
+
+                              {/* Telefone e Documento */}
+                              {(doc.client_phone || doc.client_document) && (
+                                <div className="flex flex-wrap items-center gap-4 text-[10px] font-bold mt-2 pt-2 border-t border-zinc-100 dark:border-white/5">
+                                  {doc.client_phone && (
+                                    <span className="flex items-center gap-1 text-zinc-500">
+                                      <Phone size={10} />
+                                      {formatPhone(doc.client_phone)}
+                                    </span>
+                                  )}
+                                  {doc.client_document && (
+                                    <span className="flex items-center gap-1 text-zinc-500">
+                                      <CreditCard size={10} />
+                                      {doc.client_document.length <= 11 ? 'CPF' : 'CNPJ'}: {formatDocument(doc.client_document)}
+                                    </span>
+                                  )}
+                                </div>
+                              )}
                             </div>
 
                             {/* ACTION BUTTONS */}
@@ -553,7 +627,9 @@ export default function ContractsPage() {
                                     ...doc,
                                     value: doc.value?.toString() || '',
                                     start_date: doc.start_date || '',
-                                    end_date: doc.end_date || ''
+                                    end_date: doc.end_date || '',
+                                    client_phone: doc.client_phone ? formatPhone(doc.client_phone) : '',
+                                    client_document: doc.client_document ? formatDocument(doc.client_document) : ''
                                   });
                                   setIsViewOnly(true);
                                   setShowModal(true);
@@ -571,7 +647,9 @@ export default function ContractsPage() {
                                     ...doc,
                                     value: doc.value?.toString() || '',
                                     start_date: doc.start_date || '',
-                                    end_date: doc.end_date || ''
+                                    end_date: doc.end_date || '',
+                                    client_phone: doc.client_phone ? formatPhone(doc.client_phone) : '',
+                                    client_document: doc.client_document ? formatDocument(doc.client_document) : ''
                                   });
                                   setIsViewOnly(false);
                                   setStep(4);
@@ -859,7 +937,7 @@ export default function ContractsPage() {
                     
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-2 md:col-span-2">
-                        <label className="text-[9px] font-bold uppercase text-zinc-400">Nome Completo</label>
+                        <label className="text-[9px] font-bold uppercase text-zinc-400">Nome Completo *</label>
                         <input 
                           className={`${theme.input} w-full px-6 py-4 rounded-2xl outline-none font-bold`}
                           placeholder="Ex: João da Silva"
@@ -870,18 +948,28 @@ export default function ContractsPage() {
                       </div>
                       
                       <div className="space-y-2">
-                        <label className="text-[9px] font-bold uppercase text-zinc-400">CPF/CNPJ</label>
+                        <label className="text-[9px] font-bold uppercase text-zinc-400 flex items-center gap-1">
+                          <CreditCard size={12} /> CPF/CNPJ
+                        </label>
                         <input 
                           className={`${theme.input} w-full px-6 py-4 rounded-2xl outline-none`}
                           placeholder="000.000.000-00"
+                          value={formData.client_document}
+                          onChange={e => setFormData({...formData, client_document: formatDocument(e.target.value)})}
+                          maxLength={18}
                         />
                       </div>
                       
                       <div className="space-y-2">
-                        <label className="text-[9px] font-bold uppercase text-zinc-400">Telefone</label>
+                        <label className="text-[9px] font-bold uppercase text-zinc-400 flex items-center gap-1">
+                          <Phone size={12} /> Telefone
+                        </label>
                         <input 
                           className={`${theme.input} w-full px-6 py-4 rounded-2xl outline-none`}
                           placeholder="(11) 99999-9999"
+                          value={formData.client_phone}
+                          onChange={e => setFormData({...formData, client_phone: formatPhone(e.target.value)})}
+                          maxLength={15}
                         />
                       </div>
                     </div>
