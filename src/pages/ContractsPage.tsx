@@ -29,8 +29,8 @@ interface Contract {
   checklist?: ChecklistItem[];
   status: 'rascunho' | 'ativo' | 'concluido' | 'cancelado';
   created_at: string;
-  start_date?: string;
-  end_date?: string;
+  start_date?: string | null;
+  end_date?: string | null;
   properties?: any;
 }
 
@@ -156,7 +156,7 @@ export default function ContractsPage() {
     value: '', 
     document_type: '', 
     final_content: '', 
-    start_date: new Date().toISOString().split('T')[0],
+    start_date: '', // Começa vazio
     end_date: '',
     matricula: '',
     sinal: '',
@@ -244,23 +244,32 @@ export default function ContractsPage() {
         .replace(/[R$\s.]/g, '')
         .replace(',', '.');
       
+      // Tratar datas: se estiver vazio, enviar null
+      const startDate = formData.start_date && formData.start_date.trim() !== '' 
+        ? formData.start_date 
+        : null;
+      
+      const endDate = formData.end_date && formData.end_date.trim() !== '' 
+        ? formData.end_date 
+        : null;
+      
       const payload = {
         category: formData.category,
         client_name: formData.client_name,
-        property_id: formData.property_id,
+        property_id: formData.property_id || null,
         property_name: formData.property_name,
         location: formData.location,
         value: parseFloat(cleanValue) || 0,
         document_type: formData.document_type,
         final_content: formData.final_content,
         content: formData.final_content,
-        start_date: formData.start_date,
-        end_date: formData.end_date,
-        matricula: formData.matricula,
-        sinal: formData.sinal,
-        parcelas: formData.parcelas,
-        posse_percent: formData.posse_percent,
-        city: formData.city,
+        start_date: startDate,
+        end_date: endDate,
+        matricula: formData.matricula || null,
+        sinal: formData.sinal || null,
+        parcelas: formData.parcelas || null,
+        posse_percent: formData.posse_percent || null,
+        city: formData.city || null,
         status: formData.status,
         user_id: user?.id,
         checklist: [
@@ -272,6 +281,8 @@ export default function ContractsPage() {
           { task: "Documentos do Imóvel (IPTU, Planta)", done: false, required: false }
         ]
       };
+
+      console.log('Payload sendo enviado:', payload); // Debug
 
       let error;
       if (editingContract) {
@@ -379,7 +390,7 @@ export default function ContractsPage() {
               setFormData({
                 category: '', client_name: '', property_id: '', property_name: '',
                 location: '', value: '', document_type: '', final_content: '',
-                start_date: new Date().toISOString().split('T')[0], end_date: '',
+                start_date: '', end_date: '',
                 matricula: '', sinal: '', parcelas: '', posse_percent: '', city: '',
                 status: 'rascunho'
               });
@@ -540,7 +551,9 @@ export default function ContractsPage() {
                                   setEditingContract(doc);
                                   setFormData({
                                     ...doc,
-                                    value: doc.value?.toString() || ''
+                                    value: doc.value?.toString() || '',
+                                    start_date: doc.start_date || '',
+                                    end_date: doc.end_date || ''
                                   });
                                   setIsViewOnly(true);
                                   setShowModal(true);
@@ -556,7 +569,9 @@ export default function ContractsPage() {
                                   setEditingContract(doc);
                                   setFormData({
                                     ...doc,
-                                    value: doc.value?.toString() || ''
+                                    value: doc.value?.toString() || '',
+                                    start_date: doc.start_date || '',
+                                    end_date: doc.end_date || ''
                                   });
                                   setIsViewOnly(false);
                                   setStep(4);
