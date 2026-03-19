@@ -26,73 +26,50 @@ export default function PublicSitePage() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
-    let isMounted = true;
+      if (!slug) return; // Não busca se não houver slug na URL
 
-    async function loadSiteData() {
-      try {
-        setLoading(true);
-        
-        console.log('Buscando perfil com slug:', slug);
+      async function loadSiteData() {
+         setLoading(true);
+         setError(''); // Reseta o erro antes de começar
 
-        // Buscar perfil do corretor pelo slug
-        const { data: profile, error: profileError } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('slug', slug)
-          .maybeSingle();
+         try {
+            // 1. Busca o Corretor pelo Slug
+            const { data: brokerData, error: brokerError } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('slug', slug)
+            .maybeSingle(); // maybeSingle evita erro caso não encontre nada
 
-        if (profileError) {
-          console.error('Erro ao buscar perfil:', profileError);
-          throw profileError;
-        }
+            if (brokerError) throw brokerError;
+            
+            if (!brokerData) {
+            setError('Corretor não encontrado.');
+            setLoading(false);
+            return;
+            }
 
-        console.log('Perfil encontrado:', profile);
+            setBroker(brokerData);
 
-        if (!profile) {
-          if (isMounted) setError('Perfil não encontrado');
-          return;
-        }
-
-        if (isMounted) {
-          setBroker(profile);
-          
-          // Buscar imóveis do corretor
-          const { data: props, error: propsError } = await supabase
+            // 2. Busca os Imóveis desse Corretor
+            const { data: propsData, error: propsError } = await supabase
             .from('properties')
             .select('*')
-            .eq('user_id', profile.id)
-            .in('status', ['disponivel', 'disponível'])
+            .eq('user_id', brokerData.id)
             .order('created_at', { ascending: false });
 
-          if (propsError) {
-            console.error('Erro ao buscar imóveis:', propsError);
-            throw propsError;
-          }
-          
-          console.log('Imóveis encontrados:', props?.length || 0);
-          setProperties(props || []);
-        }
+            if (propsError) throw propsError;
+            setProperties(propsData || []);
 
-      } catch (err: any) {
-        console.error("Erro ao carregar dados:", err);
-        if (isMounted) {
-          setError('Erro ao carregar o site. Tente novamente mais tarde.');
-        }
-      } finally {
-        if (isMounted) {
-          setLoading(false);
-        }
+         } catch (err: any) {
+            console.error("Erro detalhado:", err);
+            setError('Falha ao carregar dados do site.');
+         } finally {
+            setLoading(false);
+         }
       }
-    }
-    
-    if (slug) {
-      loadSiteData();
-    }
 
-    return () => {
-      isMounted = false;
-    };
-  }, [slug]);
+   loadSiteData();
+   }, [slug]);
 
   const handleLeadCapture = async (e: React.FormEvent) => {
     e.preventDefault();
