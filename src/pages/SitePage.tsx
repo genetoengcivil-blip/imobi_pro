@@ -32,32 +32,40 @@ export default function SitePage() {
     if (user) loadProfile();
   }, [user]);
 
-  async function loadProfile() {
-    setLoading(true);
+  async function handleSave() {
+    if (!user?.id) return;
+    
+    setSaving(true);
+    setStatus('idle');
+
     try {
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from('profiles')
-        .select('*')
-        .eq('id', user?.id)
-        .single();
+        .upsert({
+          id: user.id, // Chave primária para o UPSERT funcionar
+          full_name: fullName,
+          slug: slug.toLowerCase().trim(), // Garante que o slug é limpo
+          bio: bio,
+          phone: phone,
+          whatsapp_message: whatsappMessage,
+          social_media: socials, // Certifique-se que a coluna é jsonb no banco
+          updated_at: new Date().toISOString(),
+        }, {
+          onConflict: 'id' // Se o ID já existir, ele apenas atualiza
+        });
 
       if (error) throw error;
 
-      if (data) {
-        setFullName(data.full_name || '');
-        setSlug(data.slug || '');
-        setBio(data.bio || '');
-        setPhone(data.phone || '');
-        setWhatsappMessage(data.whatsapp_message || 'Olá! Vi o seu site e gostaria de saber mais sobre os imóveis.');
-        setSocials(data.social_media || { instagram: '', facebook: '', youtube: '', linkedin: '' });
-      }
-    } catch (error) {
-      console.error('Erro ao carregar perfil:', error);
+      setStatus('success');
+      setTimeout(() => setStatus('idle'), 3000);
+    } catch (err: any) {
+      console.error("Erro ao salvar perfil:", err);
+      setStatus('error');
+      setErrorMessage(err.message || 'Erro ao publicar alterações.');
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   }
-
   const handleSlugChange = (val: string) => {
     const formatted = val.toLowerCase().trim()
       .replace(/\s+/g, '-')
