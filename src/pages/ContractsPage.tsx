@@ -224,7 +224,6 @@ export default function ContractsPage() {
 
   useEffect(() => { 
     if (user) {
-      console.log('Usuário logado:', user.id);
       loadData(); 
     }
   }, [user]);
@@ -232,47 +231,28 @@ export default function ContractsPage() {
   async function loadData() {
     setLoading(true);
     try {
-      if (!user?.id) {
-        console.log('Usuário não autenticado');
-        setLoading(false);
-        return;
-      }
+      if (!user?.id) return;
 
-      console.log('Carregando contratos para usuário:', user.id);
-      
-      // Carregar contratos
+      // Carregar contratos com propriedades relacionadas
       const { data: contractsData, error: contractsError } = await supabase
         .from('contracts')
         .select('*, properties(*)')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false });
 
-      if (contractsError) {
-        console.error('Erro ao carregar contratos:', contractsError);
-        throw contractsError;
-      }
+      if (contractsError) throw contractsError;
+      setContracts(contractsData || []);
 
-      console.log('Contratos carregados:', contractsData?.length || 0);
-      if (contractsData && contractsData.length > 0) {
-        console.log('Primeiro contrato:', contractsData[0]);
-      }
-
-      // Carregar propriedades
+      // Carregar propriedades para o select
       const { data: propertiesData, error: propertiesError } = await supabase
         .from('properties')
         .select('id, title, location')
         .eq('user_id', user.id)
         .order('title');
 
-      if (propertiesError) {
-        console.error('Erro ao carregar propriedades:', propertiesError);
-        throw propertiesError;
-      }
-
-      console.log('Propriedades carregadas:', propertiesData?.length || 0);
-
-      setContracts(contractsData || []);
+      if (propertiesError) throw propertiesError;
       setProperties(propertiesData || []);
+
     } catch (error) {
       console.error('Erro ao carregar dados:', error);
     } finally {
@@ -281,19 +261,12 @@ export default function ContractsPage() {
   }
 
   const clientsGrouped = useMemo(() => {
-    console.log('Agrupando contratos. Total:', contracts.length);
-    
-    if (!contracts || contracts.length === 0) {
-      console.log('Nenhum contrato para agrupar');
-      return [];
-    }
+    if (!contracts || contracts.length === 0) return [];
 
     const filtered = contracts.filter(c => 
       (c.client_name && c.client_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
       (c.document_type && c.document_type.toLowerCase().includes(searchTerm.toLowerCase()))
     );
-
-    console.log('Contratos após filtro:', filtered.length);
 
     const groups: { [key: string]: any } = {};
     
@@ -312,18 +285,14 @@ export default function ContractsPage() {
       groups[clientName].docs.push(c);
       groups[clientName].totalValue += c.value || 0;
       
-      // Atualizar lastUpdate se for mais recente
       if (new Date(c.created_at) > new Date(groups[clientName].lastUpdate)) {
         groups[clientName].lastUpdate = c.created_at;
       }
     });
     
-    const result = Object.values(groups).sort((a: any, b: any) => 
+    return Object.values(groups).sort((a: any, b: any) => 
       new Date(b.lastUpdate).getTime() - new Date(a.lastUpdate).getTime()
     );
-    
-    console.log('Grupos criados:', result.length);
-    return result;
   }, [contracts, searchTerm]);
 
   const handleGenerate = () => {
@@ -336,8 +305,6 @@ export default function ContractsPage() {
       ...formData,
       property_name: prop?.title || formData.property_name,
       location: prop?.location || formData.location,
-      client_document: formData.client_document,
-      client_phone: formData.client_phone,
       value: formData.value
     });
     
@@ -363,27 +330,23 @@ export default function ContractsPage() {
         return;
       }
 
-      // Limpar e formatar os dados antes de salvar
+      // Limpar formatação dos valores
       const cleanValue = unformat(formData.value);
       const cleanSinal = unformat(formData.sinal);
       const cleanParcelas = unformat(formData.parcelas);
       
-      // Tratar datas: se estiver vazio, enviar null
-      const startDate = formData.start_date && formData.start_date.trim() !== '' 
-        ? formData.start_date 
-        : null;
+      // Tratar datas
+      const startDate = formData.start_date?.trim() || null;
+      const endDate = formData.end_date?.trim() || null;
       
-      const endDate = formData.end_date && formData.end_date.trim() !== '' 
-        ? formData.end_date 
-        : null;
-      
-      // Limpar telefone e documento (remover formatação)
+      // Limpar telefone e documento
       const cleanPhone = formData.client_phone ? unformat(formData.client_phone) : null;
       const cleanDocument = formData.client_document ? unformat(formData.client_document) : null;
       
       const prop = properties.find(p => p.id === formData.property_id);
       
       const payload = {
+        user_id: user.id,
         category: formData.category,
         client_name: formData.client_name,
         client_phone: cleanPhone,
@@ -403,46 +366,36 @@ export default function ContractsPage() {
         posse_percent: formData.posse_percent || null,
         city: formData.city || null,
         status: formData.status,
-        user_id: user.id,
         checklist: [
           { task: "RG / CPF", done: false, required: true },
           { task: "Certidão de Matrícula Atualizada", done: false, required: true },
-          { task: "Certidões Negativas (Federal/Estadual/Municipal)", done: false, required: true },
+          { task: "Certidões Negativas", done: false, required: true },
           { task: "Comprovante de Endereço", done: false, required: true },
-          { task: "Estado Civil e Regime de Bens", done: false, required: true },
-          { task: "Documentos do Imóvel (IPTU, Planta)", done: false, required: false }
+          { task: "Estado Civil e Regime de Bens", done: false, required: true }
         ]
       };
 
-      console.log('Payload sendo enviado:', payload);
-
       let error;
       if (editingContract) {
-        console.log('Atualizando contrato ID:', editingContract.id);
         ({ error } = await supabase
           .from('contracts')
           .update(payload)
           .eq('id', editingContract.id));
       } else {
-        console.log('Inserindo novo contrato');
         ({ error } = await supabase
           .from('contracts')
           .insert([payload]));
       }
 
-      if (error) {
-        console.error('Erro do Supabase:', error);
-        throw error;
-      }
-      
-      console.log('Salvo com sucesso!');
+      if (error) throw error;
       
       setShowModal(false);
       setStep(1);
       setEditingContract(null);
-      await loadData(); // Recarrega os dados
+      await loadData();
+      
     } catch (error: any) {
-      console.error('Erro detalhado:', error);
+      console.error('Erro ao salvar:', error);
       alert('Erro ao salvar: ' + error.message);
     } finally {
       setLoading(false);
@@ -1242,7 +1195,7 @@ export default function ContractsPage() {
   );
 }
 
-// COMPONENTE AUXILIAR PARA CARDS DE TIPO DE DOCUMENTO
+// COMPONENTE AUXILIAR
 function DocumentTypeCard({ type, label, description, icon: Icon, selected, onClick, theme }: any) {
   return (
     <button
