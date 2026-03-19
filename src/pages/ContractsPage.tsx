@@ -79,7 +79,7 @@ const formatDocument = (value: string) => {
 };
 
 const formatCurrency = (value: number) => {
-  if (!value || isNaN(value)) return 'R$ 0';
+  if (!value || isNaN(value)) return 'R$ 0,00';
   return new Intl.NumberFormat('pt-BR', {
     style: 'currency',
     currency: 'BRL',
@@ -89,9 +89,17 @@ const formatCurrency = (value: number) => {
 };
 
 const formatCurrencyInput = (value: string) => {
+  if (!value) return '';
+  
+  // Remove tudo que não é número
   const numbers = value.replace(/\D/g, '');
-  if (!numbers) return '';
-  const valueFloat = parseFloat(numbers) / 100;
+  
+  if (numbers.length === 0) return '';
+  
+  // Converte para número e divide por 100 para ter centavos
+  const valueFloat = parseInt(numbers) / 100;
+  
+  // Formata com 2 casas decimais
   return valueFloat.toLocaleString('pt-BR', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
@@ -106,9 +114,9 @@ const unformat = (value: string) => {
 const DOCUMENT_TEMPLATES: Record<string, (d: any) => string> = {
   // BLOCO 1 - INTERMEDIAÇÃO
   'autorizacao_venda': (d: any) => `AUTORIZAÇÃO EXCLUSIVA DE VENDA DE IMÓVEL\n\n` +
-    `Pelo presente instrumento particular, de um lado o(a) Sr(a). ${d.client_name}, inscrito(a) no CPF/CNPJ sob nº ${d.client_document || '[________]'}, doravante denominado PROPRIETÁRIO, e de outro lado [NOME DA IMOBILIÁRIA], inscrita no CNPJ sob nº [________], doravante denominada CORRETORA, têm entre si justo e acertado o seguinte:\n\n` +
+    `Pelo presente instrumento particular, de um lado o(a) Sr(a). ${d.client_name}, inscrito(a) no CPF/CNPJ sob nº ${d.client_document || '[________]'}, telefone ${d.client_phone || '[________]'}, doravante denominado PROPRIETÁRIO, e de outro lado [NOME DA IMOBILIÁRIA], inscrita no CNPJ sob nº [________], doravante denominada CORRETORA, têm entre si justo e acertado o seguinte:\n\n` +
     `1. OBJETO: O PROPRIETÁRIO autoriza a CORRETORA a promover a venda do imóvel ${d.property_name}, localizado em ${d.location}.\n\n` +
-    `2. PREÇO: O valor mínimo de venda é de R$ ${d.value}.\n\n` +
+    `2. PREÇO: O valor mínimo de venda é de R$ ${formatCurrency(parseFloat(d.value) || 0)}.\n\n` +
     `3. PRAZO: A presente autorização terá validade de 180 dias.\n\n` +
     `4. COMISSÃO: A CORRETORA fará jus a comissão de 6% sobre o valor da venda.\n\n` +
     `Local e data: ${d.location || '________'}, ${new Date().toLocaleDateString('pt-BR')}`,
@@ -125,9 +133,9 @@ const DOCUMENT_TEMPLATES: Record<string, (d: any) => string> = {
     `PROMITENTE VENDEDOR: [NOME DO VENDEDOR], CPF [________]\n` +
     `PROMITENTE COMPRADOR: ${d.client_name}, CPF ${d.client_document || '[________]'}, telefone ${d.client_phone || '[________]'}\n\n` +
     `CLÁUSULA 1ª – OBJETO: O presente contrato tem por objeto o imóvel localizado em ${d.location || '________'}, matriculado sob o nº ${d.matricula || '________'} no Cartório de Registro de Imóveis da Comarca de ${d.city || '________'}.\n\n` +
-    `CLÁUSULA 2ª – PREÇO E CONDIÇÕES DE PAGAMENTO: O valor total da transação é de R$ ${formatCurrency(parseFloat(d.value) || 0)}, pago da seguinte forma:\n` +
-    `a) R$ ${d.sinal ? formatCurrency(parseFloat(d.sinal) || 0) : '[________]'} como sinal e princípio de pagamento;\n` +
-    `b) R$ ${d.parcelas ? formatCurrency(parseFloat(d.parcelas) || 0) : '[________]'} no ato da escritura;\n` +
+    `CLÁUSULA 2ª – PREÇO E CONDIÇÕES DE PAGAMENTO: O valor total da transação é de ${formatCurrency(parseFloat(d.value) || 0)}, pago da seguinte forma:\n` +
+    `a) ${d.sinal ? formatCurrency(parseFloat(d.sinal) || 0) : 'R$ [________]'} como sinal e princípio de pagamento;\n` +
+    `b) ${d.parcelas ? formatCurrency(parseFloat(d.parcelas) || 0) : 'R$ [________]'} no ato da escritura;\n` +
     `c) Saldo financiado mediante [________].\n\n` +
     `CLÁUSULA 3ª – DA COMISSÃO DE CORRETAGEM: A comissão de corretagem, no valor de [________], será paga [________].\n\n` +
     `CLÁUSULA 4ª – DA POSSE: A posse do imóvel será transmitida ao COMPRADOR após o pagamento de ${d.posse_percent || '___'}% do preço.\n\n` +
@@ -142,7 +150,7 @@ const DOCUMENT_TEMPLATES: Record<string, (d: any) => string> = {
     `FIADOR: [________], CPF [________]\n\n` +
     `CLÁUSULA 1ª – OBJETO: O presente contrato tem por objeto a locação do imóvel localizado em ${d.location}, para fins exclusivamente residenciais.\n\n` +
     `CLÁUSULA 2ª – PRAZO: O prazo da locação é de 30 (trinta) meses, iniciando-se em ${d.start_date ? format(new Date(d.start_date), 'dd/MM/yyyy') : '[________]'} e terminando em ${d.end_date ? format(new Date(d.end_date), 'dd/MM/yyyy') : '[________]'}.\n\n` +
-    `CLÁUSULA 3ª – ALUGUEL E ENCARGOS: O aluguel mensal é de R$ ${formatCurrency(parseFloat(d.value) || 0)}, com vencimento todo dia [________] de cada mês. O locatário pagará ainda IPTU e condomínio.\n\n` +
+    `CLÁUSULA 3ª – ALUGUEL E ENCARGOS: O aluguel mensal é de ${formatCurrency(parseFloat(d.value) || 0)}, com vencimento todo dia [________] de cada mês. O locatário pagará ainda IPTU e condomínio.\n\n` +
     `CLÁUSULA 4ª – GARANTIA: A presente locação é garantida por [FIADOR / CAUÇÃO / SEGURO-FIANÇA].\n\n` +
     `CLÁUSULA 5ª – REAJUSTE: O aluguel será reajustado anualmente pelo IGP-M/FGV.\n\n` +
     `CLÁUSULA 8ª – MULTAS: Em caso de rescisão antecipada, o LOCATÁRIO pagará multa equivalente a [________].\n\n` +
