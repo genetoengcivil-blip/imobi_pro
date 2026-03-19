@@ -8,10 +8,12 @@ import {
   Trees, Building2, Ruler, Tag, Copy, Share2,
   Download, Filter, Grid3X3, List, Maximize2,
   DollarSign, Percent, Hash, Clock, Award,
-  ArrowLeft, Save, PlusCircle, MinusCircle
+  ArrowLeft, Save, PlusCircle, MinusCircle, Search // <-- ADD SEARCH HERE
 } from 'lucide-react';
 import { useGlobal } from '../context/GlobalContext';
 import { supabase } from '../lib/supabase';
+
+// ... (resto do código permanece igual)
 
 // --- TIPOS E INTERFACES ---
 interface Property {
