@@ -6,7 +6,8 @@ import {
   AlertCircle, ShieldCheck, ClipboardCheck, Key, FilePlus,
   Download, Edit3, Eye, Clock, Tag, FolderOpen,
   Calendar, DollarSign, Home, Printer, Share2,
-  Archive, Copy, FileCheck, FileMinus, FileWarning
+  Archive, Copy, FileCheck, FileMinus, FileWarning,
+  Check // <-- ADD CHECK HERE
 } from 'lucide-react';
 import { useGlobal } from '../context/GlobalContext';
 import { supabase } from '../lib/supabase';

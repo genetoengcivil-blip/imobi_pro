@@ -1,19 +1,17 @@
 import { useState, useEffect } from 'react';
 import { 
   Plus, Home, MapPin, Bed, Bath, Trash2, Edit3, Eye,
-  X, Loader2, Check, Globe, Star, Square, 
+  X, Loader2, Check, Globe, Star, Square,  // <-- CHECK JÁ ESTÁ AQUI
   Car, ShieldCheck, Info, ChevronLeft, ChevronRight,
   Calculator, AlertTriangle, TrendingUp, Camera,
   Wifi, Zap, Flame, Coffee, Dumbbell, Waves,
   Trees, Building2, Ruler, Tag, Copy, Share2,
   Download, Filter, Grid3X3, List, Maximize2,
   DollarSign, Percent, Hash, Clock, Award,
-  ArrowLeft, Save, PlusCircle, MinusCircle, Search // <-- ADD SEARCH HERE
+  ArrowLeft, Save, PlusCircle, MinusCircle, Search
 } from 'lucide-react';
 import { useGlobal } from '../context/GlobalContext';
 import { supabase } from '../lib/supabase';
-
-// ... (resto do código permanece igual)
 
 // --- TIPOS E INTERFACES ---
 interface Property {
