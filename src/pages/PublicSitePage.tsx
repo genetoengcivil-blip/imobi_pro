@@ -26,23 +26,37 @@ export default function PublicSitePage() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
+    let isMounted = true;
+
     async function loadSiteData() {
       try {
         setLoading(true);
         
-        // Buscar perfil do corretor pelo slug
+        console.log('Buscando perfil com slug:', slug);
+
+        // Buscar perfil do corretor pelo slug - SEM AUTENTICAÇÃO
         const { data: profile, error: profileError } = await supabase
           .from('profiles')
           .select('*')
           .eq('slug', slug)
-          .single();
+          .maybeSingle();
 
-        if (profileError) throw profileError;
+        if (profileError) {
+          console.error('Erro ao buscar perfil:', profileError);
+          throw profileError;
+        }
 
-        if (profile) {
+        console.log('Perfil encontrado:', profile);
+
+        if (!profile) {
+          setError('Perfil não encontrado');
+          return;
+        }
+
+        if (isMounted) {
           setBroker(profile);
           
-          // Buscar imóveis do corretor
+          // Buscar imóveis do corretor - SEM AUTENTICAÇÃO
           const { data: props, error: propsError } = await supabase
             .from('properties')
             .select('*')
@@ -50,21 +64,34 @@ export default function PublicSitePage() {
             .in('status', ['disponivel', 'disponível'])
             .order('created_at', { ascending: false });
 
-          if (propsError) throw propsError;
+          if (propsError) {
+            console.error('Erro ao buscar imóveis:', propsError);
+            throw propsError;
+          }
           
+          console.log('Imóveis encontrados:', props?.length || 0);
           setProperties(props || []);
         }
+
       } catch (err: any) {
         console.error("Erro ao carregar dados:", err);
-        setError('Perfil não encontrado');
+        if (isMounted) {
+          setError('Erro ao carregar o site. Tente novamente mais tarde.');
+        }
       } finally {
-        setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     }
     
     if (slug) {
       loadSiteData();
     }
+
+    return () => {
+      isMounted = false;
+    };
   }, [slug]);
 
   const handleLeadCapture = async (e: React.FormEvent) => {
@@ -74,8 +101,8 @@ export default function PublicSitePage() {
     try {
       if (!broker) return;
 
-      // Inserir lead no CRM
-      await supabase.from('leads').insert([{
+      // Inserir lead no CRM - SEM AUTENTICAÇÃO (apenas insere, não precisa de auth)
+      const { error } = await supabase.from('leads').insert([{
         name: leadForm.name,
         phone: leadForm.phone,
         user_id: broker.id,
@@ -83,6 +110,8 @@ export default function PublicSitePage() {
         status: 'novo',
         property_interest: selectedProperty?.title || null
       }]);
+
+      if (error) throw error;
 
       setSent(true);
       
@@ -105,8 +134,9 @@ export default function PublicSitePage() {
         setSelectedProperty(null);
       }, 1500);
 
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
+      console.error('Erro ao salvar lead:', err);
+      alert('Erro ao enviar. Tente novamente.');
     } finally {
       setIsSubmitting(false);
     }
@@ -124,6 +154,7 @@ export default function PublicSitePage() {
         <div className="w-48 h-2 bg-zinc-100 rounded-full overflow-hidden">
           <div className="h-full bg-[#0217ff] animate-progress" style={{ width: '60%' }}></div>
         </div>
+        <p className="mt-4 text-sm text-zinc-400">Carregando site...</p>
       </div>
     );
   }
@@ -132,7 +163,7 @@ export default function PublicSitePage() {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center text-zinc-400 font-bold uppercase tracking-widest italic">
         <Home size={48} className="mb-4 opacity-50" />
-        <p>Perfil não encontrado</p>
+        <p>{error || 'Perfil não encontrado'}</p>
         <button 
           onClick={() => navigate('/')}
           className="mt-6 px-6 py-3 bg-[#0217ff] text-white rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-[#0217ff]/90 transition-all"
@@ -474,37 +505,6 @@ export default function PublicSitePage() {
                   </div>
                 )}
 
-                {/* Amenidades */}
-                {Object.entries(selectedProperty).some(([key, value]) => 
-                  key.startsWith('has_') && value === true
-                ) && (
-                  <div>
-                    <h3 className="text-sm font-black uppercase tracking-widest mb-3">Comodidades</h3>
-                    <div className="flex flex-wrap gap-2">
-                      {[
-                        { key: 'has_pool', label: 'Piscina' },
-                        { key: 'has_gym', label: 'Academia' },
-                        { key: 'has_bbq', label: 'Churrasqueira' },
-                        { key: 'has_elevator', label: 'Elevador' },
-                        { key: 'has_games', label: 'Salão de Jogos' },
-                        { key: 'has_party', label: 'Salão de Festas' },
-                        { key: 'has_spa', label: 'Spa' },
-                        { key: 'has_playground', label: 'Playground' },
-                        { key: 'has_court', label: 'Quadra' },
-                        { key: 'has_gourmet', label: 'Gourmet' },
-                        { key: 'has_conciege', label: 'Portaria 24h' },
-                        { key: 'has_laundry', label: 'Lavanderia' }
-                      ].map(({ key, label }) => 
-                        selectedProperty[key] && (
-                          <span key={key} className="px-4 py-2 bg-zinc-100 rounded-xl text-xs font-bold">
-                            {label}
-                          </span>
-                        )
-                      )}
-                    </div>
-                  </div>
-                )}
-
                 {/* Preço e Contato */}
                 <div className="flex flex-col md:flex-row items-center justify-between gap-6 pt-6 border-t border-zinc-100">
                   <div>
@@ -562,22 +562,10 @@ export default function PublicSitePage() {
                 <Instagram size={18} />
               </a>
             )}
-            {broker.social_media?.facebook && (
-              <a href={broker.social_media.facebook} target="_blank" rel="noopener noreferrer"
+            {broker.phone && (
+              <a href={`https://wa.me/${broker.phone.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer"
                  className="p-3 bg-zinc-100 rounded-xl hover:bg-[#0217ff] hover:text-white transition-all">
-                <Building2 size={18} />
-              </a>
-            )}
-            {broker.social_media?.youtube && (
-              <a href={broker.social_media.youtube} target="_blank" rel="noopener noreferrer"
-                 className="p-3 bg-zinc-100 rounded-xl hover:bg-[#0217ff] hover:text-white transition-all">
-                <Users size={18} />
-              </a>
-            )}
-            {broker.social_media?.linkedin && (
-              <a href={broker.social_media.linkedin} target="_blank" rel="noopener noreferrer"
-                 className="p-3 bg-zinc-100 rounded-xl hover:bg-[#0217ff] hover:text-white transition-all">
-                <Award size={18} />
+                <Phone size={18} />
               </a>
             )}
           </div>
