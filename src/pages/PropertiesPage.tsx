@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { 
   Plus, Home, MapPin, Bed, Bath, Trash2, Edit3, Eye,
-  X, Loader2, Check, Globe, Star, Square,  // <-- CHECK JÁ ESTÁ AQUI
+  X, Loader2, Check, Globe, Star, Square, 
   Car, ShieldCheck, Info, ChevronLeft, ChevronRight,
   Calculator, AlertTriangle, TrendingUp, Camera,
   Wifi, Zap, Flame, Coffee, Dumbbell, Waves,
@@ -153,13 +153,26 @@ export default function PropertiesPage() {
     return matchesSearch && matchesStatus;
   });
 
-  // ESTATÍSTICAS
+  // ESTATÍSTICAS CORRIGIDAS (sem NaN)
   const stats = {
     total: properties.length,
     disponivel: properties.filter(p => p.status === 'disponivel').length,
     negociacao: properties.filter(p => p.status === 'negociacao').length,
     vendido: properties.filter(p => p.status === 'vendido').length,
-    valorTotal: properties.reduce((acc, p) => acc + (p.price || 0), 0)
+    locado: properties.filter(p => p.status === 'locado').length,
+    valorTotal: properties.reduce((acc, p) => acc + (Number(p.price) || 0), 0)
+  };
+
+  // Função segura para formatar moeda
+  const formatCurrency = (value: number) => {
+    if (isNaN(value) || value === null || value === undefined) {
+      return 'R$ 0';
+    }
+    return new Intl.NumberFormat('pt-BR', { 
+      style: 'currency', 
+      currency: 'BRL',
+      maximumFractionDigits: 0 
+    }).format(value);
   };
 
   // AVALIAÇÃO
@@ -265,14 +278,13 @@ export default function PropertiesPage() {
     const payload = {
       ...formData,
       user_id: user?.id,
-      price: formData.price || 0,
-      condo_fee: formData.condo_fee || 0,
-      bedrooms: formData.bedrooms || 0,
-      bathrooms: formData.bathrooms || 0,
-      suites: formData.suites || 0,
-      area: formData.area || 0,
-      parking_spaces: formData.parking_spaces || 0,
-      updated_at: new Date()
+      price: Number(formData.price) || 0,
+      condo_fee: Number(formData.condo_fee) || 0,
+      bedrooms: Number(formData.bedrooms) || 0,
+      bathrooms: Number(formData.bathrooms) || 0,
+      suites: Number(formData.suites) || 0,
+      area: Number(formData.area) || 0,
+      parking_spaces: Number(formData.parking_spaces) || 0
     };
 
     try {
@@ -361,15 +373,21 @@ export default function PropertiesPage() {
         </div>
       </div>
 
-      {/* STATS CARDS */}
+      {/* STATS CARDS CORRIGIDOS */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <StatCard label="Total" value={stats.total} icon={Home} theme={theme} />
         <StatCard label="Disponíveis" value={stats.disponivel} icon={Check} color="text-green-500" theme={theme} />
         <StatCard label="Em Negociação" value={stats.negociacao} icon={Clock} color="text-orange-500" theme={theme} />
-        <StatCard label="Vendidos/Locados" value={stats.vendido + stats.locado} icon={Award} color="text-blue-500" theme={theme} />
+        <StatCard 
+          label="Vendidos/Locados" 
+          value={stats.vendido + stats.locado} 
+          icon={Award} 
+          color="text-blue-500" 
+          theme={theme} 
+        />
         <StatCard 
           label="Valor Total" 
-          value={new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(stats.valorTotal)} 
+          value={formatCurrency(stats.valorTotal)} 
           icon={DollarSign} 
           color="text-[#0217ff]"
           theme={theme} 
@@ -431,23 +449,24 @@ export default function PropertiesPage() {
             <PropertyCard
               key={property.id}
               property={property}
-              onView={(p) => {
+              onView={(p: Property) => {
                 setSelectedProperty(p);
                 setShowDetailModal(true);
               }}
-              onEdit={(p) => {
+              onEdit={(p: Property) => {
                 setEditingId(p.id);
                 setFormData(p);
                 setIsViewOnly(false);
                 setShowModal(true);
               }}
-              onDelete={async (id) => {
+              onDelete={async (id: string) => {
                 if (confirm('Tem certeza que deseja excluir este imóvel?')) {
                   await supabase.from('properties').delete().eq('id', id);
                   loadProperties();
                 }
               }}
               theme={theme}
+              formatCurrency={formatCurrency}
             />
           ))}
         </div>
@@ -457,23 +476,24 @@ export default function PropertiesPage() {
             <PropertyListItem
               key={property.id}
               property={property}
-              onView={(p) => {
+              onView={(p: Property) => {
                 setSelectedProperty(p);
                 setShowDetailModal(true);
               }}
-              onEdit={(p) => {
+              onEdit={(p: Property) => {
                 setEditingId(p.id);
                 setFormData(p);
                 setIsViewOnly(false);
                 setShowModal(true);
               }}
-              onDelete={async (id) => {
+              onDelete={async (id: string) => {
                 if (confirm('Tem certeza que deseja excluir este imóvel?')) {
                   await supabase.from('properties').delete().eq('id', id);
                   loadProperties();
                 }
               }}
               theme={theme}
+              formatCurrency={formatCurrency}
             />
           ))}
         </div>
@@ -492,6 +512,7 @@ export default function PropertiesPage() {
             setShowModal(true);
           }}
           theme={theme}
+          formatCurrency={formatCurrency}
         />
       )}
 
@@ -538,13 +559,18 @@ export default function PropertiesPage() {
 // --- COMPONENTES AUXILIARES ---
 
 function StatCard({ label, value, icon: Icon, color = 'text-zinc-500', theme }: any) {
+  // Garantir que value nunca seja NaN ou undefined
+  const displayValue = value === undefined || value === null || (typeof value === 'number' && isNaN(value)) 
+    ? '0' 
+    : value;
+
   return (
     <div className={`${theme.card} p-6 rounded-[24px] border`}>
       <div className="flex items-center justify-between mb-2">
         <p className="text-[9px] font-bold uppercase text-zinc-400 tracking-wider">{label}</p>
         <Icon size={16} className={color} />
       </div>
-      <p className={`text-xl font-black ${theme.text}`}>{value}</p>
+      <p className={`text-xl font-black ${theme.text}`}>{displayValue}</p>
     </div>
   );
 }
@@ -586,7 +612,7 @@ function EmptyState({ searchTerm, onClear, theme }: any) {
   );
 }
 
-function PropertyCard({ property, onView, onEdit, onDelete, theme }: any) {
+function PropertyCard({ property, onView, onEdit, onDelete, theme, formatCurrency }: any) {
   const status = PROPERTY_STATUS[property.status as keyof typeof PROPERTY_STATUS] || PROPERTY_STATUS.disponivel;
   const type = PROPERTY_TYPES[property.type as keyof typeof PROPERTY_TYPES] || PROPERTY_TYPES.venda;
 
@@ -656,11 +682,7 @@ function PropertyCard({ property, onView, onEdit, onDelete, theme }: any) {
             {property.title}
           </h3>
           <span className="text-sm font-black text-[#0217ff]">
-            {new Intl.NumberFormat('pt-BR', { 
-              style: 'currency', 
-              currency: 'BRL',
-              maximumFractionDigits: 0 
-            }).format(property.price)}
+            {formatCurrency(property.price)}
           </span>
         </div>
 
@@ -708,7 +730,7 @@ function PropertyCard({ property, onView, onEdit, onDelete, theme }: any) {
   );
 }
 
-function PropertyListItem({ property, onView, onEdit, onDelete, theme }: any) {
+function PropertyListItem({ property, onView, onEdit, onDelete, theme, formatCurrency }: any) {
   const status = PROPERTY_STATUS[property.status as keyof typeof PROPERTY_STATUS] || PROPERTY_STATUS.disponivel;
 
   return (
@@ -747,15 +769,11 @@ function PropertyListItem({ property, onView, onEdit, onDelete, theme }: any) {
 
           <div className="mt-2">
             <span className="text-sm font-black text-[#0217ff]">
-              {new Intl.NumberFormat('pt-BR', { 
-                style: 'currency', 
-                currency: 'BRL',
-                maximumFractionDigits: 0 
-              }).format(property.price)}
+              {formatCurrency(property.price)}
             </span>
             {property.condo_fee > 0 && (
               <span className="text-[8px] text-zinc-400 ml-2">
-                + cond. {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(property.condo_fee)}
+                + cond. {formatCurrency(property.condo_fee)}
               </span>
             )}
           </div>
@@ -778,7 +796,7 @@ function PropertyListItem({ property, onView, onEdit, onDelete, theme }: any) {
   );
 }
 
-function PropertyDetailModal({ property, onClose, onEdit, theme }: any) {
+function PropertyDetailModal({ property, onClose, onEdit, theme, formatCurrency }: any) {
   const status = PROPERTY_STATUS[property.status as keyof typeof PROPERTY_STATUS] || PROPERTY_STATUS.disponivel;
   const type = PROPERTY_TYPES[property.type as keyof typeof PROPERTY_TYPES] || PROPERTY_TYPES.venda;
 
@@ -828,7 +846,7 @@ function PropertyDetailModal({ property, onClose, onEdit, theme }: any) {
                 {status.label}
               </span>
               <p className="text-2xl font-black text-[#0217ff] mt-2">
-                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(property.price)}
+                {formatCurrency(property.price)}
               </p>
             </div>
           </div>

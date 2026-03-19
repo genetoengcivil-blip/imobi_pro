@@ -7,7 +7,7 @@ import {
   Download, Edit3, Eye, Clock, Tag, FolderOpen,
   Calendar, DollarSign, Home, Printer, Share2,
   Archive, Copy, FileCheck, FileMinus, FileWarning,
-  Check // <-- ADD CHECK HERE
+  Check
 } from 'lucide-react';
 import { useGlobal } from '../context/GlobalContext';
 import { supabase } from '../lib/supabase';
@@ -145,6 +145,7 @@ export default function ContractsPage() {
   const [filterCategory, setFilterCategory] = useState<string>('todos');
   const [step, setStep] = useState(1);
   const [editingContract, setEditingContract] = useState<Contract | null>(null);
+  const [isViewOnly, setIsViewOnly] = useState(false);
 
   const [formData, setFormData] = useState({
     category: '', 
@@ -238,11 +239,30 @@ export default function ContractsPage() {
   const handleSave = async () => {
     setLoading(true);
     try {
+      // Limpar e formatar os dados antes de salvar
+      const cleanValue = String(formData.value || '0')
+        .replace(/[R$\s.]/g, '')
+        .replace(',', '.');
+      
       const payload = {
-        ...formData,
-        user_id: user?.id,
-        value: parseFloat(String(formData.value).replace(/\D/g, '')) / 100 || 0,
+        category: formData.category,
+        client_name: formData.client_name,
+        property_id: formData.property_id,
+        property_name: formData.property_name,
+        location: formData.location,
+        value: parseFloat(cleanValue) || 0,
+        document_type: formData.document_type,
+        final_content: formData.final_content,
         content: formData.final_content,
+        start_date: formData.start_date,
+        end_date: formData.end_date,
+        matricula: formData.matricula,
+        sinal: formData.sinal,
+        parcelas: formData.parcelas,
+        posse_percent: formData.posse_percent,
+        city: formData.city,
+        status: formData.status,
+        user_id: user?.id,
         checklist: [
           { task: "RG / CPF", done: false, required: true },
           { task: "Certidão de Matrícula Atualizada", done: false, required: true },
@@ -250,8 +270,7 @@ export default function ContractsPage() {
           { task: "Comprovante de Endereço", done: false, required: true },
           { task: "Estado Civil e Regime de Bens", done: false, required: true },
           { task: "Documentos do Imóvel (IPTU, Planta)", done: false, required: false }
-        ],
-        updated_at: new Date()
+        ]
       };
 
       let error;
@@ -273,6 +292,7 @@ export default function ContractsPage() {
       setEditingContract(null);
       loadData();
     } catch (error: any) {
+      console.error('Erro detalhado:', error);
       alert('Erro ao salvar: ' + error.message);
     } finally {
       setLoading(false);
@@ -587,7 +607,7 @@ export default function ContractsPage() {
                               Checklist Documental
                             </p>
                             <span className="text-[9px] font-bold text-zinc-400">
-                              {doc.checklist?.filter(i => i.done).length || 0}/{doc.checklist?.length || 0}
+                              {doc.checklist?.filter((i: ChecklistItem) => i.done).length || 0}/{doc.checklist?.length || 0}
                             </span>
                           </div>
                           
@@ -830,6 +850,7 @@ export default function ContractsPage() {
                           placeholder="Ex: João da Silva"
                           value={formData.client_name}
                           onChange={e => setFormData({...formData, client_name: e.target.value})}
+                          required
                         />
                       </div>
                       
