@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { User, Lead } from '../types';
+import { Lead } from '../types';
 
 interface GlobalContextType {
   user: any | null;
@@ -26,20 +26,50 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [user, setUser] = useState<any | null>(null);
   const [leads, setLeads] = useState<Lead[]>([]);
   const [properties, setProperties] = useState<any[]>([]);
-  const [transactions, setTransactions] = useState([]);
-  const [appointments, setAppointments] = useState([]);
+  const [transactions, setTransactions] = useState<any[]>([]);
+  const [appointments, setAppointments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [darkMode, setDarkMode] = useState(false);
-  
+
+  // 🔥 NÃO pode travar a aplicação
+  const safeFetch = async (query: any) => {
+    try {
+      const { data } = await query;
+      return data || [];
+    } catch (err) {
+      console.error("Erro em query:", err);
+      return [];
+    }
+  };
 
   const carregarDados = async (authUser: any) => {
     try {
-      const { data: profile } = await supabase.from('perfil').select('*').eq('id', authUser.id).single();
-      setUser({ ...authUser, ...profile, name: profile?.nome_exibicao || authUser?.user_metadata?.full_name || 'Corretor' });
+      // 🔥 PERFIL seguro
+      const { data: profile } = await supabase
+        .from('perfil')
+        .select('*')
+        .eq('id', authUser.id)
+        .maybeSingle();
 
-      const { data: leadsData } = await supabase.from('leads').select('*').order('created_at', { ascending: false });
-      if (leadsData) {
-        setLeads(leadsData.map((l: any) => ({
+      setUser({
+        ...authUser,
+        ...profile,
+        name:
+          profile?.nome_exibicao ||
+          authUser?.user_metadata?.full_name ||
+          'Corretor',
+      });
+
+      // 🔥 NÃO BLOQUEIA UI
+      const [leadsData, propertiesData, transData, appData] = await Promise.all([
+        safeFetch(supabase.from('leads').select('*').order('created_at', { ascending: false })),
+        safeFetch(supabase.from('properties').select('*').order('created_at', { ascending: false })),
+        safeFetch(supabase.from('transactions').select('*')),
+        safeFetch(supabase.from('appointments').select('*')),
+      ]);
+
+      setLeads(
+        leadsData.map((l: any) => ({
           ...l,
           id: l.id?.toString(),
           name: l.name || l.nome || l.client_name || 'Lead sem nome',
@@ -47,49 +77,78 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           phone: l.phone || l.telefone || '',
           status: l.status || 'novo',
           value: Number(l.value) || Number(l.valor) || 0,
-          createdAt: l.created_at || l.createdAt || new Date().toISOString(),
-          commission_rate: Number(l.commission_rate) || Number(l.comissao) || Number(l.commission) || 6
-        })));
-      }
+          createdAt: l.created_at || new Date().toISOString(),
+          commission_rate:
+            Number(l.commission_rate) ||
+            Number(l.comissao) ||
+            Number(l.commission) ||
+            6,
+        }))
+      );
 
-      const { data: propertiesData } = await supabase.from('properties').select('*').order('created_at', { ascending: false });
-      if (propertiesData) setProperties(propertiesData);
-
-      const { data: transData } = await supabase.from('transactions').select('*');
-      if (transData) setTransactions(transData);
-
-      const { data: appData } = await supabase.from('appointments').select('*');
-      if (appData) setAppointments(appData);
+      setProperties(propertiesData);
+      setTransactions(transData);
+      setAppointments(appData);
 
     } catch (err) {
-      console.error("Erro ignorado no carregamento:", err);
-      if (!user) setUser({ ...authUser, name: authUser?.user_metadata?.full_name || 'Corretor' });
-    } finally {
-      setLoading(false);
+      console.error("Erro geral:", err);
+
+      setUser({
+        ...authUser,
+        name: authUser?.user_metadata?.full_name || 'Corretor',
+      });
     }
   };
 
   useEffect(() => {
+    let mounted = true;
+
     const initAuth = async () => {
       const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) await carregarDados(session.user);
-      else setLoading(false);
+
+      if (!mounted) return;
+
+      if (session?.user) {
+        setUser(session.user);
+        setLoading(false);
+
+        // 🔥 carrega dados depois
+        carregarDados(session.user);
+      } else {
+        setUser(null);
+        setLoading(false);
+      }
     };
+
     initAuth();
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      if (session?.user) await carregarDados(session.user);
-      else { setUser(null); setLoading(false); }
-    });
-    return () => subscription.unsubscribe();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (_event, session) => {
+        if (!mounted) return;
+
+        if (session?.user) {
+          setUser(session.user);
+          setLoading(false);
+
+          carregarDados(session.user);
+        } else {
+          setUser(null);
+          setLoading(false);
+        }
+      }
+    );
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
-  // 🛡️ ADICIONAR LEAD - Agora usa a memória (user.id) e evita o erro de Lock do Supabase!
   const addLead = async (leadData: any) => {
     const payload = { ...leadData, user_id: user?.id };
-    
     const { data, error } = await supabase.from('leads').insert([payload]).select();
-    
-    if (error) throw error; 
+
+    if (error) throw error;
 
     if (data && data.length > 0) {
       setLeads(prev => [{ ...data[0], createdAt: data[0].created_at }, ...prev]);
@@ -98,7 +157,8 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const updateLead = async (id: string, updates: any) => {
     const { error } = await supabase.from('leads').update(updates).eq('id', id);
-    if (error) throw error; 
+    if (error) throw error;
+
     setLeads(prev => prev.map(l => l.id === id ? { ...l, ...updates } : l));
   };
 
@@ -108,7 +168,6 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const addProperty = async (prop: any) => {
-    // Também ajustado para propriedades para evitar o erro no futuro
     const payload = { ...prop, user_id: user?.id };
     const { data } = await supabase.from('properties').insert([payload]).select();
     if (data) setProperties(prev => [data[0], ...prev]);
@@ -124,15 +183,28 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setProperties(prev => prev.filter(p => p.id !== id));
   };
 
-  const uploadPropertyImage = async (file: File) => { return null; };
+  const uploadPropertyImage = async () => null;
 
   return (
-    <GlobalContext.Provider value={{
-      user, leads, properties, transactions, appointments, loading, darkMode, 
-      toggleDarkMode: () => setDarkMode(!darkMode),
-      addLead, updateLead, deleteLead,
-      addProperty, updateProperty, deleteProperty, uploadPropertyImage
-    }}>
+    <GlobalContext.Provider
+      value={{
+        user,
+        leads,
+        properties,
+        transactions,
+        appointments,
+        loading,
+        darkMode,
+        toggleDarkMode: () => setDarkMode(!darkMode),
+        addLead,
+        updateLead,
+        deleteLead,
+        addProperty,
+        updateProperty,
+        deleteProperty,
+        uploadPropertyImage,
+      }}
+    >
       {children}
     </GlobalContext.Provider>
   );
