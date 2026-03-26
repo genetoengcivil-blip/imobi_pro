@@ -2,12 +2,41 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { Lead } from '../types';
 
+interface Transaction {
+  id: string;
+  description: string;
+  amount: number;
+  type: 'receita' | 'despesa';
+  category: string;
+  date: string;
+  status: 'pendente' | 'pago';
+  notes?: string;
+  user_id?: string;
+  created_at?: string;
+}
+
+interface Appointment {
+  id: string;
+  title: string;
+  date: string;
+  time: string;
+  endTime?: string;
+  type: string;
+  notes?: string;
+  location?: string;
+  clientName?: string;
+  clientPhone?: string;
+  status?: string;
+  reminder?: boolean;
+  user_id?: string;
+}
+
 interface GlobalContextType {
   user: any | null;
   leads: Lead[];
   properties: any[];
-  transactions: any[];
-  appointments: any[];
+  transactions: Transaction[];
+  appointments: Appointment[];
   darkMode: boolean;
   loading: boolean;
   toggleDarkMode: () => void;
@@ -18,6 +47,10 @@ interface GlobalContextType {
   updateProperty: (id: string, property: any) => Promise<void>;
   deleteProperty: (id: string) => Promise<void>;
   uploadPropertyImage: (file: File) => Promise<string | null>;
+  addTransaction: (transaction: Omit<Transaction, 'id'>) => Promise<void>;
+  deleteTransaction: (id: string) => Promise<void>;
+  addAppointment: (appointment: Omit<Appointment, 'id'>) => Promise<void>;
+  deleteAppointment: (id: string) => Promise<void>;
 }
 
 const GlobalContext = createContext<GlobalContextType | undefined>(undefined);
@@ -26,15 +59,68 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [user, setUser] = useState<any | null>(null);
   const [leads, setLeads] = useState<Lead[]>([]);
   const [properties, setProperties] = useState<any[]>([]);
-  const [transactions, setTransactions] = useState<any[]>([]);
-  const [appointments, setAppointments] = useState<any[]>([]);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
-  const [darkMode, setDarkMode] = useState(false);
+  const [darkMode, setDarkMode] = useState(() => {
+    const saved = localStorage.getItem('darkMode');
+    return saved ? JSON.parse(saved) : false;
+  });
 
-  // 🔥 NÃO pode travar a aplicação
+  // Carregar dados do localStorage (fallback)
+  useEffect(() => {
+    const storedTransactions = localStorage.getItem('imobipro_transactions');
+    if (storedTransactions) {
+      try {
+        const parsed = JSON.parse(storedTransactions);
+        setTransactions(parsed);
+        console.log('Carregadas transações do localStorage:', parsed.length);
+      } catch (e) {
+        console.error('Erro ao carregar transações do localStorage:', e);
+      }
+    }
+    
+    const storedAppointments = localStorage.getItem('imobipro_appointments');
+    if (storedAppointments) {
+      try {
+        const parsed = JSON.parse(storedAppointments);
+        setAppointments(parsed);
+      } catch (e) {
+        console.error('Erro ao carregar compromissos do localStorage:', e);
+      }
+    }
+  }, []);
+
+  // Salvar transações no localStorage quando mudarem
+  useEffect(() => {
+    if (transactions.length > 0 || true) {
+      localStorage.setItem('imobipro_transactions', JSON.stringify(transactions));
+      console.log('Transações salvas no localStorage:', transactions.length);
+    }
+  }, [transactions]);
+
+  // Salvar compromissos no localStorage quando mudarem
+  useEffect(() => {
+    localStorage.setItem('imobipro_appointments', JSON.stringify(appointments));
+  }, [appointments]);
+
+  // Salvar darkMode no localStorage
+  useEffect(() => {
+    localStorage.setItem('darkMode', JSON.stringify(darkMode));
+    if (darkMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [darkMode]);
+
   const safeFetch = async (query: any) => {
     try {
-      const { data } = await query;
+      const { data, error } = await query;
+      if (error) {
+        console.error('Erro na query:', error);
+        return [];
+      }
       return data || [];
     } catch (err) {
       console.error("Erro em query:", err);
@@ -44,7 +130,7 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const carregarDados = async (authUser: any) => {
     try {
-      // 🔥 PERFIL seguro
+      // Carregar perfil
       const { data: profile } = await supabase
         .from('perfil')
         .select('*')
@@ -54,49 +140,64 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setUser({
         ...authUser,
         ...profile,
-        name:
-          profile?.nome_exibicao ||
-          authUser?.user_metadata?.full_name ||
-          'Corretor',
+        name: profile?.nome_exibicao || authUser?.user_metadata?.full_name || 'Corretor',
       });
 
-      // 🔥 NÃO BLOQUEIA UI
+      // Carregar dados das tabelas
       const [leadsData, propertiesData, transData, appData] = await Promise.all([
         safeFetch(supabase.from('leads').select('*').order('created_at', { ascending: false })),
         safeFetch(supabase.from('properties').select('*').order('created_at', { ascending: false })),
-        safeFetch(supabase.from('transactions').select('*')),
-        safeFetch(supabase.from('appointments').select('*')),
+        safeFetch(supabase.from('transactions').select('*').order('date', { ascending: false })),
+        safeFetch(supabase.from('appointments').select('*').order('date', { ascending: false })),
       ]);
 
-      setLeads(
-        leadsData.map((l: any) => ({
-          ...l,
-          id: l.id?.toString(),
-          name: l.name || l.nome || l.client_name || 'Lead sem nome',
-          email: l.email || '',
-          phone: l.phone || l.telefone || '',
-          status: l.status || 'novo',
-          value: Number(l.value) || Number(l.valor) || 0,
-          createdAt: l.created_at || new Date().toISOString(),
-          commission_rate:
-            Number(l.commission_rate) ||
-            Number(l.comissao) ||
-            Number(l.commission) ||
-            6,
-        }))
-      );
+      // Processar leads
+      setLeads(leadsData.map((l: any) => ({
+        ...l,
+        id: l.id?.toString(),
+        name: l.name || l.nome || l.client_name || 'Lead sem nome',
+        email: l.email || '',
+        phone: l.phone || l.telefone || '',
+        status: l.status || 'novo',
+        value: Number(l.value) || Number(l.valor) || 0,
+        createdAt: l.created_at || new Date().toISOString(),
+        commission_rate: Number(l.commission_rate) || Number(l.comissao) || 6,
+      })));
 
+      // Processar propriedades
       setProperties(propertiesData);
-      setTransactions(transData);
-      setAppointments(appData);
+      
+      // Processar transações (garantir que têm os campos corretos)
+      if (transData && transData.length > 0) {
+        const formattedTransactions = transData.map((t: any) => ({
+          id: t.id?.toString() || Date.now().toString(),
+          description: t.description || 'Sem descrição',
+          amount: Number(t.amount) || 0,
+          type: t.type || 'receita',
+          category: t.category || 'Outros',
+          date: t.date || new Date().toISOString().split('T')[0],
+          status: t.status || 'pago',
+          notes: t.notes || '',
+          user_id: t.user_id,
+          created_at: t.created_at
+        }));
+        setTransactions(formattedTransactions);
+        console.log('Transações carregadas do Supabase:', formattedTransactions.length);
+      } else {
+        console.log('Nenhuma transação encontrada no Supabase');
+      }
+      
+      // Processar compromissos
+      setAppointments(appData || []);
 
     } catch (err) {
-      console.error("Erro geral:", err);
-
+      console.error("Erro geral ao carregar dados:", err);
       setUser({
         ...authUser,
         name: authUser?.user_metadata?.full_name || 'Corretor',
       });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -111,8 +212,6 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       if (session?.user) {
         setUser(session.user);
         setLoading(false);
-
-        // 🔥 carrega dados depois
         carregarDados(session.user);
       } else {
         setUser(null);
@@ -129,7 +228,6 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         if (session?.user) {
           setUser(session.user);
           setLoading(false);
-
           carregarDados(session.user);
         } else {
           setUser(null);
@@ -144,12 +242,11 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
   }, []);
 
+  // ========== LEAD FUNCTIONS ==========
   const addLead = async (leadData: any) => {
     const payload = { ...leadData, user_id: user?.id };
     const { data, error } = await supabase.from('leads').insert([payload]).select();
-
     if (error) throw error;
-
     if (data && data.length > 0) {
       setLeads(prev => [{ ...data[0], createdAt: data[0].created_at }, ...prev]);
     }
@@ -158,7 +255,6 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const updateLead = async (id: string, updates: any) => {
     const { error } = await supabase.from('leads').update(updates).eq('id', id);
     if (error) throw error;
-
     setLeads(prev => prev.map(l => l.id === id ? { ...l, ...updates } : l));
   };
 
@@ -167,6 +263,7 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setLeads(prev => prev.filter(l => l.id !== id));
   };
 
+  // ========== PROPERTY FUNCTIONS ==========
   const addProperty = async (prop: any) => {
     const payload = { ...prop, user_id: user?.id };
     const { data } = await supabase.from('properties').insert([payload]).select();
@@ -185,6 +282,135 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const uploadPropertyImage = async () => null;
 
+  // ========== TRANSACTION FUNCTIONS ==========
+  const addTransaction = async (transaction: Omit<Transaction, 'id'>) => {
+    console.log('📝 addTransaction chamada:', transaction);
+    
+    const newTransaction: Transaction = {
+      ...transaction,
+      id: Date.now().toString(),
+      created_at: new Date().toISOString()
+    };
+    
+    // 1. Atualizar estado local imediatamente (UI responsive)
+    setTransactions(prev => [newTransaction, ...prev]);
+    console.log('✅ Transação adicionada ao estado local');
+    
+    // 2. Tentar salvar no Supabase (se usuário logado)
+    if (user?.id) {
+      try {
+        const payload = {
+          ...transaction,
+          user_id: user.id,
+          date: transaction.date,
+          amount: transaction.amount,
+          description: transaction.description,
+          type: transaction.type,
+          category: transaction.category,
+          status: transaction.status,
+          notes: transaction.notes || null
+        };
+        
+        console.log('💾 Salvando no Supabase:', payload);
+        
+        const { data, error } = await supabase
+          .from('transactions')
+          .insert([payload])
+          .select();
+        
+        if (error) {
+          console.error('❌ Erro ao salvar no Supabase:', error);
+          // Se erro, mantém no localStorage já salvo
+        } else if (data && data.length > 0) {
+          console.log('✅ Transação salva no Supabase:', data[0]);
+          // Atualizar com o ID do Supabase se necessário
+          if (data[0].id && data[0].id !== newTransaction.id) {
+            setTransactions(prev => prev.map(t => 
+              t.id === newTransaction.id ? { ...t, id: data[0].id } : t
+            ));
+          }
+        }
+      } catch (err) {
+        console.error('❌ Erro exceção ao salvar transação:', err);
+      }
+    } else {
+      console.log('⚠️ Usuário não autenticado, salvando apenas localmente');
+    }
+    
+    return;
+  };
+
+  const deleteTransaction = async (id: string) => {
+    console.log('🗑️ deleteTransaction chamada para id:', id);
+    
+    // 1. Remover do estado local
+    setTransactions(prev => prev.filter(t => t.id !== id));
+    
+    // 2. Tentar remover do Supabase
+    if (user?.id) {
+      try {
+        const { error } = await supabase
+          .from('transactions')
+          .delete()
+          .eq('id', id);
+        
+        if (error) {
+          console.error('❌ Erro ao deletar do Supabase:', error);
+        } else {
+          console.log('✅ Transação deletada do Supabase');
+        }
+      } catch (err) {
+        console.error('❌ Erro exceção ao deletar transação:', err);
+      }
+    }
+  };
+
+  // ========== APPOINTMENT FUNCTIONS ==========
+  const addAppointment = async (appointment: Omit<Appointment, 'id'>) => {
+    console.log('📝 addAppointment chamada:', appointment);
+    
+    const newAppointment: Appointment = {
+      ...appointment,
+      id: Date.now().toString()
+    };
+    
+    setAppointments(prev => [newAppointment, ...prev]);
+    
+    if (user?.id) {
+      try {
+        const payload = { ...appointment, user_id: user.id };
+        const { data, error } = await supabase
+          .from('appointments')
+          .insert([payload])
+          .select();
+        
+        if (error) {
+          console.error('Erro ao salvar compromisso:', error);
+        } else if (data && data.length > 0 && data[0].id !== newAppointment.id) {
+          setAppointments(prev => prev.map(a => 
+            a.id === newAppointment.id ? { ...a, id: data[0].id } : a
+          ));
+        }
+      } catch (err) {
+        console.error('Erro ao salvar compromisso:', err);
+      }
+    }
+  };
+
+  const deleteAppointment = async (id: string) => {
+    setAppointments(prev => prev.filter(a => a.id !== id));
+    
+    if (user?.id) {
+      try {
+        await supabase.from('appointments').delete().eq('id', id);
+      } catch (err) {
+        console.error('Erro ao deletar compromisso:', err);
+      }
+    }
+  };
+
+  const toggleDarkMode = () => setDarkMode(!darkMode);
+
   return (
     <GlobalContext.Provider
       value={{
@@ -195,7 +421,7 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         appointments,
         loading,
         darkMode,
-        toggleDarkMode: () => setDarkMode(!darkMode),
+        toggleDarkMode,
         addLead,
         updateLead,
         deleteLead,
@@ -203,6 +429,10 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         updateProperty,
         deleteProperty,
         uploadPropertyImage,
+        addTransaction,
+        deleteTransaction,
+        addAppointment,
+        deleteAppointment,
       }}
     >
       {children}
@@ -212,6 +442,6 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
 export const useGlobal = () => {
   const context = useContext(GlobalContext);
-  if (!context) throw new Error('useGlobal error');
+  if (!context) throw new Error('useGlobal must be used within a GlobalProvider');
   return context;
 };
