@@ -38,6 +38,7 @@ interface Property {
   city?: string;
   state?: string;
   location: string;
+  full_address?: string;
   has_elevator?: boolean;
   has_bbq?: boolean;
   has_pool?: boolean;
@@ -121,7 +122,7 @@ export default function PropertiesPage() {
     title: '', price: 0, condo_fee: 0, type: 'venda', status: 'disponivel',
     bedrooms: 0, bathrooms: 0, suites: 0, area: 0, parking_spaces: 0,
     description: '', images: [] as string[],
-    cep: '', street: '', number: '', neighborhood: '', city: '', state: '', location: '',
+    cep: '', street: '', number: '', neighborhood: '', city: '', state: '', location: '', full_address: '',
     has_elevator: false, has_bbq: false, has_pool: false, has_gym: false,
     has_games: false, has_party: false, has_spa: false, has_playground: false,
     has_court: false, has_gourmet: false, has_conciege: false, has_laundry: false,
@@ -238,16 +239,24 @@ export default function PropertiesPage() {
       const res = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
       const data = await res.json();
       if (!data.erro) {
+        const enderecoCompleto = `${data.logradouro}${data.logradouro ? ', ' : ''}${data.bairro}, ${data.localidade} - ${data.uf}`;
         setFormData(prev => ({
           ...prev, 
           street: data.logradouro, 
           neighborhood: data.bairro, 
           city: data.localidade, 
           state: data.uf,
-          location: `${data.bairro}, ${data.localidade} - ${data.uf}`
+          location: `${data.bairro}, ${data.localidade} - ${data.uf}`,
+          full_address: enderecoCompleto
         }));
+        alert(`Endereço encontrado: ${enderecoCompleto}`);
+      } else {
+        alert('CEP não encontrado');
       }
-    } catch (e) { console.error(e); }
+    } catch (e) { 
+      console.error(e);
+      alert('Erro ao buscar CEP');
+    }
   };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -380,12 +389,19 @@ export default function PropertiesPage() {
         </div>
         
         <div className="flex gap-3 w-full md:w-auto">
+          {/* 🔥 VIEW MODE TOGGLE - CORRIGIDO */}
           <div className="flex gap-1 p-1 rounded-xl bg-zinc-100 dark:bg-white/5">
-            <button onClick={() => setViewMode('grid')} className={`p-2 rounded-lg transition-all ${viewMode === 'grid' ? 'bg-white dark:bg-zinc-800 shadow' : ''}`}>
-              <Grid3X3 size={18} className={viewMode === 'grid' ? 'text-[#0217ff]' : 'text-zinc-400'} />
+            <button 
+              onClick={() => setViewMode('grid')} 
+              className={`p-2 rounded-lg transition-all ${viewMode === 'grid' ? 'bg-[#0217ff] text-white shadow-md' : 'text-zinc-400 hover:bg-zinc-200 dark:hover:bg-white/10'}`}
+            >
+              <Grid3X3 size={18} />
             </button>
-            <button onClick={() => setViewMode('list')} className={`p-2 rounded-lg transition-all ${viewMode === 'list' ? 'bg-white dark:bg-zinc-800 shadow' : ''}`}>
-              <List size={18} className={viewMode === 'list' ? 'text-[#0217ff]' : 'text-zinc-400'} />
+            <button 
+              onClick={() => setViewMode('list')} 
+              className={`p-2 rounded-lg transition-all ${viewMode === 'list' ? 'bg-[#0217ff] text-white shadow-md' : 'text-zinc-400 hover:bg-zinc-200 dark:hover:bg-white/10'}`}
+            >
+              <List size={18} />
             </button>
           </div>
 
@@ -489,6 +505,7 @@ export default function PropertiesPage() {
           {filteredAndSortedProperties.map((property) => {
             const status = PROPERTY_STATUS[property.status as keyof typeof PROPERTY_STATUS] || PROPERTY_STATUS.disponivel;
             const type = PROPERTY_TYPES[property.type as keyof typeof PROPERTY_TYPES] || PROPERTY_TYPES.venda;
+            const amenitiesCount = AMENITIES.filter(a => property[a.id as keyof Property]).length;
             return (
               <div key={property.id} className={`${theme.card} rounded-2xl border overflow-hidden relative group hover:shadow-xl transition-all`}>
                 <div className="absolute top-3 right-3 z-10 flex gap-2 opacity-0 group-hover:opacity-100 transition-all">
@@ -504,7 +521,30 @@ export default function PropertiesPage() {
                 <div className="p-4 space-y-3">
                   <div className="flex justify-between items-start"><h3 className={`font-bold truncate text-base w-3/5 ${theme.text}`}>{property.title}</h3><span className="text-sm font-black text-[#0217ff]">{formatCurrency(property.price)}</span></div>
                   <p className="text-[10px] text-zinc-500 font-bold uppercase flex items-center gap-1"><MapPin size={10} className="text-[#0217ff]" /> {property.location || 'Localização não informada'}</p>
-                  <div className="flex flex-wrap gap-3 py-2 border-y border-zinc-100 dark:border-white/5"><span className="flex items-center gap-1 text-[9px] font-bold text-zinc-500"><Square size={12}/> {property.area}m²</span><span className="flex items-center gap-1 text-[9px] font-bold text-zinc-500"><Bed size={12}/> {property.bedrooms}</span><span className="flex items-center gap-1 text-[9px] font-bold text-zinc-500"><Bath size={12}/> {property.bathrooms}</span><span className="flex items-center gap-1 text-[9px] font-bold text-zinc-500"><Car size={12}/> {property.parking_spaces}</span></div>
+                  <div className="flex flex-wrap gap-3 py-2 border-y border-zinc-100 dark:border-white/5">
+                    <span className="flex items-center gap-1 text-[9px] font-bold text-zinc-500"><Square size={12}/> {property.area}m²</span>
+                    <span className="flex items-center gap-1 text-[9px] font-bold text-zinc-500"><Bed size={12}/> {property.bedrooms}</span>
+                    <span className="flex items-center gap-1 text-[9px] font-bold text-zinc-500"><Bath size={12}/> {property.bathrooms}</span>
+                    <span className="flex items-center gap-1 text-[9px] font-bold text-zinc-500"><Car size={12}/> {property.parking_spaces}</span>
+                  </div>
+                  {/* 🔥 AMENITIES PREVIEW - PARA APARECER NO SITE PÚBLICO */}
+                  {amenitiesCount > 0 && (
+                    <div className="flex flex-wrap gap-1.5 pt-1">
+                      {AMENITIES.filter(a => property[a.id as keyof Property]).slice(0, 4).map((amenity) => {
+                        const Icon = amenity.icon;
+                        return (
+                          <div key={amenity.id} className="p-1.5 bg-zinc-100 dark:bg-white/5 rounded-lg" title={amenity.label}>
+                            <Icon size={10} className="text-zinc-500" />
+                          </div>
+                        );
+                      })}
+                      {amenitiesCount > 4 && (
+                        <div className="p-1.5 bg-zinc-100 dark:bg-white/5 rounded-lg text-[8px] font-bold text-zinc-500">
+                          +{amenitiesCount - 4}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             );
@@ -514,17 +554,45 @@ export default function PropertiesPage() {
         <div className="space-y-4">
           {filteredAndSortedProperties.map((property) => {
             const status = PROPERTY_STATUS[property.status as keyof typeof PROPERTY_STATUS] || PROPERTY_STATUS.disponivel;
+            const amenitiesCount = AMENITIES.filter(a => property[a.id as keyof Property]).length;
             return (
               <div key={property.id} className={`${theme.card} rounded-2xl border p-4 hover:shadow-md transition-all`}>
                 <div className="flex items-center gap-4">
                   <div className="w-20 h-20 rounded-xl overflow-hidden bg-zinc-100 dark:bg-zinc-800 flex-shrink-0">{property.images?.[0] ? <img src={property.images[0]} alt="" className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center"><Camera size={20} className="text-zinc-400" /></div>}</div>
-                  <div className="flex-1 min-w-0"><div className="flex items-center gap-2 mb-1"><h3 className={`font-bold truncate ${theme.text}`}>{property.title}</h3><span className={`px-2 py-0.5 rounded-full text-[8px] font-bold uppercase ${status.bg} ${status.color}`}>{status.label}</span></div>
-                  <p className="text-[9px] text-zinc-500 font-bold uppercase mb-2 flex items-center gap-1"><MapPin size={9} /> {property.location || 'Localização não informada'}</p>
-                  <div className="flex flex-wrap gap-3 text-[9px] font-bold text-zinc-500"><span className="flex items-center gap-1"><Square size={10}/> {property.area}m²</span><span className="flex items-center gap-1"><Bed size={10}/> {property.bedrooms}</span><span className="flex items-center gap-1"><Bath size={10}/> {property.bathrooms}</span><span className="flex items-center gap-1"><Car size={10}/> {property.parking_spaces}</span></div>
-                  <div className="mt-2"><span className="text-sm font-black text-[#0217ff]">{formatCurrency(property.price)}</span></div></div>
-                  <div className="flex gap-2"><button onClick={() => { setSelectedProperty(property); setShowDetailModal(true); }} className="p-2 rounded-xl bg-zinc-100 dark:bg-white/5 hover:bg-[#0217ff] hover:text-white transition-all"><Eye size={16} /></button>
-                  <button onClick={() => { setEditingId(property.id); setFormData(property); setIsViewOnly(false); setShowModal(true); }} className="p-2 rounded-xl bg-zinc-100 dark:bg-white/5 hover:bg-[#0217ff] hover:text-white transition-all"><Edit3 size={16} /></button>
-                  <button onClick={() => handleDelete(property.id)} className="p-2 rounded-xl bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-all"><Trash2 size={16} /></button></div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1"><h3 className={`font-bold truncate ${theme.text}`}>{property.title}</h3><span className={`px-2 py-0.5 rounded-full text-[8px] font-bold uppercase ${status.bg} ${status.color}`}>{status.label}</span></div>
+                    <p className="text-[9px] text-zinc-500 font-bold uppercase mb-2 flex items-center gap-1"><MapPin size={9} /> {property.location || 'Localização não informada'}</p>
+                    <div className="flex flex-wrap gap-3 text-[9px] font-bold text-zinc-500">
+                      <span className="flex items-center gap-1"><Square size={10}/> {property.area}m²</span>
+                      <span className="flex items-center gap-1"><Bed size={10}/> {property.bedrooms}</span>
+                      <span className="flex items-center gap-1"><Bath size={10}/> {property.bathrooms}</span>
+                      <span className="flex items-center gap-1"><Car size={10}/> {property.parking_spaces}</span>
+                    </div>
+                    {/* 🔥 AMENITIES PREVIEW NA LISTA */}
+                    {amenitiesCount > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        {AMENITIES.filter(a => property[a.id as keyof Property]).slice(0, 4).map((amenity) => {
+                          const Icon = amenity.icon;
+                          return (
+                            <div key={amenity.id} className="p-1 bg-zinc-100 dark:bg-white/5 rounded-lg" title={amenity.label}>
+                              <Icon size={8} className="text-zinc-500" />
+                            </div>
+                          );
+                        })}
+                        {amenitiesCount > 4 && (
+                          <div className="p-1 bg-zinc-100 dark:bg-white/5 rounded-lg text-[7px] font-bold text-zinc-500">
+                            +{amenitiesCount - 4}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    <div className="mt-2"><span className="text-sm font-black text-[#0217ff]">{formatCurrency(property.price)}</span></div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={() => { setSelectedProperty(property); setShowDetailModal(true); }} className="p-2 rounded-xl bg-zinc-100 dark:bg-white/5 hover:bg-[#0217ff] hover:text-white transition-all"><Eye size={16} /></button>
+                    <button onClick={() => { setEditingId(property.id); setFormData(property); setIsViewOnly(false); setShowModal(true); }} className="p-2 rounded-xl bg-zinc-100 dark:bg-white/5 hover:bg-[#0217ff] hover:text-white transition-all"><Edit3 size={16} /></button>
+                    <button onClick={() => handleDelete(property.id)} className="p-2 rounded-xl bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-all"><Trash2 size={16} /></button>
+                  </div>
                 </div>
               </div>
             );
@@ -564,7 +632,23 @@ export default function PropertiesPage() {
               <div className="grid grid-cols-2 gap-4"><div><label className="text-[9px] font-bold uppercase text-zinc-400">Preço (R$)</label><input disabled={isViewOnly} type="number" className={`w-full ${theme.input} px-4 py-3 rounded-xl`} value={formData.price} onChange={e => setFormData({...formData, price: parseFloat(e.target.value)})} /></div><div><label className="text-[9px] font-bold uppercase text-zinc-400">Condomínio</label><input disabled={isViewOnly} type="number" className={`w-full ${theme.input} px-4 py-3 rounded-xl`} value={formData.condo_fee} onChange={e => setFormData({...formData, condo_fee: parseFloat(e.target.value)})} /></div></div>
               <div className="grid grid-cols-2 gap-4"><div><label className="text-[9px] font-bold uppercase text-zinc-400">Tipo</label><select disabled={isViewOnly} className={`w-full ${theme.input} px-4 py-3 rounded-xl`} value={formData.type} onChange={e => setFormData({...formData, type: e.target.value as any})}><option value="venda">Venda</option><option value="locacao">Locação</option><option value="venda_locacao">Venda/Locação</option></select></div><div><label className="text-[9px] font-bold uppercase text-zinc-400">Status</label><select disabled={isViewOnly} className={`w-full ${theme.input} px-4 py-3 rounded-xl`} value={formData.status} onChange={e => setFormData({...formData, status: e.target.value as any})}><option value="disponivel">Disponível</option><option value="negociacao">Em Negociação</option><option value="vendido">Vendido</option><option value="locado">Locado</option><option value="indisponivel">Indisponível</option></select></div></div>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4"><div><label className="text-[9px] font-bold uppercase text-zinc-400">Área (m²)</label><input disabled={isViewOnly} type="number" className={`w-full ${theme.input} px-4 py-3 rounded-xl text-center`} value={formData.area} onChange={e => setFormData({...formData, area: parseInt(e.target.value)})} /></div><div><label className="text-[9px] font-bold uppercase text-zinc-400">Quartos</label><input disabled={isViewOnly} type="number" className={`w-full ${theme.input} px-4 py-3 rounded-xl text-center`} value={formData.bedrooms} onChange={e => setFormData({...formData, bedrooms: parseInt(e.target.value)})} /></div><div><label className="text-[9px] font-bold uppercase text-zinc-400">Banheiros</label><input disabled={isViewOnly} type="number" className={`w-full ${theme.input} px-4 py-3 rounded-xl text-center`} value={formData.bathrooms} onChange={e => setFormData({...formData, bathrooms: parseInt(e.target.value)})} /></div><div><label className="text-[9px] font-bold uppercase text-zinc-400">Vagas</label><input disabled={isViewOnly} type="number" className={`w-full ${theme.input} px-4 py-3 rounded-xl text-center`} value={formData.parking_spaces} onChange={e => setFormData({...formData, parking_spaces: parseInt(e.target.value)})} /></div></div>
-              <div><label className="text-[9px] font-bold uppercase text-zinc-400">CEP</label><input disabled={isViewOnly} className={`w-full ${theme.input} px-4 py-3 rounded-xl`} value={formData.cep} onChange={e => setFormData({...formData, cep: e.target.value})} onBlur={handleCEPBlur} /></div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div><label className="text-[9px] font-bold uppercase text-zinc-400">CEP</label><input disabled={isViewOnly} className={`w-full ${theme.input} px-4 py-3 rounded-xl`} value={formData.cep} onChange={e => setFormData({...formData, cep: e.target.value})} onBlur={handleCEPBlur} /></div>
+                <div><label className="text-[9px] font-bold uppercase text-zinc-400">Número</label><input disabled={isViewOnly} className={`w-full ${theme.input} px-4 py-3 rounded-xl`} value={formData.number} onChange={e => setFormData({...formData, number: e.target.value})} /></div>
+              </div>
+              {/* 🔥 ENDEREÇO COMPLETO - PARA CONSULTA DO CORRETOR */}
+              <div className="space-y-2">
+                <label className="text-[9px] font-bold uppercase text-zinc-400">Endereço Completo</label>
+                <textarea 
+                  disabled={isViewOnly}
+                  rows={2}
+                  className={`w-full ${theme.input} px-4 py-3 rounded-xl resize-none`}
+                  value={formData.full_address || ''}
+                  onChange={e => setFormData({...formData, full_address: e.target.value})}
+                  placeholder="Endereço completo (preenchido automaticamente pelo CEP)"
+                />
+                <p className="text-[8px] text-zinc-400">Este endereço é visível apenas para o corretor</p>
+              </div>
               <div><label className="text-[9px] font-bold uppercase text-zinc-400">Descrição</label><textarea disabled={isViewOnly} rows={3} className={`w-full ${theme.input} px-4 py-3 rounded-xl resize-none`} value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} placeholder="Descreva os detalhes do imóvel..." /></div>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3"><h3 className="col-span-full text-[10px] font-bold uppercase text-[#0217ff]">Comodidades</h3>{AMENITIES.map(({ id, label, icon: Icon }) => (<label key={id} className={`flex items-center gap-2 p-2 rounded-xl cursor-pointer ${formData[id] ? 'bg-[#0217ff]/10 border border-[#0217ff]/20' : theme.input}`}><input type="checkbox" disabled={isViewOnly} checked={formData[id] || false} onChange={(e) => setFormData({...formData, [id]: e.target.checked})} className="hidden" /><Icon size={14} className={formData[id] ? 'text-[#0217ff]' : 'text-zinc-400'} /><span className={`text-[10px] font-bold ${formData[id] ? 'text-[#0217ff]' : theme.secondaryText}`}>{label}</span></label>))}</div>
               {!isViewOnly && <button type="submit" disabled={loading} className="w-full py-4 bg-[#0217ff] text-white rounded-xl font-bold uppercase text-xs tracking-widest shadow-xl hover:bg-[#0217ff]/90 transition-all flex items-center justify-center gap-2">{loading ? <Loader2 className="animate-spin" size={18} /> : <><Save size={18} /> {editingId ? 'Atualizar Imóvel' : 'Cadastrar Imóvel'}</>}</button>}
@@ -574,7 +658,7 @@ export default function PropertiesPage() {
         </div>
       )}
 
-      {/* DETAIL MODAL - Versão simplificada */}
+      {/* DETAIL MODAL */}
       {showDetailModal && selectedProperty && (
         <div className="fixed inset-0 z-[110] bg-black/90 backdrop-blur-md flex items-center justify-center p-0 md:p-4">
           <div className={`${theme.modal} w-full h-full md:h-auto md:max-w-3xl md:max-h-[90vh] overflow-hidden md:rounded-[40px] flex flex-col`}>
@@ -583,6 +667,23 @@ export default function PropertiesPage() {
               {selectedProperty.images?.[0] && <img src={selectedProperty.images[0]} alt="" className="w-full h-64 object-cover rounded-2xl" />}
               <div><h3 className={`text-2xl font-bold ${theme.text}`}>{selectedProperty.title}</h3><p className="text-sm text-zinc-500 flex items-center gap-2 mt-1"><MapPin size={14} /> {selectedProperty.location}</p></div>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4"><div className="p-3 rounded-xl bg-zinc-50 dark:bg-white/5 text-center"><Ruler size={18} className="mx-auto mb-1 text-[#0217ff]" /><p className="text-[8px] font-bold uppercase text-zinc-400">Área</p><p className="font-bold">{selectedProperty.area} m²</p></div><div className="p-3 rounded-xl bg-zinc-50 dark:bg-white/5 text-center"><Bed size={18} className="mx-auto mb-1 text-[#0217ff]" /><p className="text-[8px] font-bold uppercase text-zinc-400">Quartos</p><p className="font-bold">{selectedProperty.bedrooms}</p></div><div className="p-3 rounded-xl bg-zinc-50 dark:bg-white/5 text-center"><Bath size={18} className="mx-auto mb-1 text-[#0217ff]" /><p className="text-[8px] font-bold uppercase text-zinc-400">Banheiros</p><p className="font-bold">{selectedProperty.bathrooms}</p></div><div className="p-3 rounded-xl bg-zinc-50 dark:bg-white/5 text-center"><Car size={18} className="mx-auto mb-1 text-[#0217ff]" /><p className="text-[8px] font-bold uppercase text-zinc-400">Vagas</p><p className="font-bold">{selectedProperty.parking_spaces}</p></div></div>
+              {/* 🔥 COMODIDADES NO DETAIL MODAL */}
+              {AMENITIES.filter(a => selectedProperty[a.id as keyof Property]).length > 0 && (
+                <div>
+                  <h4 className="text-[10px] font-bold uppercase text-[#0217ff] mb-3">Comodidades</h4>
+                  <div className="flex flex-wrap gap-2">
+                    {AMENITIES.filter(a => selectedProperty[a.id as keyof Property]).map((amenity) => {
+                      const Icon = amenity.icon;
+                      return (
+                        <div key={amenity.id} className="flex items-center gap-2 px-3 py-1.5 bg-zinc-50 dark:bg-white/5 rounded-full">
+                          <Icon size={12} className="text-[#0217ff]" />
+                          <span className="text-[10px] font-medium">{amenity.label}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
               {selectedProperty.description && <div><h4 className="text-[10px] font-bold uppercase text-[#0217ff] mb-2">Descrição</h4><p className={theme.secondaryText}>{selectedProperty.description}</p></div>}
               <div className="flex gap-4 pt-4"><button onClick={() => { setShowDetailModal(false); setEditingId(selectedProperty.id); setFormData(selectedProperty); setIsViewOnly(false); setShowModal(true); }} className="flex-1 py-3 bg-[#0217ff] text-white rounded-xl font-bold text-[10px] uppercase">Editar</button><button className="flex-1 py-3 bg-zinc-100 dark:bg-white/5 rounded-xl font-bold text-[10px] uppercase">Compartilhar</button></div>
             </div>

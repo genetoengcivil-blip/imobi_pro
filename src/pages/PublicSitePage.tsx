@@ -13,9 +13,26 @@ import {
   ThumbsUp, Quote, Camera, Layers, Compass,
   BadgeCheck, Gem, Crown, Briefcase, FileText,
   UserCheck, CalendarDays, CircleDollarSign, HandshakeIcon,
-  LayoutGrid, Grid3x3, Mail, Quote as QuoteIcon,
-  Map, Mail as MailIcon, MapPin as MapPinIcon, PhoneCall
+  LayoutGrid, Grid3X3, List, Mail, Quote as QuoteIcon,
+  Map, Mail as MailIcon, MapPin as MapPinIcon, PhoneCall,
+  Waves, Dumbbell, Flame, TreePine, Shield, Wifi, Coffee, Building
 } from 'lucide-react';
+
+// CONSTANTES DAS COMODIDADES
+const AMENITIES = [
+  { id: 'has_pool', label: 'Piscina', icon: Waves, category: 'Lazer' },
+  { id: 'has_gym', label: 'Academia', icon: Dumbbell, category: 'Esporte' },
+  { id: 'has_bbq', label: 'Churrasqueira', icon: Flame, category: 'Gourmet' },
+  { id: 'has_elevator', label: 'Elevador', icon: Building2, category: 'Infraestrutura' },
+  { id: 'has_games', label: 'Salão de Jogos', icon: Grid3X3, category: 'Lazer' },
+  { id: 'has_party', label: 'Salão de Festas', icon: Coffee, category: 'Social' },
+  { id: 'has_spa', label: 'Spa', icon: Waves, category: 'Bem-estar' },
+  { id: 'has_playground', label: 'Playground', icon: TreePine, category: 'Infantil' },
+  { id: 'has_court', label: 'Quadra Esportiva', icon: Ruler, category: 'Esporte' },
+  { id: 'has_gourmet', label: 'Espaço Gourmet', icon: Flame, category: 'Gourmet' },
+  { id: 'has_conciege', label: 'Portaria 24h', icon: Shield, category: 'Segurança' },
+  { id: 'has_laundry', label: 'Lavanderia', icon: Zap, category: 'Serviços' }
+];
 
 export default function PublicSitePage() {
   const { slug } = useParams();
@@ -221,6 +238,7 @@ export default function PublicSitePage() {
         if (isMounted) {
           setProperties(pData || []);
           setFeaturedProperties(pData?.filter(p => p.featured) || []);
+          console.log('🏠 Imóveis carregados:', pData?.length || 0);
         }
 
       } catch (err: any) {
@@ -271,7 +289,6 @@ export default function PublicSitePage() {
     try {
       if (!broker) return;
 
-      // 🔥 CORREÇÃO: Removido property_interest temporariamente ou usando o campo correto
       const leadData: any = {
         name: leadForm.name.trim(),
         phone: leadForm.phone.replace(/\D/g, ''),
@@ -280,12 +297,10 @@ export default function PublicSitePage() {
         status: 'novo'
       };
       
-      // Adicionar email se fornecido
       if (leadForm.email && leadForm.email.trim()) {
         leadData.email = leadForm.email.trim();
       }
       
-      // Adicionar property_interest se houver propriedade selecionada
       if (selectedProperty?.title) {
         leadData.property_interest = selectedProperty.title;
       }
@@ -367,6 +382,11 @@ export default function PublicSitePage() {
     setMobileMenuOpen(false);
   };
 
+  // 🔥 Função para obter comodidades do imóvel
+  const getPropertyAmenities = (property: any) => {
+    return AMENITIES.filter(amenity => property[amenity.id] === true);
+  };
+
   const filteredProperties = properties.filter(prop => {
     if (selectedCategory !== 'todos' && prop.type !== selectedCategory) return false;
     return true;
@@ -434,7 +454,7 @@ export default function PublicSitePage() {
         </div>
       )}
 
-      {/* HEADER COM LOGO CORRIGIDA */}
+      {/* HEADER COM LOGO */}
       <nav className="fixed top-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-b border-zinc-100 h-20 flex items-center px-6 shadow-sm">
         <div className="max-w-7xl mx-auto w-full flex items-center justify-between">
           <div className="flex items-center gap-3 cursor-pointer group" onClick={() => scrollToSection('top')}>
@@ -577,32 +597,54 @@ export default function PublicSitePage() {
               <h2 className="text-4xl md:text-5xl font-black uppercase italic tracking-tighter">Imóveis em <span style={{ color: themeColors.primary }}>Destaque</span></h2>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-              {featuredProperties.slice(0, 3).map((prop) => (
-                <div key={prop.id} className="group bg-white rounded-[32px] overflow-hidden border border-zinc-100 hover:shadow-2xl transition-all duration-500 cursor-pointer" onClick={() => openPropertyModal(prop)}>
-                  <div className="aspect-[4/3] relative overflow-hidden">
-                    <img src={prop.images?.[0] || '/placeholder.jpg'} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt={prop.title} />
-                    <div className="absolute top-4 left-4 px-3 py-1.5 bg-white/90 backdrop-blur rounded-lg text-[9px] font-black uppercase">Destaque</div>
-                  </div>
-                  <div className="p-6">
-                    <h3 className="text-xl font-black uppercase italic tracking-tighter mb-2 line-clamp-1">{prop.title}</h3>
-                    <div className="flex items-center gap-2 text-zinc-400 mb-4">
-                      <MapPin size={14} style={{ color: themeColors.primary }} />
-                      <span className="text-xs font-bold uppercase line-clamp-1">{prop.location}</span>
+              {featuredProperties.slice(0, 3).map((prop) => {
+                const amenities = getPropertyAmenities(prop);
+                return (
+                  <div key={prop.id} className="group bg-white rounded-[32px] overflow-hidden border border-zinc-100 hover:shadow-2xl transition-all duration-500 cursor-pointer" onClick={() => openPropertyModal(prop)}>
+                    <div className="aspect-[4/3] relative overflow-hidden">
+                      <img src={prop.images?.[0] || '/placeholder.jpg'} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt={prop.title} />
+                      <div className="absolute top-4 left-4 px-3 py-1.5 bg-white/90 backdrop-blur rounded-lg text-[9px] font-black uppercase">Destaque</div>
                     </div>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <span className="text-[8px] text-zinc-400 uppercase">Valor</span>
-                        <div className="text-xl font-black" style={{ color: themeColors.primary }}>{formatCurrency(prop.price)}</div>
+                    <div className="p-6">
+                      <h3 className="text-xl font-black uppercase italic tracking-tighter mb-2 line-clamp-1">{prop.title}</h3>
+                      <div className="flex items-center gap-2 text-zinc-400 mb-4">
+                        <MapPin size={14} style={{ color: themeColors.primary }} />
+                        <span className="text-xs font-bold uppercase line-clamp-1">{prop.location}</span>
                       </div>
-                      <div className="flex gap-3 text-[9px] font-bold text-zinc-500">
-                        <span>{prop.bedrooms} qts</span>
-                        <span>{prop.bathrooms} ban</span>
-                        <span>{prop.area}m²</span>
+                      <div className="flex items-center justify-between mb-3">
+                        <div>
+                          <span className="text-[8px] text-zinc-400 uppercase">Valor</span>
+                          <div className="text-xl font-black" style={{ color: themeColors.primary }}>{formatCurrency(prop.price)}</div>
+                        </div>
+                        <div className="flex gap-3 text-[9px] font-bold text-zinc-500">
+                          <span>{prop.bedrooms} qts</span>
+                          <span>{prop.bathrooms} ban</span>
+                          <span>{prop.area}m²</span>
+                        </div>
                       </div>
+                      {/* 🔥 COMODIDADES NO CARD */}
+                      {amenities.length > 0 && (
+                        <div className="flex flex-wrap gap-2 pt-3 border-t border-zinc-100">
+                          {amenities.slice(0, 4).map((amenity) => {
+                            const Icon = amenity.icon;
+                            return (
+                              <div key={amenity.id} className="flex items-center gap-1 px-2 py-1 bg-zinc-50 rounded-full" title={amenity.label}>
+                                <Icon size={10} className="text-[#0217ff]" />
+                                <span className="text-[8px] font-medium text-zinc-600">{amenity.label}</span>
+                              </div>
+                            );
+                          })}
+                          {amenities.length > 4 && (
+                            <div className="px-2 py-1 bg-zinc-50 rounded-full text-[8px] font-bold text-zinc-500">
+                              +{amenities.length - 4}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </section>
@@ -619,10 +661,10 @@ export default function PublicSitePage() {
           
           <div className="flex gap-2">
             <button onClick={() => setViewMode('grid')} className={`p-2 rounded-lg transition-all ${viewMode === 'grid' ? 'bg-[#0217ff] text-white' : 'bg-zinc-100'}`}>
-              <Grid3x3 size={18} />
+              <Grid3X3 size={18} />
             </button>
             <button onClick={() => setViewMode('list')} className={`p-2 rounded-lg transition-all ${viewMode === 'list' ? 'bg-[#0217ff] text-white' : 'bg-zinc-100'}`}>
-              <LayoutGrid size={18} />
+              <List size={18} />
             </button>
           </div>
         </div>
@@ -633,48 +675,128 @@ export default function PublicSitePage() {
             <h3 className="text-xl font-bold mb-2">Em breve, novas oportunidades</h3>
             <p className="text-zinc-400">Entre em contato para ser o primeiro a saber</p>
           </div>
+        ) : viewMode === 'grid' ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            {filteredProperties.map((prop) => {
+              const amenities = getPropertyAmenities(prop);
+              return (
+                <div key={prop.id} className="group bg-white rounded-[32px] overflow-hidden border border-zinc-100 hover:shadow-2xl transition-all duration-500 cursor-pointer" onClick={() => openPropertyModal(prop)}>
+                  <div className="aspect-[4/3] relative overflow-hidden">
+                    <img src={prop.images?.[0] || 'https://images.unsplash.com/photo-1564013799919-ab600027ffc6?q=80&w=1000'} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt={prop.title} />
+                    <div className="absolute top-4 left-4 px-3 py-1.5 bg-white/90 backdrop-blur rounded-lg text-[9px] font-black uppercase">
+                      {prop.type === 'venda' ? 'Venda' : prop.type === 'locacao' ? 'Locação' : 'Venda/Locação'}
+                    </div>
+                  </div>
+                  <div className="p-6">
+                    <h3 className="text-xl font-black uppercase italic tracking-tighter mb-2 line-clamp-1 group-hover:text-[#0217ff] transition-colors">{prop.title}</h3>
+                    <div className="flex items-center gap-2 text-zinc-400 mb-4">
+                      <MapPin size={14} className="text-[#0217ff]" />
+                      <span className="text-xs font-bold uppercase line-clamp-1">{prop.location}</span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2 py-4 mb-4 border-y border-zinc-100">
+                      <div className="text-center">
+                        <Bed size={14} className="mx-auto mb-1 text-zinc-400" />
+                        <span className="text-[9px] font-black uppercase">{prop.bedrooms}</span>
+                      </div>
+                      <div className="text-center">
+                        <Bath size={14} className="mx-auto mb-1 text-zinc-400" />
+                        <span className="text-[9px] font-black uppercase">{prop.bathrooms}</span>
+                      </div>
+                      <div className="text-center">
+                        <Ruler size={14} className="mx-auto mb-1 text-zinc-400" />
+                        <span className="text-[9px] font-black uppercase">{prop.area}m²</span>
+                      </div>
+                    </div>
+                    {/* 🔥 COMODIDADES NO CARD GRID */}
+                    {amenities.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mt-4 pt-3 border-t border-zinc-100">
+                        {amenities.slice(0, 4).map((amenity) => {
+                          const Icon = amenity.icon;
+                          return (
+                            <div key={amenity.id} className="flex items-center gap-1 px-2 py-1 bg-zinc-50 rounded-full" title={amenity.label}>
+                              <Icon size={10} className="text-[#0217ff]" />
+                              <span className="text-[8px] font-medium text-zinc-600">{amenity.label}</span>
+                            </div>
+                          );
+                        })}
+                        {amenities.length > 4 && (
+                          <div className="px-2 py-1 bg-zinc-50 rounded-full text-[8px] font-bold text-zinc-500">
+                            +{amenities.length - 4}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    <div className="flex items-center justify-between mt-4">
+                      <div>
+                        <span className="text-[8px] text-zinc-400 uppercase">Valor</span>
+                        <div className="text-xl font-black" style={{ color: themeColors.primary }}>{formatCurrency(prop.price)}</div>
+                      </div>
+                      <button className="p-3 bg-zinc-50 rounded-xl group-hover:bg-[#0217ff] group-hover:text-white transition-all">
+                        <ArrowUpRight size={18} />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         ) : (
-          <div className={`grid gap-8 ${viewMode === 'grid' ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3' : 'grid-cols-1'}`}>
-            {filteredProperties.map((prop) => (
-              <div key={prop.id} className={`group bg-white rounded-[32px] overflow-hidden border border-zinc-100 hover:shadow-2xl transition-all duration-500 cursor-pointer ${viewMode === 'list' ? 'flex flex-col md:flex-row' : ''}`} onClick={() => openPropertyModal(prop)}>
-                <div className={`${viewMode === 'list' ? 'md:w-2/5' : 'w-full'} aspect-[4/3] relative overflow-hidden`}>
-                  <img src={prop.images?.[0] || 'https://images.unsplash.com/photo-1564013799919-ab600027ffc6?q=80&w=1000'} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt={prop.title} />
-                  <div className="absolute top-4 left-4 px-3 py-1.5 bg-white/90 backdrop-blur rounded-lg text-[9px] font-black uppercase">
-                    {prop.type === 'venda' ? 'Venda' : prop.type === 'locacao' ? 'Locação' : 'Venda/Locação'}
+          <div className="space-y-4">
+            {filteredProperties.map((prop) => {
+              const amenities = getPropertyAmenities(prop);
+              return (
+                <div key={prop.id} className="group bg-white rounded-[32px] overflow-hidden border border-zinc-100 hover:shadow-2xl transition-all duration-500 cursor-pointer" onClick={() => openPropertyModal(prop)}>
+                  <div className="flex flex-col md:flex-row">
+                    <div className="md:w-2/5 aspect-[4/3] relative overflow-hidden">
+                      <img src={prop.images?.[0] || 'https://images.unsplash.com/photo-1564013799919-ab600027ffc6?q=80&w=1000'} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt={prop.title} />
+                      <div className="absolute top-4 left-4 px-3 py-1.5 bg-white/90 backdrop-blur rounded-lg text-[9px] font-black uppercase">
+                        {prop.type === 'venda' ? 'Venda' : prop.type === 'locacao' ? 'Locação' : 'Venda/Locação'}
+                      </div>
+                    </div>
+                    <div className="flex-1 p-6">
+                      <h3 className="text-xl font-black uppercase italic tracking-tighter mb-2 group-hover:text-[#0217ff] transition-colors">{prop.title}</h3>
+                      <div className="flex items-center gap-2 text-zinc-400 mb-4">
+                        <MapPin size={14} className="text-[#0217ff]" />
+                        <span className="text-xs font-bold uppercase">{prop.location}</span>
+                      </div>
+                      <div className="flex flex-wrap gap-6 mb-4 text-sm text-zinc-500">
+                        <span className="flex items-center gap-1"><Bed size={14} /> {prop.bedrooms} quartos</span>
+                        <span className="flex items-center gap-1"><Bath size={14} /> {prop.bathrooms} banheiros</span>
+                        <span className="flex items-center gap-1"><Ruler size={14} /> {prop.area}m²</span>
+                      </div>
+                      {/* 🔥 COMODIDADES NO CARD LIST */}
+                      {amenities.length > 0 && (
+                        <div className="flex flex-wrap gap-2 mb-4">
+                          {amenities.slice(0, 5).map((amenity) => {
+                            const Icon = amenity.icon;
+                            return (
+                              <div key={amenity.id} className="flex items-center gap-1 px-2 py-1 bg-zinc-50 rounded-full" title={amenity.label}>
+                                <Icon size={10} className="text-[#0217ff]" />
+                                <span className="text-[8px] font-medium text-zinc-600">{amenity.label}</span>
+                              </div>
+                            );
+                          })}
+                          {amenities.length > 5 && (
+                            <div className="px-2 py-1 bg-zinc-50 rounded-full text-[8px] font-bold text-zinc-500">
+                              +{amenities.length - 5}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      <div className="flex items-center justify-between mt-4 pt-4 border-t border-zinc-100">
+                        <div>
+                          <span className="text-[8px] text-zinc-400 uppercase">Valor</span>
+                          <div className="text-xl font-black" style={{ color: themeColors.primary }}>{formatCurrency(prop.price)}</div>
+                        </div>
+                        <button className="px-6 py-3 bg-[#0217ff] text-white rounded-xl text-sm font-bold hover:scale-105 transition-all">
+                          <MessageCircle size={16} className="inline mr-2" /> Tenho Interesse
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 </div>
-                <div className={`p-6 ${viewMode === 'list' ? 'md:w-3/5' : ''}`}>
-                  <h3 className="text-xl font-black uppercase italic tracking-tighter mb-2 line-clamp-1 group-hover:text-[#0217ff] transition-colors">{prop.title}</h3>
-                  <div className="flex items-center gap-2 text-zinc-400 mb-4">
-                    <MapPin size={14} className="text-[#0217ff]" />
-                    <span className="text-xs font-bold uppercase line-clamp-1">{prop.location}</span>
-                  </div>
-                  <div className="grid grid-cols-3 gap-2 py-4 mb-4 border-y border-zinc-100">
-                    <div className="text-center">
-                      <Bed size={14} className="mx-auto mb-1 text-zinc-400" />
-                      <span className="text-[9px] font-black uppercase">{prop.bedrooms}</span>
-                    </div>
-                    <div className="text-center">
-                      <Bath size={14} className="mx-auto mb-1 text-zinc-400" />
-                      <span className="text-[9px] font-black uppercase">{prop.bathrooms}</span>
-                    </div>
-                    <div className="text-center">
-                      <Ruler size={14} className="mx-auto mb-1 text-zinc-400" />
-                      <span className="text-[9px] font-black uppercase">{prop.area}m²</span>
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <span className="text-[8px] text-zinc-400 uppercase">Valor</span>
-                      <div className="text-xl font-black" style={{ color: themeColors.primary }}>{formatCurrency(prop.price)}</div>
-                    </div>
-                    <button className="p-3 bg-zinc-50 rounded-xl group-hover:bg-[#0217ff] group-hover:text-white transition-all">
-                      <ArrowUpRight size={18} />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </section>
@@ -776,7 +898,7 @@ export default function PublicSitePage() {
         </div>
       </section>
 
-      {/* SOBRE COM LOGO */}
+      {/* SOBRE */}
       <section id="sobre" className="py-20 px-6 bg-white">
         <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
           <div>
@@ -817,7 +939,6 @@ export default function PublicSitePage() {
             <div className="absolute -inset-4 bg-gradient-to-r from-[#0217ff]/10 to-[#00c6ff]/10 rounded-[48px] blur-2xl"></div>
             <div className="relative bg-white rounded-[48px] p-8 shadow-xl border border-zinc-100">
               <div className="flex items-center gap-4 mb-6">
-                {/* 🔥 LOGO NA SEÇÃO SOBRE COM object-cover */}
                 {broker.logo ? (
                   <div className="w-16 h-16 rounded-full overflow-hidden bg-white shadow-lg border-2 border-[#0217ff]/20 flex items-center justify-center">
                     <img 
@@ -905,7 +1026,7 @@ export default function PublicSitePage() {
         </div>
       </section>
 
-      {/* MODAL */}
+      {/* MODAL DE DETALHES COM COMODIDADES */}
       {showModal && selectedProperty && (
         <div className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center p-4">
           <div ref={modalRef} className="bg-white rounded-[48px] max-w-5xl w-full max-h-[90vh] overflow-y-auto relative">
@@ -959,6 +1080,27 @@ export default function PublicSitePage() {
                 </div>
               </div>
 
+              {/* 🔥 COMODIDADES NO MODAL DE DETALHES */}
+              {getPropertyAmenities(selectedProperty).length > 0 && (
+                <div>
+                  <h3 className="text-xs font-black uppercase tracking-widest mb-4 flex items-center gap-2">
+                    <Building size={14} className="text-[#0217ff]" />
+                    Comodidades do Condomínio
+                  </h3>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                    {getPropertyAmenities(selectedProperty).map((amenity) => {
+                      const Icon = amenity.icon;
+                      return (
+                        <div key={amenity.id} className="flex items-center gap-3 p-3 rounded-xl bg-zinc-50">
+                          <Icon size={18} className="text-[#0217ff]" />
+                          <span className="text-sm font-medium text-zinc-700">{amenity.label}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               {selectedProperty.description && (
                 <div>
                   <h3 className="text-xs font-black uppercase tracking-widest mb-3">Descrição</h3>
@@ -983,11 +1125,10 @@ export default function PublicSitePage() {
         </div>
       )}
 
-      {/* FOOTER PREMIUM COM LOGO */}
+      {/* FOOTER */}
       <footer className="bg-zinc-900 text-white">
         <div className="max-w-7xl mx-auto px-6 py-16">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-12 mb-12">
-            {/* Coluna 1 - Logo e Descrição */}
             <div>
               <div className="flex items-center gap-3 mb-6">
                 {broker.logo ? (
@@ -996,10 +1137,7 @@ export default function PublicSitePage() {
                       src={broker.logo} 
                       alt="Logo" 
                       className="w-full h-full object-cover"
-                      onError={(e) => {
-                        console.error('Erro ao carregar logo no footer');
-                        e.currentTarget.style.display = 'none';
-                      }}
+                      onError={(e) => e.currentTarget.style.display = 'none'}
                     />
                   </div>
                 ) : (
@@ -1013,7 +1151,7 @@ export default function PublicSitePage() {
                 </div>
               </div>
               <p className="text-sm text-zinc-400 leading-relaxed mb-6">
-                {broker.bio?.substring(0, 120) || `Especialista em encontrar o lar ideal para você e sua família, com atendimento personalizado e assessoria completa.`}
+                {broker.bio?.substring(0, 120) || `Especialista em encontrar o lar ideal para você e sua família.`}
                 {broker.bio?.length > 120 ? '...' : ''}
               </p>
               <div className="flex items-center gap-2">
@@ -1022,38 +1160,16 @@ export default function PublicSitePage() {
               </div>
             </div>
 
-            {/* Coluna 2 - Links Rápidos */}
             <div>
               <h4 className="text-[11px] font-black uppercase tracking-widest text-[#0217ff] mb-6">Navegação</h4>
               <ul className="space-y-3">
-                <li>
-                  <button onClick={() => scrollToSection('imoveis')} className="text-sm text-zinc-400 hover:text-white transition-colors flex items-center gap-2 group">
-                    <ChevronRight size={12} className="group-hover:translate-x-1 transition-transform" />
-                    Imóveis
-                  </button>
-                </li>
-                <li>
-                  <button onClick={() => scrollToSection('sobre')} className="text-sm text-zinc-400 hover:text-white transition-colors flex items-center gap-2 group">
-                    <ChevronRight size={12} className="group-hover:translate-x-1 transition-transform" />
-                    Sobre
-                  </button>
-                </li>
-                <li>
-                  <button onClick={() => scrollToSection('depoimentos')} className="text-sm text-zinc-400 hover:text-white transition-colors flex items-center gap-2 group">
-                    <ChevronRight size={12} className="group-hover:translate-x-1 transition-transform" />
-                    Depoimentos
-                  </button>
-                </li>
-                <li>
-                  <button onClick={() => scrollToSection('contato')} className="text-sm text-zinc-400 hover:text-white transition-colors flex items-center gap-2 group">
-                    <ChevronRight size={12} className="group-hover:translate-x-1 transition-transform" />
-                    Contato
-                  </button>
-                </li>
+                <li><button onClick={() => scrollToSection('imoveis')} className="text-sm text-zinc-400 hover:text-white transition-colors flex items-center gap-2 group"><ChevronRight size={12} className="group-hover:translate-x-1 transition-transform" /> Imóveis</button></li>
+                <li><button onClick={() => scrollToSection('sobre')} className="text-sm text-zinc-400 hover:text-white transition-colors flex items-center gap-2 group"><ChevronRight size={12} className="group-hover:translate-x-1 transition-transform" /> Sobre</button></li>
+                <li><button onClick={() => scrollToSection('depoimentos')} className="text-sm text-zinc-400 hover:text-white transition-colors flex items-center gap-2 group"><ChevronRight size={12} className="group-hover:translate-x-1 transition-transform" /> Depoimentos</button></li>
+                <li><button onClick={() => scrollToSection('contato')} className="text-sm text-zinc-400 hover:text-white transition-colors flex items-center gap-2 group"><ChevronRight size={12} className="group-hover:translate-x-1 transition-transform" /> Contato</button></li>
               </ul>
             </div>
 
-            {/* Coluna 3 - Contato */}
             <div>
               <h4 className="text-[11px] font-black uppercase tracking-widest text-[#0217ff] mb-6">Contato</h4>
               <div className="space-y-4">
@@ -1080,68 +1196,24 @@ export default function PublicSitePage() {
               </div>
             </div>
 
-            {/* Coluna 4 - Redes Sociais */}
             <div>
               <h4 className="text-[11px] font-black uppercase tracking-widest text-[#0217ff] mb-6">Redes Sociais</h4>
               <div className="flex flex-wrap gap-3 mb-6">
-                {broker.social_media?.instagram && (
-                  <a 
-                    href={broker.social_media.instagram} 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="w-10 h-10 rounded-xl bg-zinc-800 flex items-center justify-center hover:bg-[#E1306C] transition-all group"
-                  >
-                    <Instagram size={18} className="text-zinc-400 group-hover:text-white" />
-                  </a>
-                )}
-                {broker.social_media?.facebook && (
-                  <a 
-                    href={broker.social_media.facebook} 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="w-10 h-10 rounded-xl bg-zinc-800 flex items-center justify-center hover:bg-[#1877F2] transition-all group"
-                  >
-                    <Facebook size={18} className="text-zinc-400 group-hover:text-white" />
-                  </a>
-                )}
-                {broker.social_media?.youtube && (
-                  <a 
-                    href={broker.social_media.youtube} 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="w-10 h-10 rounded-xl bg-zinc-800 flex items-center justify-center hover:bg-[#FF0000] transition-all group"
-                  >
-                    <Youtube size={18} className="text-zinc-400 group-hover:text-white" />
-                  </a>
-                )}
-                {broker.social_media?.linkedin && (
-                  <a 
-                    href={broker.social_media.linkedin} 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="w-10 h-10 rounded-xl bg-zinc-800 flex items-center justify-center hover:bg-[#0A66C2] transition-all group"
-                  >
-                    <Linkedin size={18} className="text-zinc-400 group-hover:text-white" />
-                  </a>
-                )}
+                {broker.social_media?.instagram && <a href={broker.social_media.instagram} target="_blank" className="w-10 h-10 rounded-xl bg-zinc-800 flex items-center justify-center hover:bg-[#E1306C] transition-all"><Instagram size={18} className="text-zinc-400 hover:text-white" /></a>}
+                {broker.social_media?.facebook && <a href={broker.social_media.facebook} target="_blank" className="w-10 h-10 rounded-xl bg-zinc-800 flex items-center justify-center hover:bg-[#1877F2] transition-all"><Facebook size={18} className="text-zinc-400 hover:text-white" /></a>}
+                {broker.social_media?.youtube && <a href={broker.social_media.youtube} target="_blank" className="w-10 h-10 rounded-xl bg-zinc-800 flex items-center justify-center hover:bg-[#FF0000] transition-all"><Youtube size={18} className="text-zinc-400 hover:text-white" /></a>}
+                {broker.social_media?.linkedin && <a href={broker.social_media.linkedin} target="_blank" className="w-10 h-10 rounded-xl bg-zinc-800 flex items-center justify-center hover:bg-[#0A66C2] transition-all"><Linkedin size={18} className="text-zinc-400 hover:text-white" /></a>}
               </div>
               <div className="mt-4">
                 <p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-2">Receba Novidades</p>
                 <div className="flex gap-2">
-                  <input 
-                    type="email" 
-                    placeholder="Seu e-mail" 
-                    className="flex-1 px-3 py-2 rounded-lg bg-zinc-800 border border-zinc-700 text-white text-sm focus:outline-none focus:border-[#0217ff]"
-                  />
-                  <button className="px-3 py-2 bg-[#0217ff] rounded-lg hover:bg-[#0217ff]/80 transition-all">
-                    <Send size={14} />
-                  </button>
+                  <input type="email" placeholder="Seu e-mail" className="flex-1 px-3 py-2 rounded-lg bg-zinc-800 border border-zinc-700 text-white text-sm focus:outline-none focus:border-[#0217ff]" />
+                  <button className="px-3 py-2 bg-[#0217ff] rounded-lg hover:bg-[#0217ff]/80 transition-all"><Send size={14} /></button>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Divider */}
           <div className="border-t border-zinc-800 pt-8">
             <div className="flex flex-col md:flex-row justify-between items-center gap-4">
               <p className="text-[9px] text-zinc-500 uppercase tracking-[0.3em]">
