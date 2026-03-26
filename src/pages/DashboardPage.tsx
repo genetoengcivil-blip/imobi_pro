@@ -8,7 +8,8 @@ import {
   CheckCircle2, AlertCircle, Percent, 
   Building2, HandshakeIcon, Sparkles, RefreshCw,
   TrendingDown, ArrowRight, Eye, ChevronRight,
-  Star, Award, Shield, Crown, Gem, Medal
+  Star, Award, Shield, Crown, Gem, Medal,
+  X, User, Phone, MapPin
 } from 'lucide-react';
 import { 
   AreaChart, Area, XAxis, YAxis, CartesianGrid, 
@@ -26,6 +27,8 @@ export default function DashboardPage() {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(new Date());
+  const [selectedAppointment, setSelectedAppointment] = useState<any>(null);
+  const [showAppointmentModal, setShowAppointmentModal] = useState(false);
   
   useEffect(() => { 
     const timer = setTimeout(() => setIsMounted(true), 150);
@@ -188,7 +191,12 @@ export default function DashboardPage() {
   }, [safeTransactions]);
 
   const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(value || 0);
+    return new Intl.NumberFormat('pt-BR', { 
+      style: 'currency', 
+      currency: 'BRL', 
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2 
+    }).format(value || 0);
   };
 
   const formatCompactCurrency = (value: number) => {
@@ -201,15 +209,22 @@ export default function DashboardPage() {
     return new Intl.NumberFormat('pt-BR').format(value || 0);
   };
 
+  const formatPhoneDisplay = (phone: string) => {
+    const numbers = phone?.replace(/\D/g, '') || '';
+    if (numbers.length <= 10) {
+      return numbers.replace(/(\d{2})(\d{4})(\d{4})/, '($1) $2-$3');
+    }
+    return numbers.replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3');
+  };
+
+  const handleViewAppointment = (app: any) => {
+    setSelectedAppointment(app);
+    setShowAppointmentModal(true);
+  };
+
   const cardClass = `p-6 rounded-[32px] border transition-all duration-300 ${
     darkMode ? 'bg-zinc-900 border-white/5 text-white' : 'bg-white border-zinc-200 shadow-sm hover:shadow-md'
   }`;
-
-  const getTrendIcon = (value: number) => {
-    if (value > 0) return <ArrowUpRight size={14} className="text-green-500" />;
-    if (value < 0) return <ArrowDownRight size={14} className="text-red-500" />;
-    return <Activity size={14} className="text-zinc-400" />;
-  };
 
   return (
     <div className="space-y-8 animate-fade-in pb-20 font-sans p-4 md:p-6 max-w-7xl mx-auto">
@@ -288,7 +303,7 @@ export default function DashboardPage() {
             <div>
               <p className="text-zinc-400 text-[10px] font-black uppercase tracking-widest">Lucro Líquido</p>
               <p className={`text-2xl font-black mt-2 ${dynamicMetrics.lucroLiquido >= 0 ? 'text-[#0217ff]' : 'text-red-500'}`}>
-                {formatCompactCurrency(dynamicMetrics.lucroLiquido)}
+                {formatCurrency(dynamicMetrics.lucroLiquido)}
               </p>
               <div className="flex items-center gap-1 mt-2">
                 <Percent size={12} className="text-purple-500" />
@@ -499,9 +514,7 @@ export default function DashboardPage() {
               ))}
             </div>
           ) : (
-            <div className="text-center py-8 text-zinc-500 text-sm">
-              Nenhuma despesa registrada
-            </div>
+            <div className="text-center py-8 text-zinc-500 text-sm">Nenhuma despesa registrada</div>
           )}
           <div className="mt-4 pt-3 border-t border-zinc-100 dark:border-white/10">
             <div className="flex justify-between text-[10px]">
@@ -517,6 +530,7 @@ export default function DashboardPage() {
             <DollarSign size={14} className="text-[#0217ff]" /> Fluxo do Período
           </h3>
           <div className="space-y-4">
+            {/* Receitas Financeiro */}
             <div className="flex justify-between items-center p-3 rounded-xl bg-green-500/5 border border-green-500/10">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-lg bg-green-500/10 flex items-center justify-center">
@@ -527,12 +541,22 @@ export default function DashboardPage() {
                   <p className="font-black text-sm">{formatCurrency(dynamicMetrics.receitasFin)}</p>
                 </div>
               </div>
-              <div className="text-right">
-                <p className="text-[9px] text-zinc-500 uppercase">Comissões Ganhas</p>
-                <p className="font-black text-sm text-green-600">{formatCurrency(dynamicMetrics.comissoesFechadas)}</p>
+            </div>
+
+            {/* Comissões Ganhas */}
+            <div className="flex justify-between items-center p-3 rounded-xl bg-green-500/5 border border-green-500/10">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-green-500/10 flex items-center justify-center">
+                  <ArrowUpRight size={14} className="text-green-500" />
+                </div>
+                <div>
+                  <p className="text-[9px] text-zinc-500 uppercase">Comissões Ganhas</p>
+                  <p className="font-black text-sm text-green-600">{formatCurrency(dynamicMetrics.comissoesFechadas)}</p>
+                </div>
               </div>
             </div>
 
+            {/* Despesas Totais */}
             <div className="flex justify-between items-center p-3 rounded-xl bg-red-500/5 border border-red-500/10">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-lg bg-red-500/10 flex items-center justify-center">
@@ -543,16 +567,21 @@ export default function DashboardPage() {
                   <p className="font-black text-sm text-red-500">{formatCurrency(dynamicMetrics.despesasFin)}</p>
                 </div>
               </div>
-              <div className="w-16 h-16 rounded-full flex items-center justify-center bg-purple-500/10">
-                <HandshakeIcon size={20} className="text-purple-500" />
-              </div>
             </div>
 
+            {/* Lucro Líquido */}
             <div className="pt-3 border-t border-zinc-100 dark:border-white/5 flex justify-between items-center">
               <span className="text-[10px] font-black uppercase">Lucro Líquido</span>
-              <span className={`font-black text-lg ${dynamicMetrics.lucroLiquido >= 0 ? 'text-[#0217ff]' : 'text-red-500'}`}>
-                {formatCurrency(dynamicMetrics.lucroLiquido)}
-              </span>
+              <div className="flex items-center gap-2">
+                {dynamicMetrics.lucroLiquido >= 0 ? (
+                  <ArrowUpRight size={16} className="text-green-500" />
+                ) : (
+                  <ArrowDownRight size={16} className="text-red-500" />
+                )}
+                <span className={`font-black text-lg ${dynamicMetrics.lucroLiquido >= 0 ? 'text-[#0217ff]' : 'text-red-500'}`}>
+                  {formatCurrency(dynamicMetrics.lucroLiquido)}
+                </span>
+              </div>
             </div>
           </div>
         </div>
@@ -614,7 +643,11 @@ export default function DashboardPage() {
             {safeAppointments.length > 0 ? (
               <div className="space-y-3">
                 {safeAppointments.slice(0, 5).map((app, i) => (
-                  <div key={i} className="flex items-center gap-4 p-3 rounded-xl bg-zinc-50 dark:bg-white/5 hover:bg-zinc-100 dark:hover:bg-white/10 transition-all">
+                  <div 
+                    key={i} 
+                    className="flex items-center gap-4 p-3 rounded-xl bg-zinc-50 dark:bg-white/5 hover:bg-zinc-100 dark:hover:bg-white/10 transition-all cursor-pointer group"
+                    onClick={() => handleViewAppointment(app)}
+                  >
                     <div className="text-center min-w-[50px]">
                       <div className="text-[9px] font-black text-[#0217ff] uppercase">
                         {new Date(app.date).toLocaleString('pt-BR', { month: 'short' }).toUpperCase()}
@@ -624,7 +657,7 @@ export default function DashboardPage() {
                       </div>
                     </div>
                     <div className="flex-1">
-                      <div className="font-bold text-sm line-clamp-1">{app.title}</div>
+                      <div className="font-bold text-sm line-clamp-1 group-hover:text-[#0217ff] transition-colors">{app.title}</div>
                       <div className="text-[10px] text-zinc-500 flex items-center gap-2 mt-0.5">
                         <Clock size={10} />
                         <span>{app.time}</span>
@@ -636,7 +669,7 @@ export default function DashboardPage() {
                         )}
                       </div>
                     </div>
-                    <ChevronRight size={16} className="text-zinc-400" />
+                    <ChevronRight size={16} className="text-zinc-400 group-hover:translate-x-1 transition-transform" />
                   </div>
                 ))}
               </div>
@@ -651,6 +684,103 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+
+      {/* MODAL DE DETALHES DO COMPROMISSO */}
+      {showAppointmentModal && selectedAppointment && (
+        <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
+          <div className={`bg-white dark:bg-zinc-900 rounded-2xl max-w-md w-full shadow-2xl border ${darkMode ? 'border-white/10' : 'border-gray-200'} overflow-hidden`}>
+            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-[#0217ff] to-[#00c6ff]" />
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-xl bg-[#0217ff]/10">
+                    <Calendar size={20} className="text-[#0217ff]" />
+                  </div>
+                  <h3 className="text-lg font-bold text-gray-900 dark:text-white">Detalhes do Compromisso</h3>
+                </div>
+                <button 
+                  onClick={() => setShowAppointmentModal(false)}
+                  className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
+                >
+                  <X size={18} className="text-gray-500" />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div className="p-4 rounded-xl bg-gray-50 dark:bg-white/5">
+                  <p className="text-xs text-gray-500 dark:text-zinc-400 mb-1">Título</p>
+                  <p className="font-bold text-gray-900 dark:text-white">{selectedAppointment.title}</p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="p-3 rounded-xl bg-gray-50 dark:bg-white/5">
+                    <p className="text-[10px] text-gray-500 dark:text-zinc-400 mb-1">Data</p>
+                    <p className="font-medium text-sm text-gray-900 dark:text-white">
+                      {new Date(selectedAppointment.date).toLocaleDateString('pt-BR')}
+                    </p>
+                  </div>
+                  <div className="p-3 rounded-xl bg-gray-50 dark:bg-white/5">
+                    <p className="text-[10px] text-gray-500 dark:text-zinc-400 mb-1">Horário</p>
+                    <p className="font-medium text-sm text-gray-900 dark:text-white">
+                      {selectedAppointment.time}
+                      {selectedAppointment.endTime && ` - ${selectedAppointment.endTime}`}
+                    </p>
+                  </div>
+                </div>
+
+                {selectedAppointment.clientName && (
+                  <div className="p-4 rounded-xl bg-gray-50 dark:bg-white/5">
+                    <p className="text-xs text-gray-500 dark:text-zinc-400 mb-1 flex items-center gap-1">
+                      <User size={12} /> Cliente
+                    </p>
+                    <p className="font-medium text-gray-900 dark:text-white">{selectedAppointment.clientName}</p>
+                    {selectedAppointment.clientPhone && (
+                      <p className="text-sm text-gray-500 dark:text-zinc-400 mt-1">
+                        {formatPhoneDisplay(selectedAppointment.clientPhone)}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {selectedAppointment.location && (
+                  <div className="p-4 rounded-xl bg-gray-50 dark:bg-white/5">
+                    <p className="text-xs text-gray-500 dark:text-zinc-400 mb-1 flex items-center gap-1">
+                      <MapPin size={12} /> Local
+                    </p>
+                    <p className="font-medium text-gray-900 dark:text-white">{selectedAppointment.location}</p>
+                  </div>
+                )}
+
+                {selectedAppointment.notes && (
+                  <div className="p-4 rounded-xl bg-gray-50 dark:bg-white/5">
+                    <p className="text-xs text-gray-500 dark:text-zinc-400 mb-1">Observações</p>
+                    <p className="text-sm text-gray-700 dark:text-zinc-300">{selectedAppointment.notes}</p>
+                  </div>
+                )}
+
+                <div className="flex gap-3 pt-2">
+                  <button 
+                    onClick={() => navigate('/calendar')}
+                    className="flex-1 py-3 bg-[#0217ff] text-white rounded-xl font-bold text-sm hover:bg-[#0217ff]/90 transition-all"
+                  >
+                    Ver Agenda Completa
+                  </button>
+                  {selectedAppointment.clientPhone && (
+                    <a
+                      href={`https://wa.me/${selectedAppointment.clientPhone.replace(/\D/g, '')}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-4 py-3 bg-green-500 text-white rounded-xl font-bold text-sm hover:bg-green-600 transition-all flex items-center gap-2"
+                    >
+                      <MessageSquare size={16} />
+                    </a>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <style>{`
         .animate-fade-in {
