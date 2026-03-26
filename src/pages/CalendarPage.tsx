@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   ChevronLeft, 
   ChevronRight, 
@@ -38,6 +38,16 @@ import { Appointment } from '../types';
 import { format, isToday, isTomorrow, isPast, isFuture, differenceInDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
+// Função para formatar telefone
+const formatPhoneNumber = (value: string) => {
+  if (!value) return '';
+  const numbers = value.replace(/\D/g, '');
+  if (numbers.length <= 10) {
+    return numbers.replace(/(\d{2})(\d{4})(\d{4})/, '($1) $2-$3');
+  }
+  return numbers.replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3');
+};
+
 export default function CalendarPage() {
   const { appointments, addAppointment, deleteAppointment, darkMode } = useGlobal();
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -48,6 +58,8 @@ export default function CalendarPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   
   const [newApp, setNewApp] = useState<Omit<Appointment, 'id'>>({
     title: '',
@@ -66,16 +78,6 @@ export default function CalendarPage() {
   // Dias da semana
   const weekDays = ['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB'];
 
-  // Horários do dia (9h às 19h)
-  const dayHours = useMemo(() => {
-    const hours = [];
-    for (let i = 9; i <= 19; i++) {
-      hours.push(`${i.toString().padStart(2, '0')}:00`);
-      if (i !== 19) hours.push(`${i.toString().padStart(2, '0')}:30`);
-    }
-    return hours;
-  }, []);
-
   // Dias do mês
   const daysInMonth = useMemo(() => {
     const year = currentDate.getFullYear();
@@ -84,19 +86,16 @@ export default function CalendarPage() {
     const lastDay = new Date(year, month + 1, 0);
     const days = [];
     
-    // Adicionar dias do mês anterior para completar a primeira semana
     const startDayOfWeek = firstDay.getDay();
     for (let i = startDayOfWeek - 1; i >= 0; i--) {
       const prevDate = new Date(year, month, -i);
       days.push(prevDate);
     }
     
-    // Dias do mês atual
     for (let i = 1; i <= lastDay.getDate(); i++) {
       days.push(new Date(year, month, i));
     }
     
-    // Adicionar dias do próximo mês para completar a última semana
     const remainingDays = 42 - days.length;
     for (let i = 1; i <= remainingDays; i++) {
       days.push(new Date(year, month + 1, i));
@@ -143,59 +142,77 @@ export default function CalendarPage() {
   }, [appointments, currentDate, selectedFilter, searchTerm]);
 
   const getAppointmentTypeStyle = (type: string) => {
-    const styles = {
+    const styles: Record<string, { bg: string; text: string; icon: any; label: string }> = {
       visita: { bg: 'bg-blue-500/10', text: 'text-blue-500', icon: Home, label: 'Visita' },
       reunião: { bg: 'bg-purple-500/10', text: 'text-purple-500', icon: Users, label: 'Reunião' },
       'follow-up': { bg: 'bg-green-500/10', text: 'text-green-500', icon: MessageSquare, label: 'Follow-up' },
       assinatura: { bg: 'bg-amber-500/10', text: 'text-amber-500', icon: FileText, label: 'Assinatura' }
     };
-    return styles[type as keyof typeof styles] || styles.visita;
+    return styles[type] || styles.visita;
   };
 
   const getStatusStyle = (status: string) => {
-    const styles = {
+    const styles: Record<string, { bg: string; text: string; label: string }> = {
       pendente: { bg: 'bg-yellow-500/10', text: 'text-yellow-500', label: 'Pendente' },
       confirmado: { bg: 'bg-green-500/10', text: 'text-green-500', label: 'Confirmado' },
       realizado: { bg: 'bg-blue-500/10', text: 'text-blue-500', label: 'Realizado' },
       cancelado: { bg: 'bg-red-500/10', text: 'text-red-500', label: 'Cancelado' }
     };
-    return styles[status as keyof typeof styles] || styles.pendente;
+    return styles[status] || styles.pendente;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (!newApp.title.trim()) {
+      alert('Preencha o título do compromisso');
+      return;
+    }
+    
+    if (!newApp.time) {
+      alert('Preencha o horário');
+      return;
+    }
+    
+    setIsSubmitting(true);
     
     const appointmentToSave = {
       ...newApp,
       id: editingAppointment?.id || Date.now().toString()
     };
     
-    if (editingAppointment) {
-      addAppointment(appointmentToSave);
-    } else {
-      addAppointment(appointmentToSave);
+    try {
+      await addAppointment(appointmentToSave);
+      setShowSuccessMessage(true);
+      setTimeout(() => setShowSuccessMessage(false), 3000);
+      setIsModalOpen(false);
+      setEditingAppointment(null);
+      setNewApp({
+        title: '',
+        date: currentDate.toISOString().split('T')[0],
+        time: '',
+        endTime: '',
+        type: 'visita',
+        notes: '',
+        location: '',
+        clientName: '',
+        clientPhone: '',
+        status: 'pendente',
+        reminder: true
+      });
+    } catch (error) {
+      console.error('Erro ao salvar compromisso:', error);
+      alert('Erro ao salvar compromisso. Tente novamente.');
+    } finally {
+      setIsSubmitting(false);
     }
-    
-    setIsModalOpen(false);
-    setEditingAppointment(null);
-    setNewApp({
-      title: '',
-      date: currentDate.toISOString().split('T')[0],
-      time: '',
-      endTime: '',
-      type: 'visita',
-      notes: '',
-      location: '',
-      clientName: '',
-      clientPhone: '',
-      status: 'pendente',
-      reminder: true
-    });
   };
 
   const handleDelete = (id: string) => {
-    deleteAppointment(id);
-    if (showDetailsModal) setShowDetailsModal(false);
+    if (confirm('Tem certeza que deseja excluir este compromisso?')) {
+      deleteAppointment(id);
+      if (showDetailsModal) setShowDetailsModal(false);
+    }
   };
 
   const handleEdit = (app: Appointment) => {
@@ -222,26 +239,53 @@ export default function CalendarPage() {
     setShowDetailsModal(true);
   };
 
-  const cardStyles = darkMode ? 'bg-zinc-900 border-white/5 text-white' : 'bg-white border-zinc-200 text-zinc-900';
-  const inputStyles = darkMode ? 'bg-zinc-800 border-white/10 text-white placeholder-zinc-500' : 'bg-zinc-50 border-zinc-200 text-zinc-900 placeholder-zinc-400';
+  const renderIcon = (IconComponent: any, size: number = 20, className: string = '') => {
+    if (!IconComponent) return null;
+    return <IconComponent size={size} className={className} />;
+  };
+
+  const cardStyles = darkMode 
+    ? 'bg-zinc-900 border-white/10 text-white' 
+    : 'bg-white border-gray-200 text-gray-900 shadow-sm';
+  
+  const inputStyles = darkMode 
+    ? 'bg-zinc-800 border-white/10 text-white placeholder-zinc-500' 
+    : 'bg-gray-50 border-gray-200 text-gray-900 placeholder-gray-400';
 
   return (
-    <div className="space-y-8 animate-fade-in pb-20 max-w-7xl mx-auto">
+    <div className="space-y-8 animate-fade-in pb-20 max-w-7xl mx-auto p-4 md:p-0">
+      {/* MENSAGEM DE SUCESSO */}
+      {showSuccessMessage && (
+        <div className="fixed top-20 right-4 z-50 animate-slide-in">
+          <div className="flex items-center gap-3 px-5 py-3 bg-green-500 text-white rounded-xl shadow-lg">
+            <CheckCircle2 size={18} />
+            <span className="text-sm font-medium">Compromisso agendado com sucesso!</span>
+          </div>
+        </div>
+      )}
+
       {/* HEADER */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className={`text-3xl font-bold ${darkMode ? 'text-white' : 'text-zinc-900'}`}>Agenda</h1>
-          <p className="text-zinc-500 font-medium mt-1">Gerencie suas visitas e compromissos</p>
+          <div className="flex items-center gap-2 mb-1">
+            <div className="w-8 h-8 bg-gradient-to-br from-[#0217ff] to-[#00c6ff] rounded-xl flex items-center justify-center">
+              <CalendarDays size={16} className="text-white" />
+            </div>
+            <h1 className={`text-3xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Agenda</h1>
+          </div>
+          <p className={`${darkMode ? 'text-zinc-400' : 'text-gray-500'} font-medium mt-1`}>
+            Gerencie suas visitas e compromissos
+          </p>
         </div>
         <div className="flex gap-3">
           <div className="relative">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400" size={18} />
+            <Search className={`absolute left-4 top-1/2 -translate-y-1/2 ${darkMode ? 'text-zinc-500' : 'text-gray-400'}`} size={18} />
             <input
               type="text"
               placeholder="Buscar compromissos..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className={`pl-11 pr-4 py-3 rounded-xl text-sm ${inputStyles} w-64`}
+              className={`pl-11 pr-4 py-3 rounded-xl text-sm ${inputStyles} w-64 focus:outline-none focus:ring-2 focus:ring-[#0217ff] transition-all`}
             />
           </div>
           <button 
@@ -272,88 +316,51 @@ export default function CalendarPage() {
 
       {/* FILTROS */}
       <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
-        <button
-          onClick={() => setSelectedFilter('todos')}
-          className={`px-4 py-2 rounded-full text-[10px] font-bold uppercase whitespace-nowrap transition-all
-            ${selectedFilter === 'todos' 
-              ? 'bg-[#0217ff] text-white' 
-              : `${cardStyles} hover:bg-zinc-100 dark:hover:bg-white/10`}`}
-        >
-          Todos
-        </button>
-        <button
-          onClick={() => setSelectedFilter('visita')}
-          className={`px-4 py-2 rounded-full text-[10px] font-bold uppercase whitespace-nowrap transition-all flex items-center gap-2
-            ${selectedFilter === 'visita' 
-              ? 'bg-[#0217ff] text-white' 
-              : `${cardStyles} hover:bg-zinc-100 dark:hover:bg-white/10`}`}
-        >
-          <Home size={12} /> Visitas
-        </button>
-        <button
-          onClick={() => setSelectedFilter('reunião')}
-          className={`px-4 py-2 rounded-full text-[10px] font-bold uppercase whitespace-nowrap transition-all flex items-center gap-2
-            ${selectedFilter === 'reunião' 
-              ? 'bg-[#0217ff] text-white' 
-              : `${cardStyles} hover:bg-zinc-100 dark:hover:bg-white/10`}`}
-        >
-          <Users size={12} /> Reuniões
-        </button>
-        <button
-          onClick={() => setSelectedFilter('follow-up')}
-          className={`px-4 py-2 rounded-full text-[10px] font-bold uppercase whitespace-nowrap transition-all flex items-center gap-2
-            ${selectedFilter === 'follow-up' 
-              ? 'bg-[#0217ff] text-white' 
-              : `${cardStyles} hover:bg-zinc-100 dark:hover:bg-white/10`}`}
-        >
-          <MessageSquare size={12} /> Follow-up
-        </button>
-        <button
-          onClick={() => setSelectedFilter('assinatura')}
-          className={`px-4 py-2 rounded-full text-[10px] font-bold uppercase whitespace-nowrap transition-all flex items-center gap-2
-            ${selectedFilter === 'assinatura' 
-              ? 'bg-[#0217ff] text-white' 
-              : `${cardStyles} hover:bg-zinc-100 dark:hover:bg-white/10`}`}
-        >
-          <FileText size={12} /> Assinaturas
-        </button>
+        {[
+          { id: 'todos', label: 'Todos', icon: null },
+          { id: 'visita', label: 'Visitas', icon: Home },
+          { id: 'reunião', label: 'Reuniões', icon: Users },
+          { id: 'follow-up', label: 'Follow-up', icon: MessageSquare },
+          { id: 'assinatura', label: 'Assinaturas', icon: FileText }
+        ].map((filter) => {
+          const Icon = filter.icon;
+          const isActive = selectedFilter === filter.id;
+          return (
+            <button
+              key={filter.id}
+              onClick={() => setSelectedFilter(filter.id)}
+              className={`px-5 py-2.5 rounded-full text-[10px] font-bold uppercase whitespace-nowrap transition-all flex items-center gap-2
+                ${isActive 
+                  ? 'bg-gradient-to-r from-[#0217ff] to-[#00c6ff] text-white shadow-md' 
+                  : `${cardStyles} hover:bg-gray-100 dark:hover:bg-white/10`}`}
+            >
+              {Icon && <Icon size={12} />}
+              {filter.label}
+            </button>
+          );
+        })}
       </div>
 
       {/* VIEW MODE TOGGLE */}
-      <div className="flex gap-2 border-b border-zinc-200 dark:border-white/10 pb-4">
-        <button
-          onClick={() => setViewMode('day')}
-          className={`px-6 py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all
-            ${viewMode === 'day' 
-              ? 'bg-[#0217ff] text-white shadow-md' 
-              : `${cardStyles} hover:bg-zinc-100 dark:hover:bg-white/10`}`}
-        >
-          Dia
-        </button>
-        <button
-          onClick={() => setViewMode('week')}
-          className={`px-6 py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all
-            ${viewMode === 'week' 
-              ? 'bg-[#0217ff] text-white shadow-md' 
-              : `${cardStyles} hover:bg-zinc-100 dark:hover:bg-white/10`}`}
-        >
-          Semana
-        </button>
-        <button
-          onClick={() => setViewMode('month')}
-          className={`px-6 py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all
-            ${viewMode === 'month' 
-              ? 'bg-[#0217ff] text-white shadow-md' 
-              : `${cardStyles} hover:bg-zinc-100 dark:hover:bg-white/10`}`}
-        >
-          Mês
-        </button>
+      <div className="flex gap-2 border-b border-gray-200 dark:border-white/10 pb-4">
+        {['day', 'week', 'month'].map((mode) => (
+          <button
+            key={mode}
+            onClick={() => setViewMode(mode as any)}
+            className={`px-6 py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all
+              ${viewMode === mode 
+                ? 'bg-[#0217ff] text-white shadow-md' 
+                : `${cardStyles} hover:bg-gray-100 dark:hover:bg-white/10`}`}
+          >
+            {mode === 'day' ? 'Dia' : mode === 'week' ? 'Semana' : 'Mês'}
+          </button>
+        ))}
       </div>
 
       {/* MAIN CONTENT */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* CALENDAR SIDEBAR */}
-        <div className={`p-6 rounded-[32px] border ${cardStyles}`}>
+        <div className={`p-6 rounded-2xl border ${cardStyles}`}>
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-xs font-black uppercase tracking-widest text-zinc-500">Calendário</h2>
             <div className="flex gap-1">
@@ -363,7 +370,7 @@ export default function CalendarPage() {
                   newDate.setMonth(currentDate.getMonth() - 1);
                   setCurrentDate(newDate);
                 }}
-                className="p-2 hover:bg-zinc-100 dark:hover:bg-white/10 rounded-xl transition-colors"
+                className="p-2 hover:bg-gray-100 dark:hover:bg-white/10 rounded-xl transition-colors"
               >
                 <ChevronLeft className="w-4 h-4" />
               </button>
@@ -373,7 +380,7 @@ export default function CalendarPage() {
                   newDate.setMonth(currentDate.getMonth() + 1);
                   setCurrentDate(newDate);
                 }}
-                className="p-2 hover:bg-zinc-100 dark:hover:bg-white/10 rounded-xl transition-colors"
+                className="p-2 hover:bg-gray-100 dark:hover:bg-white/10 rounded-xl transition-colors"
               >
                 <ChevronRight className="w-4 h-4" />
               </button>
@@ -411,7 +418,7 @@ export default function CalendarPage() {
                     ${!isCurrentMonth ? 'text-zinc-400' : ''}
                     ${isSelected ? 'bg-[#0217ff] text-white shadow-md' : ''}
                     ${isTodayDate && !isSelected ? 'border-2 border-[#0217ff] text-[#0217ff]' : ''}
-                    ${!isSelected && !isTodayDate ? 'hover:bg-zinc-100 dark:hover:bg-white/5' : ''}
+                    ${!isSelected && !isTodayDate ? 'hover:bg-gray-100 dark:hover:bg-white/5' : ''}
                   `}
                 >
                   {date.getDate()}
@@ -425,13 +432,13 @@ export default function CalendarPage() {
         </div>
 
         {/* APPOINTMENTS SECTION */}
-        <div className={`lg:col-span-2 p-6 rounded-[32px] border ${cardStyles}`}>
+        <div className={`lg:col-span-2 p-6 rounded-2xl border ${cardStyles}`}>
           <div className="flex items-center justify-between mb-6">
             <div>
               <h2 className="text-lg font-bold">
                 {viewMode === 'day' ? 'Compromissos do Dia' : viewMode === 'week' ? 'Agenda da Semana' : 'Agenda do Mês'}
               </h2>
-              <p className="text-xs text-zinc-500 mt-1">
+              <p className={`text-xs ${darkMode ? 'text-zinc-400' : 'text-gray-500'} mt-1`}>
                 {viewMode === 'day' 
                   ? format(currentDate, "EEEE, d 'de' MMMM", { locale: ptBR })
                   : viewMode === 'week'
@@ -453,23 +460,23 @@ export default function CalendarPage() {
                   return (
                     <div 
                       key={app.id} 
-                      className="p-5 rounded-2xl bg-zinc-50 dark:bg-white/5 border border-zinc-100 dark:border-white/5 hover:border-[#0217ff]/30 transition-all cursor-pointer group"
+                      className="p-5 rounded-xl bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-white/5 hover:border-[#0217ff]/30 transition-all cursor-pointer group"
                       onClick={() => handleViewDetails(app)}
                     >
                       <div className="flex items-start justify-between">
                         <div className="flex items-start gap-4">
                           <div className={`p-3 rounded-xl ${typeStyle.bg}`}>
-                            <StatusIcon size={20} className={typeStyle.text} />
+                            {renderIcon(StatusIcon, 20, typeStyle.text)}
                           </div>
                           <div>
-                            <h3 className="font-bold text-lg">{app.title}</h3>
+                            <h3 className={`font-bold text-lg ${darkMode ? 'text-white' : 'text-gray-900'}`}>{app.title}</h3>
                             {app.clientName && (
-                              <div className="flex items-center gap-2 mt-1 text-sm text-zinc-500">
+                              <div className="flex items-center gap-2 mt-1 text-sm text-gray-500">
                                 <User size={14} />
                                 <span>{app.clientName}</span>
                               </div>
                             )}
-                            <div className="flex flex-wrap gap-4 mt-3 text-sm text-zinc-500">
+                            <div className="flex flex-wrap gap-4 mt-3 text-sm text-gray-500">
                               <div className="flex items-center gap-1.5">
                                 <Clock size={14} className="text-[#0217ff]" />
                                 <span>{app.time}{app.endTime && ` - ${app.endTime}`}</span>
@@ -486,9 +493,9 @@ export default function CalendarPage() {
                         <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                           <button 
                             onClick={(e) => { e.stopPropagation(); handleEdit(app); }}
-                            className="p-2 hover:bg-zinc-200 dark:hover:bg-white/10 rounded-xl transition-colors"
+                            className="p-2 hover:bg-gray-200 dark:hover:bg-white/10 rounded-xl transition-colors"
                           >
-                            <Edit3 size={16} className="text-zinc-500" />
+                            <Edit3 size={16} className="text-gray-500" />
                           </button>
                           <button 
                             onClick={(e) => { e.stopPropagation(); handleDelete(app.id); }}
@@ -503,11 +510,11 @@ export default function CalendarPage() {
                 })
               ) : (
                 <div className="py-20 text-center flex flex-col items-center">
-                  <div className="w-16 h-16 bg-zinc-50 dark:bg-white/5 rounded-full flex items-center justify-center mb-4">
-                    <CalendarIcon className="w-8 h-8 text-zinc-300 dark:text-zinc-700" />
+                  <div className="w-16 h-16 bg-gray-50 dark:bg-white/5 rounded-full flex items-center justify-center mb-4">
+                    <CalendarIcon className="w-8 h-8 text-gray-300 dark:text-zinc-700" />
                   </div>
-                  <h3 className="text-lg font-bold mb-1">Nenhum compromisso</h3>
-                  <p className="text-sm text-zinc-500">Clique em "Novo Compromisso" para agendar</p>
+                  <h3 className={`text-lg font-bold mb-1 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Nenhum compromisso</h3>
+                  <p className="text-sm text-gray-500">Clique em "Novo Compromisso" para agendar</p>
                 </div>
               )
             )}
@@ -517,19 +524,18 @@ export default function CalendarPage() {
                 {weekDaysList.map((day, idx) => {
                   const dayApps = getAppointmentsForDate(day);
                   const isTodayDate = isToday(day);
-                  const isSelectedDay = day.toDateString() === currentDate.toDateString();
                   
                   return (
-                    <div key={idx} className="border-b border-zinc-100 dark:border-white/10 pb-4 last:border-0">
+                    <div key={idx} className="border-b border-gray-100 dark:border-white/10 pb-4 last:border-0">
                       <div className="flex items-center gap-3 mb-3">
                         <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold ${
-                          isTodayDate ? 'bg-[#0217ff] text-white' : 'bg-zinc-100 dark:bg-white/10'
+                          isTodayDate ? 'bg-[#0217ff] text-white' : 'bg-gray-100 dark:bg-white/10'
                         }`}>
                           {format(day, 'dd')}
                         </div>
                         <div>
-                          <p className="font-bold text-sm">{weekDays[idx]}</p>
-                          <p className="text-[10px] text-zinc-500">{format(day, 'MMMM', { locale: ptBR })}</p>
+                          <p className={`font-bold text-sm ${darkMode ? 'text-white' : 'text-gray-900'}`}>{weekDays[idx]}</p>
+                          <p className="text-[10px] text-gray-500">{format(day, 'MMMM', { locale: ptBR })}</p>
                         </div>
                         {dayApps.length > 0 && (
                           <span className="ml-auto text-[10px] font-bold text-[#0217ff]">{dayApps.length} comp.</span>
@@ -544,14 +550,14 @@ export default function CalendarPage() {
                               <div 
                                 key={app.id}
                                 onClick={() => handleViewDetails(app)}
-                                className="p-3 rounded-xl bg-zinc-50 dark:bg-white/5 hover:bg-zinc-100 dark:hover:bg-white/10 transition-colors cursor-pointer"
+                                className="p-3 rounded-xl bg-gray-50 dark:bg-white/5 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors cursor-pointer"
                               >
                                 <div className="flex items-center gap-3">
                                   <div className={`w-2 h-2 rounded-full ${typeStyle.text.replace('text', 'bg')}`} />
-                                  <span className="text-xs font-mono text-zinc-500">{app.time}</span>
-                                  <span className="font-medium text-sm flex-1">{app.title}</span>
+                                  <span className="text-xs font-mono text-gray-500">{app.time}</span>
+                                  <span className={`font-medium text-sm flex-1 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{app.title}</span>
                                   {app.clientName && (
-                                    <span className="text-xs text-zinc-500 flex items-center gap-1">
+                                    <span className="text-xs text-gray-500 flex items-center gap-1">
                                       <User size={10} /> {app.clientName}
                                     </span>
                                   )}
@@ -561,7 +567,7 @@ export default function CalendarPage() {
                           })}
                         </div>
                       ) : (
-                        <div className="ml-14 text-xs text-zinc-400 italic py-2">
+                        <div className="ml-14 text-xs text-gray-400 italic py-2">
                           Nenhum compromisso
                         </div>
                       )}
@@ -586,11 +592,11 @@ export default function CalendarPage() {
                       className={`
                         min-h-[100px] p-2 rounded-xl border cursor-pointer transition-all
                         ${!isCurrentMonth ? 'opacity-40' : ''}
-                        ${isSelected ? 'border-[#0217ff] bg-[#0217ff]/5' : 'border-zinc-100 dark:border-white/10 hover:border-[#0217ff]/30'}
+                        ${isSelected ? 'border-[#0217ff] bg-[#0217ff]/5' : 'border-gray-100 dark:border-white/10 hover:border-[#0217ff]/30'}
                       `}
                     >
                       <div className={`text-sm font-bold mb-2 ${
-                        isTodayDate ? 'text-[#0217ff]' : ''
+                        isTodayDate ? 'text-[#0217ff]' : darkMode ? 'text-white' : 'text-gray-900'
                       }`}>
                         {date.getDate()}
                       </div>
@@ -603,12 +609,12 @@ export default function CalendarPage() {
                               className="text-[9px] font-medium truncate flex items-center gap-1"
                             >
                               <div className={`w-1.5 h-1.5 rounded-full ${typeStyle.text.replace('text', 'bg')}`} />
-                              <span>{app.title}</span>
+                              <span className={darkMode ? 'text-zinc-300' : 'text-gray-700'}>{app.title}</span>
                             </div>
                           );
                         })}
                         {dayApps.length > 2 && (
-                          <div className="text-[8px] text-zinc-500 font-bold">
+                          <div className="text-[8px] text-gray-500 font-bold">
                             +{dayApps.length - 2} mais
                           </div>
                         )}
@@ -622,47 +628,47 @@ export default function CalendarPage() {
         </div>
       </div>
 
-      {/* MODAL DE CRIAÇÃO/EDIÇÃO - CORRIGIDO: FUNDO BRANCO FIXO */}
+      {/* MODAL DE CRIAÇÃO/EDIÇÃO - PREMIUM */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[100] flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-2xl rounded-[40px] border border-zinc-200 shadow-2xl overflow-hidden relative">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[100] flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white w-full max-w-2xl rounded-2xl border border-gray-200 shadow-2xl overflow-hidden relative">
             <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-[#0217ff] to-[#00c6ff]" />
             <button 
               onClick={() => {
                 setIsModalOpen(false);
                 setEditingAppointment(null);
               }} 
-              className="absolute top-6 right-6 p-2 hover:bg-zinc-100 rounded-xl transition-colors z-10"
+              className="absolute top-6 right-6 p-2 hover:bg-gray-100 rounded-xl transition-colors z-10"
             >
-              <X className="w-5 h-5 text-zinc-400" />
+              <X className="w-5 h-5 text-gray-400" />
             </button>
 
             <div className="p-8">
-              <h2 className="text-2xl font-bold mb-2 text-zinc-900">
+              <h2 className="text-2xl font-bold mb-2 text-gray-900">
                 {editingAppointment ? 'Editar Compromisso' : 'Novo Compromisso'}
               </h2>
-              <p className="text-sm text-zinc-500 mb-6">Preencha os detalhes do agendamento</p>
+              <p className="text-sm text-gray-500 mb-6">Preencha os detalhes do agendamento</p>
 
               <form onSubmit={handleSubmit} className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest ml-1">Título *</label>
+                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Título *</label>
                     <input 
                       required
                       type="text"
                       value={newApp.title}
                       onChange={(e) => setNewApp({ ...newApp, title: e.target.value })}
-                      className="w-full bg-zinc-50 border border-zinc-200 rounded-2xl py-4 px-5 text-zinc-900 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-[#0217ff] transition-all"
+                      className="w-full bg-gray-50 border border-gray-200 rounded-xl py-4 px-5 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#0217ff] transition-all"
                       placeholder="Ex: Visita Apartamento Moema"
                     />
                   </div>
                   
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest ml-1">Tipo *</label>
+                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Tipo *</label>
                     <select
                       value={newApp.type}
                       onChange={(e) => setNewApp({ ...newApp, type: e.target.value as any })}
-                      className="w-full bg-zinc-50 border border-zinc-200 rounded-2xl py-4 px-5 text-zinc-900 focus:outline-none focus:ring-2 focus:ring-[#0217ff] transition-all"
+                      className="w-full bg-gray-50 border border-gray-200 rounded-xl py-4 px-5 text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#0217ff] transition-all"
                     >
                       <option value="visita">Visita</option>
                       <option value="reunião">Reunião</option>
@@ -674,34 +680,34 @@ export default function CalendarPage() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest ml-1">Data *</label>
+                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Data *</label>
                     <input 
                       required
                       type="date"
                       value={newApp.date}
                       onChange={(e) => setNewApp({ ...newApp, date: e.target.value })}
-                      className="w-full bg-zinc-50 border border-zinc-200 rounded-2xl py-4 px-5 text-zinc-900 focus:outline-none focus:ring-2 focus:ring-[#0217ff] transition-all"
+                      className="w-full bg-gray-50 border border-gray-200 rounded-xl py-4 px-5 text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#0217ff] transition-all"
                     />
                   </div>
                   
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-2">
-                      <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest ml-1">Horário *</label>
+                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Horário *</label>
                       <input 
                         required
                         type="time"
                         value={newApp.time}
                         onChange={(e) => setNewApp({ ...newApp, time: e.target.value })}
-                        className="w-full bg-zinc-50 border border-zinc-200 rounded-2xl py-4 px-5 text-zinc-900 focus:outline-none focus:ring-2 focus:ring-[#0217ff] transition-all"
+                        className="w-full bg-gray-50 border border-gray-200 rounded-xl py-4 px-5 text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#0217ff] transition-all"
                       />
                     </div>
                     <div className="space-y-2">
-                      <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest ml-1">Até</label>
+                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Até</label>
                       <input 
                         type="time"
                         value={newApp.endTime}
                         onChange={(e) => setNewApp({ ...newApp, endTime: e.target.value })}
-                        className="w-full bg-zinc-50 border border-zinc-200 rounded-2xl py-4 px-5 text-zinc-900 focus:outline-none focus:ring-2 focus:ring-[#0217ff] transition-all"
+                        className="w-full bg-gray-50 border border-gray-200 rounded-xl py-4 px-5 text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#0217ff] transition-all"
                       />
                     </div>
                   </div>
@@ -709,69 +715,74 @@ export default function CalendarPage() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest ml-1">Nome do Cliente</label>
+                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Nome do Cliente</label>
                     <input 
                       type="text"
                       value={newApp.clientName}
                       onChange={(e) => setNewApp({ ...newApp, clientName: e.target.value })}
-                      className="w-full bg-zinc-50 border border-zinc-200 rounded-2xl py-4 px-5 text-zinc-900 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-[#0217ff] transition-all"
+                      className="w-full bg-gray-50 border border-gray-200 rounded-xl py-4 px-5 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#0217ff] transition-all"
                       placeholder="Nome do cliente"
                     />
                   </div>
                   
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest ml-1">Telefone</label>
+                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Telefone</label>
                     <input 
                       type="tel"
                       value={newApp.clientPhone}
-                      onChange={(e) => setNewApp({ ...newApp, clientPhone: e.target.value })}
-                      className="w-full bg-zinc-50 border border-zinc-200 rounded-2xl py-4 px-5 text-zinc-900 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-[#0217ff] transition-all"
+                      onChange={(e) => setNewApp({ ...newApp, clientPhone: formatPhoneNumber(e.target.value) })}
+                      className="w-full bg-gray-50 border border-gray-200 rounded-xl py-4 px-5 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#0217ff] transition-all"
                       placeholder="(11) 99999-9999"
                     />
                   </div>
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest ml-1">Local / Endereço</label>
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Local / Endereço</label>
                   <input 
                     type="text"
                     value={newApp.location}
                     onChange={(e) => setNewApp({ ...newApp, location: e.target.value })}
-                    className="w-full bg-zinc-50 border border-zinc-200 rounded-2xl py-4 px-5 text-zinc-900 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-[#0217ff] transition-all"
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl py-4 px-5 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#0217ff] transition-all"
                     placeholder="Endereço do imóvel ou local da reunião"
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest ml-1">Observações</label>
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Observações</label>
                   <textarea 
                     rows={3}
                     value={newApp.notes}
                     onChange={(e) => setNewApp({ ...newApp, notes: e.target.value })}
-                    className="w-full bg-zinc-50 border border-zinc-200 rounded-2xl py-4 px-5 text-zinc-900 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-[#0217ff] transition-all resize-none"
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl py-4 px-5 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#0217ff] transition-all resize-none"
                     placeholder="Detalhes adicionais, instruções, etc..."
                   />
                 </div>
 
-                <div className="flex items-center gap-3 p-4 rounded-2xl bg-zinc-50">
+                <div className="flex items-center gap-3 p-4 rounded-xl bg-gray-50">
                   <input
                     type="checkbox"
                     id="reminder"
                     checked={newApp.reminder}
                     onChange={(e) => setNewApp({ ...newApp, reminder: e.target.checked })}
-                    className="w-5 h-5 rounded-lg border-2 border-zinc-300 accent-[#0217ff]"
+                    className="w-5 h-5 rounded-lg border-2 border-gray-300 accent-[#0217ff]"
                   />
-                  <label htmlFor="reminder" className="text-sm font-medium text-zinc-700 cursor-pointer">
+                  <label htmlFor="reminder" className="text-sm font-medium text-gray-700 cursor-pointer">
                     Enviar lembrete por WhatsApp
                   </label>
                 </div>
 
                 <button 
                   type="submit"
-                  className="w-full py-5 bg-gradient-to-r from-[#0217ff] to-[#00c6ff] text-white rounded-2xl font-black uppercase tracking-wider text-sm hover:scale-[1.02] transition-all shadow-lg flex items-center justify-center gap-3"
+                  disabled={isSubmitting}
+                  className="w-full py-5 bg-gradient-to-r from-[#0217ff] to-[#00c6ff] text-white rounded-xl font-black uppercase tracking-wider text-sm hover:scale-[1.02] transition-all shadow-lg flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {editingAppointment ? <Check size={20} /> : <Plus size={20} />}
-                  {editingAppointment ? 'Atualizar Compromisso' : 'Agendar Compromisso'}
+                  {isSubmitting ? (
+                    <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent" />
+                  ) : (
+                    editingAppointment ? <Check size={20} /> : <Plus size={20} />
+                  )}
+                  {isSubmitting ? 'Salvando...' : (editingAppointment ? 'Atualizar Compromisso' : 'Agendar Compromisso')}
                 </button>
               </form>
             </div>
@@ -779,28 +790,25 @@ export default function CalendarPage() {
         </div>
       )}
 
-      {/* MODAL DE DETALHES - CORRIGIDO: FUNDO BRANCO FIXO */}
+      {/* MODAL DE DETALHES - PREMIUM */}
       {showDetailsModal && selectedAppointment && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[100] flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-lg rounded-[40px] border border-zinc-200 shadow-2xl overflow-hidden relative">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[100] flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white w-full max-w-lg rounded-2xl border border-gray-200 shadow-2xl overflow-hidden relative">
             <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-[#0217ff] to-[#00c6ff]" />
             <button 
               onClick={() => setShowDetailsModal(false)} 
-              className="absolute top-6 right-6 p-2 hover:bg-zinc-100 rounded-xl transition-colors z-10"
+              className="absolute top-6 right-6 p-2 hover:bg-gray-100 rounded-xl transition-colors z-10"
             >
-              <X className="w-5 h-5 text-zinc-400" />
+              <X className="w-5 h-5 text-gray-400" />
             </button>
 
             <div className="p-8">
               <div className="flex items-start gap-4 mb-6">
-                <div className={`p-4 rounded-2xl ${getAppointmentTypeStyle(selectedAppointment.type).bg}`}>
-                  {getAppointmentTypeStyle(selectedAppointment.type).icon({ 
-                    size: 24, 
-                    className: getAppointmentTypeStyle(selectedAppointment.type).text 
-                  })}
+                <div className={`p-4 rounded-xl ${getAppointmentTypeStyle(selectedAppointment.type).bg}`}>
+                  {renderIcon(getAppointmentTypeStyle(selectedAppointment.type).icon, 24, getAppointmentTypeStyle(selectedAppointment.type).text)}
                 </div>
                 <div className="flex-1">
-                  <h2 className="text-2xl font-bold text-zinc-900">{selectedAppointment.title}</h2>
+                  <h2 className="text-2xl font-bold text-gray-900">{selectedAppointment.title}</h2>
                   <div className="flex items-center gap-2 mt-1">
                     <span className={`text-[10px] font-black uppercase px-2 py-1 rounded-full ${getAppointmentTypeStyle(selectedAppointment.type).bg} ${getAppointmentTypeStyle(selectedAppointment.type).text}`}>
                       {getAppointmentTypeStyle(selectedAppointment.type).label}
@@ -815,11 +823,11 @@ export default function CalendarPage() {
               </div>
 
               <div className="space-y-4 mb-8">
-                <div className="flex items-center gap-3 p-3 rounded-xl bg-zinc-50">
+                <div className="flex items-center gap-3 p-3 rounded-xl bg-gray-50">
                   <CalendarIcon size={20} className="text-[#0217ff]" />
                   <div>
-                    <p className="text-xs text-zinc-500">Data e Horário</p>
-                    <p className="font-medium text-zinc-900">
+                    <p className="text-xs text-gray-500">Data e Horário</p>
+                    <p className="font-medium text-gray-900">
                       {format(new Date(selectedAppointment.date), "dd 'de' MMMM 'de' yyyy", { locale: ptBR })} • {selectedAppointment.time}
                       {selectedAppointment.endTime && ` - ${selectedAppointment.endTime}`}
                     </p>
@@ -827,32 +835,32 @@ export default function CalendarPage() {
                 </div>
 
                 {selectedAppointment.clientName && (
-                  <div className="flex items-center gap-3 p-3 rounded-xl bg-zinc-50">
+                  <div className="flex items-center gap-3 p-3 rounded-xl bg-gray-50">
                     <User size={20} className="text-[#0217ff]" />
                     <div>
-                      <p className="text-xs text-zinc-500">Cliente</p>
-                      <p className="font-medium text-zinc-900">{selectedAppointment.clientName}</p>
+                      <p className="text-xs text-gray-500">Cliente</p>
+                      <p className="font-medium text-gray-900">{selectedAppointment.clientName}</p>
                       {selectedAppointment.clientPhone && (
-                        <p className="text-sm text-zinc-500">{selectedAppointment.clientPhone}</p>
+                        <p className="text-sm text-gray-500">{formatPhoneNumber(selectedAppointment.clientPhone)}</p>
                       )}
                     </div>
                   </div>
                 )}
 
                 {selectedAppointment.location && (
-                  <div className="flex items-center gap-3 p-3 rounded-xl bg-zinc-50">
+                  <div className="flex items-center gap-3 p-3 rounded-xl bg-gray-50">
                     <MapPin size={20} className="text-[#0217ff]" />
                     <div>
-                      <p className="text-xs text-zinc-500">Local</p>
-                      <p className="font-medium text-zinc-900">{selectedAppointment.location}</p>
+                      <p className="text-xs text-gray-500">Local</p>
+                      <p className="font-medium text-gray-900">{selectedAppointment.location}</p>
                     </div>
                   </div>
                 )}
 
                 {selectedAppointment.notes && (
-                  <div className="p-3 rounded-xl bg-zinc-50">
-                    <p className="text-xs text-zinc-500 mb-1">Observações</p>
-                    <p className="text-sm text-zinc-700">{selectedAppointment.notes}</p>
+                  <div className="p-3 rounded-xl bg-gray-50">
+                    <p className="text-xs text-gray-500 mb-1">Observações</p>
+                    <p className="text-sm text-gray-700">{selectedAppointment.notes}</p>
                   </div>
                 )}
               </div>
@@ -860,14 +868,14 @@ export default function CalendarPage() {
               <div className="flex gap-3">
                 <button
                   onClick={() => handleEdit(selectedAppointment)}
-                  className="flex-1 py-4 bg-zinc-100 rounded-2xl font-bold text-sm text-zinc-700 flex items-center justify-center gap-2 hover:bg-zinc-200 transition-all"
+                  className="flex-1 py-4 bg-gray-100 rounded-xl font-bold text-sm text-gray-700 flex items-center justify-center gap-2 hover:bg-gray-200 transition-all"
                 >
                   <Edit3 size={18} />
                   Editar
                 </button>
                 <button
                   onClick={() => handleDelete(selectedAppointment.id)}
-                  className="flex-1 py-4 bg-red-500/10 text-red-500 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 hover:bg-red-500 hover:text-white transition-all"
+                  className="flex-1 py-4 bg-red-500/10 text-red-500 rounded-xl font-bold text-sm flex items-center justify-center gap-2 hover:bg-red-500 hover:text-white transition-all"
                 >
                   <Trash2 size={18} />
                   Excluir
@@ -877,7 +885,7 @@ export default function CalendarPage() {
                     href={`https://wa.me/${selectedAppointment.clientPhone.replace(/\D/g, '')}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex-1 py-4 bg-green-500 text-white rounded-2xl font-bold text-sm flex items-center justify-center gap-2 hover:bg-green-600 transition-all"
+                    className="flex-1 py-4 bg-green-500 text-white rounded-xl font-bold text-sm flex items-center justify-center gap-2 hover:bg-green-600 transition-all"
                   >
                     <Send size={18} />
                     WhatsApp
@@ -892,6 +900,20 @@ export default function CalendarPage() {
       <style>{`
         .no-scrollbar::-webkit-scrollbar {
           display: none;
+        }
+        .animate-fade-in {
+          animation: fadeIn 0.3s ease-out;
+        }
+        .animate-slide-in {
+          animation: slideIn 0.3s ease-out;
+        }
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(10px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes slideIn {
+          from { opacity: 0; transform: translateX(20px); }
+          to { opacity: 1; transform: translateX(0); }
         }
       `}</style>
     </div>

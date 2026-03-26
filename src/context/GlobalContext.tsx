@@ -85,21 +85,19 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       try {
         const parsed = JSON.parse(storedAppointments);
         setAppointments(parsed);
+        console.log('Carregados compromissos do localStorage:', parsed.length);
       } catch (e) {
         console.error('Erro ao carregar compromissos do localStorage:', e);
       }
     }
   }, []);
 
-  // Salvar transações no localStorage quando mudarem
+  // Salvar transações no localStorage
   useEffect(() => {
-    if (transactions.length > 0 || true) {
-      localStorage.setItem('imobipro_transactions', JSON.stringify(transactions));
-      console.log('Transações salvas no localStorage:', transactions.length);
-    }
+    localStorage.setItem('imobipro_transactions', JSON.stringify(transactions));
   }, [transactions]);
 
-  // Salvar compromissos no localStorage quando mudarem
+  // Salvar compromissos no localStorage
   useEffect(() => {
     localStorage.setItem('imobipro_appointments', JSON.stringify(appointments));
   }, [appointments]);
@@ -167,7 +165,7 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       // Processar propriedades
       setProperties(propertiesData);
       
-      // Processar transações (garantir que têm os campos corretos)
+      // Processar transações
       if (transData && transData.length > 0) {
         const formattedTransactions = transData.map((t: any) => ({
           id: t.id?.toString() || Date.now().toString(),
@@ -183,12 +181,28 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }));
         setTransactions(formattedTransactions);
         console.log('Transações carregadas do Supabase:', formattedTransactions.length);
-      } else {
-        console.log('Nenhuma transação encontrada no Supabase');
       }
       
       // Processar compromissos
-      setAppointments(appData || []);
+      if (appData && appData.length > 0) {
+        const formattedAppointments = appData.map((a: any) => ({
+          id: a.id?.toString() || Date.now().toString(),
+          title: a.title || 'Sem título',
+          date: a.date || new Date().toISOString().split('T')[0],
+          time: a.time || '00:00',
+          endTime: a.end_time || null,
+          type: a.type || 'visita',
+          notes: a.notes || '',
+          location: a.location || '',
+          clientName: a.client_name || '',
+          clientPhone: a.client_phone || '',
+          status: a.status || 'pendente',
+          reminder: a.reminder || false,
+          user_id: a.user_id
+        }));
+        setAppointments(formattedAppointments);
+        console.log('Compromissos carregados do Supabase:', formattedAppointments.length);
+      }
 
     } catch (err) {
       console.error("Erro geral ao carregar dados:", err);
@@ -284,34 +298,20 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // ========== TRANSACTION FUNCTIONS ==========
   const addTransaction = async (transaction: Omit<Transaction, 'id'>) => {
-    console.log('📝 addTransaction chamada:', transaction);
-    
     const newTransaction: Transaction = {
       ...transaction,
       id: Date.now().toString(),
       created_at: new Date().toISOString()
     };
     
-    // 1. Atualizar estado local imediatamente (UI responsive)
     setTransactions(prev => [newTransaction, ...prev]);
-    console.log('✅ Transação adicionada ao estado local');
     
-    // 2. Tentar salvar no Supabase (se usuário logado)
     if (user?.id) {
       try {
         const payload = {
           ...transaction,
-          user_id: user.id,
-          date: transaction.date,
-          amount: transaction.amount,
-          description: transaction.description,
-          type: transaction.type,
-          category: transaction.category,
-          status: transaction.status,
-          notes: transaction.notes || null
+          user_id: user.id
         };
-        
-        console.log('💾 Salvando no Supabase:', payload);
         
         const { data, error } = await supabase
           .from('transactions')
@@ -319,48 +319,26 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           .select();
         
         if (error) {
-          console.error('❌ Erro ao salvar no Supabase:', error);
-          // Se erro, mantém no localStorage já salvo
-        } else if (data && data.length > 0) {
-          console.log('✅ Transação salva no Supabase:', data[0]);
-          // Atualizar com o ID do Supabase se necessário
-          if (data[0].id && data[0].id !== newTransaction.id) {
-            setTransactions(prev => prev.map(t => 
-              t.id === newTransaction.id ? { ...t, id: data[0].id } : t
-            ));
-          }
+          console.error('Erro ao salvar transação:', error);
+        } else if (data && data.length > 0 && data[0].id !== newTransaction.id) {
+          setTransactions(prev => prev.map(t => 
+            t.id === newTransaction.id ? { ...t, id: data[0].id } : t
+          ));
         }
       } catch (err) {
-        console.error('❌ Erro exceção ao salvar transação:', err);
+        console.error('Erro ao salvar transação:', err);
       }
-    } else {
-      console.log('⚠️ Usuário não autenticado, salvando apenas localmente');
     }
-    
-    return;
   };
 
   const deleteTransaction = async (id: string) => {
-    console.log('🗑️ deleteTransaction chamada para id:', id);
-    
-    // 1. Remover do estado local
     setTransactions(prev => prev.filter(t => t.id !== id));
     
-    // 2. Tentar remover do Supabase
     if (user?.id) {
       try {
-        const { error } = await supabase
-          .from('transactions')
-          .delete()
-          .eq('id', id);
-        
-        if (error) {
-          console.error('❌ Erro ao deletar do Supabase:', error);
-        } else {
-          console.log('✅ Transação deletada do Supabase');
-        }
+        await supabase.from('transactions').delete().eq('id', id);
       } catch (err) {
-        console.error('❌ Erro exceção ao deletar transação:', err);
+        console.error('Erro ao deletar transação:', err);
       }
     }
   };
@@ -369,42 +347,103 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const addAppointment = async (appointment: Omit<Appointment, 'id'>) => {
     console.log('📝 addAppointment chamada:', appointment);
     
+    // Validar campos obrigatórios
+    if (!appointment.title || !appointment.date || !appointment.time) {
+      console.error('❌ Campos obrigatórios faltando');
+      alert('Preencha título, data e horário');
+      return;
+    }
+    
     const newAppointment: Appointment = {
       ...appointment,
       id: Date.now().toString()
     };
     
+    // Atualizar estado local imediatamente
     setAppointments(prev => [newAppointment, ...prev]);
+    console.log('✅ Compromisso adicionado ao estado local');
     
+    // Tentar salvar no Supabase
     if (user?.id) {
       try {
-        const payload = { ...appointment, user_id: user.id };
+        // 🔥 Mapeamento correto para os campos da tabela
+        const payload: any = {
+          user_id: user.id,
+          title: appointment.title,
+          date: appointment.date,
+          time: appointment.time,
+          type: appointment.type || 'visita',
+          status: appointment.status || 'pendente'
+        };
+        
+        // Adicionar campos opcionais
+        if (appointment.endTime && appointment.endTime !== '') {
+          payload.end_time = appointment.endTime;
+        }
+        if (appointment.notes && appointment.notes !== '') {
+          payload.notes = appointment.notes;
+        }
+        if (appointment.location && appointment.location !== '') {
+          payload.location = appointment.location;
+        }
+        if (appointment.clientName && appointment.clientName !== '') {
+          payload.client_name = appointment.clientName;
+        }
+        if (appointment.clientPhone && appointment.clientPhone !== '') {
+          payload.client_phone = appointment.clientPhone;
+        }
+        if (appointment.reminder !== undefined && appointment.reminder !== null) {
+          payload.reminder = appointment.reminder;
+        }
+        
+        console.log('💾 Payload sendo enviado:', payload);
+        
         const { data, error } = await supabase
           .from('appointments')
           .insert([payload])
           .select();
         
         if (error) {
-          console.error('Erro ao salvar compromisso:', error);
-        } else if (data && data.length > 0 && data[0].id !== newAppointment.id) {
-          setAppointments(prev => prev.map(a => 
-            a.id === newAppointment.id ? { ...a, id: data[0].id } : a
-          ));
+          console.error('❌ Erro detalhado:', error);
+          alert(`Erro ao salvar: ${error.message}`);
+        } else if (data && data.length > 0) {
+          console.log('✅ Compromisso salvo no Supabase:', data[0]);
+          if (data[0].id !== newAppointment.id) {
+            setAppointments(prev => prev.map(a => 
+              a.id === newAppointment.id ? { ...a, id: data[0].id } : a
+            ));
+          }
+          alert('Compromisso agendado com sucesso!');
         }
       } catch (err) {
-        console.error('Erro ao salvar compromisso:', err);
+        console.error('❌ Erro exceção:', err);
+        alert('Erro ao conectar com o servidor');
       }
+    } else {
+      console.log('⚠️ Usuário não autenticado, salvando apenas localmente');
+      alert('Compromisso salvo localmente!');
     }
   };
 
   const deleteAppointment = async (id: string) => {
+    console.log('🗑️ deleteAppointment chamada para id:', id);
+    
     setAppointments(prev => prev.filter(a => a.id !== id));
     
     if (user?.id) {
       try {
-        await supabase.from('appointments').delete().eq('id', id);
+        const { error } = await supabase
+          .from('appointments')
+          .delete()
+          .eq('id', id);
+        
+        if (error) {
+          console.error('❌ Erro ao deletar:', error);
+        } else {
+          console.log('✅ Compromisso deletado do Supabase');
+        }
       } catch (err) {
-        console.error('Erro ao deletar compromisso:', err);
+        console.error('❌ Erro exceção:', err);
       }
     }
   };
