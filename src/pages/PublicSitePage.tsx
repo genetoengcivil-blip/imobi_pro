@@ -13,7 +13,8 @@ import {
   ThumbsUp, Quote, Camera, Layers, Compass,
   BadgeCheck, Gem, Crown, Briefcase, FileText,
   UserCheck, CalendarDays, CircleDollarSign, HandshakeIcon,
-  LayoutGrid, Grid3x3, Mail, Quote as QuoteIcon
+  LayoutGrid, Grid3x3, Mail, Quote as QuoteIcon,
+  Map, Mail as MailIcon, MapPin as MapPinIcon, PhoneCall
 } from 'lucide-react';
 
 export default function PublicSitePage() {
@@ -38,7 +39,6 @@ export default function PublicSitePage() {
 
   const modalRef = useRef<HTMLDivElement>(null);
   const carouselRef = useRef<HTMLDivElement>(null);
-  const animationRef = useRef<number | null>(null);
   const [isHovering, setIsHovering] = useState(false);
 
   // Depoimentos Premium - Carrossel Contínuo
@@ -108,21 +108,19 @@ export default function PublicSitePage() {
     if (!carousel) return;
 
     let animationId: number;
-    let startTime: number | null = null;
     let currentScroll = 0;
-    const speed = 0.5; // pixels por frame
+    const speed = 0.5;
     const cardWidth = 380;
     const gap = 24;
     const totalWidth = (cardWidth + gap) * testimonials.length;
 
-    const animate = (timestamp: number) => {
+    const animate = () => {
       if (!carousel) return;
       
       if (!isHovering) {
         currentScroll = carousel.scrollLeft;
         currentScroll += speed;
         
-        // Reset para criar loop infinito
         if (currentScroll >= totalWidth) {
           currentScroll = 0;
         }
@@ -181,13 +179,36 @@ export default function PublicSitePage() {
           .eq('slug', slug)
           .maybeSingle();
 
-        if (bError) throw bError;
+        if (bError) {
+          console.error('Erro na busca do perfil:', bError);
+          throw bError;
+        }
+        
         if (!brokerData) {
           if (isMounted) setError('Corretor não encontrado.');
           return;
         }
 
-        if (isMounted) setBroker(brokerData);
+        console.log('📊 Dados do corretor carregados:', brokerData);
+
+        const formattedBroker = {
+          id: brokerData.id,
+          full_name: brokerData.full_name || 'Corretor',
+          slug: brokerData.slug,
+          bio: brokerData.bio || '',
+          phone: brokerData.phone || '',
+          whatsapp_message: brokerData.whatsapp_message || '',
+          social_media: brokerData.social_media || {},
+          avatar: brokerData.avatar || null,
+          logo: brokerData.logo || null,
+          professional_title: brokerData.professional_title || 'Consultor Imobiliário',
+          specialties: brokerData.specialties ? brokerData.specialties.split(',') : [],
+          email: brokerData.email || brokerData.full_name?.replace(/\s/g, '').toLowerCase() + '@imobipro.com'
+        };
+
+        console.log('📸 Logo:', formattedBroker.logo);
+
+        if (isMounted) setBroker(formattedBroker);
 
         const { data: pData, error: pError } = await supabase
           .from('properties')
@@ -250,15 +271,28 @@ export default function PublicSitePage() {
     try {
       if (!broker) return;
 
-      const { error } = await supabase.from('leads').insert([{
+      // 🔥 CORREÇÃO: Removido property_interest temporariamente ou usando o campo correto
+      const leadData: any = {
         name: leadForm.name.trim(),
         phone: leadForm.phone.replace(/\D/g, ''),
-        email: leadForm.email || null,
         user_id: broker.id,
         source: 'site_publico',
-        status: 'novo',
-        property_interest: selectedProperty?.title || null
-      }]);
+        status: 'novo'
+      };
+      
+      // Adicionar email se fornecido
+      if (leadForm.email && leadForm.email.trim()) {
+        leadData.email = leadForm.email.trim();
+      }
+      
+      // Adicionar property_interest se houver propriedade selecionada
+      if (selectedProperty?.title) {
+        leadData.property_interest = selectedProperty.title;
+      }
+
+      console.log('📝 Enviando lead:', leadData);
+
+      const { error } = await supabase.from('leads').insert([leadData]);
 
       if (error) throw error;
 
@@ -343,7 +377,6 @@ export default function PublicSitePage() {
     accent: broker?.theme_config?.accentColor || '#00c6ff'
   };
 
-  // Estatísticas do corretor
   const stats = [
     { value: '10+', label: 'Anos de Experiência', icon: Award },
     { value: '500+', label: 'Clientes Atendidos', icon: Users },
@@ -401,16 +434,30 @@ export default function PublicSitePage() {
         </div>
       )}
 
-      {/* HEADER */}
+      {/* HEADER COM LOGO CORRIGIDA */}
       <nav className="fixed top-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-b border-zinc-100 h-20 flex items-center px-6 shadow-sm">
         <div className="max-w-7xl mx-auto w-full flex items-center justify-between">
           <div className="flex items-center gap-3 cursor-pointer group" onClick={() => scrollToSection('top')}>
-            <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-white font-black text-xl transition-all group-hover:scale-105" style={{ background: `linear-gradient(135deg, ${themeColors.primary}, ${themeColors.accent})` }}>
-              {broker.full_name?.charAt(0).toUpperCase()}
-            </div>
+            {broker.logo ? (
+              <div className="w-12 h-12 rounded-2xl overflow-hidden bg-white flex items-center justify-center shadow-md border border-zinc-200">
+                <img 
+                  src={broker.logo} 
+                  alt="Logo" 
+                  className="w-full h-full object-cover"
+                  onError={(e) => {
+                    console.error('Erro ao carregar logo');
+                    e.currentTarget.style.display = 'none';
+                  }}
+                />
+              </div>
+            ) : (
+              <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-white font-black text-xl transition-all group-hover:scale-105" style={{ background: `linear-gradient(135deg, ${themeColors.primary}, ${themeColors.accent})` }}>
+                {broker.full_name?.charAt(0).toUpperCase()}
+              </div>
+            )}
             <div>
               <h1 className="font-black uppercase italic tracking-tighter leading-none text-lg">{broker.full_name}</h1>
-              <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest">{broker.professional_title || 'Consultor Imobiliário'}</span>
+              <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest">Consultor Imobiliário</span>
             </div>
           </div>
 
@@ -453,9 +500,7 @@ export default function PublicSitePage() {
           <div className="space-y-8">
             <div className="inline-flex items-center gap-3 px-5 py-2.5 bg-white rounded-full border border-zinc-100 shadow-sm">
               <BadgeCheck size={16} style={{ color: themeColors.primary }} />
-              <span className="text-[10px] font-black uppercase tracking-widest text-zinc-500">
-                Credibilidade & Excelência
-              </span>
+              <span className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Credibilidade & Excelência</span>
             </div>
             
             <h1 className="text-6xl md:text-7xl lg:text-8xl font-black uppercase italic tracking-tighter leading-[0.9]">
@@ -634,7 +679,7 @@ export default function PublicSitePage() {
         )}
       </section>
 
-      {/* DEPOIMENTOS - CARROSSEL CONTÍNUO EM LOOP */}
+      {/* DEPOIMENTOS - CARROSSEL CONTÍNUO */}
       <section id="depoimentos" className="py-24 px-6 bg-zinc-50">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-12">
@@ -650,7 +695,6 @@ export default function PublicSitePage() {
             </p>
           </div>
 
-          {/* Estatísticas */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
             <div className="bg-white rounded-2xl p-6 text-center border border-zinc-100 shadow-sm">
               <div className="flex justify-center mb-3">
@@ -671,9 +715,7 @@ export default function PublicSitePage() {
             </div>
           </div>
 
-          {/* Carrossel Contínuo com Navegação Manual */}
           <div className="relative">
-            {/* Botões de Navegação */}
             <button 
               onClick={scrollLeft}
               className="absolute -left-4 top-1/2 -translate-y-1/2 z-10 w-10 h-10 bg-white rounded-full shadow-lg flex items-center justify-center hover:bg-[#0217ff] hover:text-white transition-all"
@@ -687,7 +729,6 @@ export default function PublicSitePage() {
               <ChevronRightIcon size={20} />
             </button>
 
-            {/* Container do Carrossel - Movimento Contínuo */}
             <div 
               ref={carouselRef}
               className="flex overflow-x-auto gap-6 pb-6 scroll-smooth hide-scrollbar"
@@ -735,7 +776,7 @@ export default function PublicSitePage() {
         </div>
       </section>
 
-      {/* SOBRE */}
+      {/* SOBRE COM LOGO */}
       <section id="sobre" className="py-20 px-6 bg-white">
         <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
           <div>
@@ -776,9 +817,24 @@ export default function PublicSitePage() {
             <div className="absolute -inset-4 bg-gradient-to-r from-[#0217ff]/10 to-[#00c6ff]/10 rounded-[48px] blur-2xl"></div>
             <div className="relative bg-white rounded-[48px] p-8 shadow-xl border border-zinc-100">
               <div className="flex items-center gap-4 mb-6">
-                <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#0217ff] to-[#00c6ff] flex items-center justify-center text-white font-black text-2xl">
-                  {broker.full_name?.charAt(0).toUpperCase()}
-                </div>
+                {/* 🔥 LOGO NA SEÇÃO SOBRE COM object-cover */}
+                {broker.logo ? (
+                  <div className="w-16 h-16 rounded-full overflow-hidden bg-white shadow-lg border-2 border-[#0217ff]/20 flex items-center justify-center">
+                    <img 
+                      src={broker.logo} 
+                      alt="Logo" 
+                      className="w-full h-full object-cover"
+                      onError={(e) => {
+                        console.error('Erro ao carregar logo na seção sobre');
+                        e.currentTarget.style.display = 'none';
+                      }}
+                    />
+                  </div>
+                ) : (
+                  <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#0217ff] to-[#00c6ff] flex items-center justify-center text-white font-black text-2xl">
+                    {broker.full_name?.charAt(0).toUpperCase()}
+                  </div>
+                )}
                 <div>
                   <h3 className="font-black text-xl">{broker.full_name}</h3>
                   <p className="text-zinc-500 text-sm">{broker.professional_title || 'Consultor Imobiliário'}</p>
@@ -827,6 +883,13 @@ export default function PublicSitePage() {
                 placeholder="WhatsApp"
                 value={leadForm.phone}
                 onChange={e => setLeadForm({...leadForm, phone: e.target.value.replace(/\D/g, '')})}
+                className="flex-1 min-w-[200px] p-4 bg-white/20 backdrop-blur border border-white/30 rounded-2xl text-white placeholder-white/70 outline-none focus:bg-white/30 transition-all"
+              />
+              <input 
+                type="email"
+                placeholder="E-mail (opcional)"
+                value={leadForm.email}
+                onChange={e => setLeadForm({...leadForm, email: e.target.value})}
                 className="flex-1 min-w-[200px] p-4 bg-white/20 backdrop-blur border border-white/30 rounded-2xl text-white placeholder-white/70 outline-none focus:bg-white/30 transition-all"
               />
             </div>
@@ -920,56 +983,175 @@ export default function PublicSitePage() {
         </div>
       )}
 
-      {/* FOOTER */}
-      <footer className="py-16 px-6 bg-zinc-900 text-white">
-        <div className="max-w-7xl mx-auto">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-12">
+      {/* FOOTER PREMIUM COM LOGO */}
+      <footer className="bg-zinc-900 text-white">
+        <div className="max-w-7xl mx-auto px-6 py-16">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-12 mb-12">
+            {/* Coluna 1 - Logo e Descrição */}
             <div>
-              <div className="flex items-center gap-2 mb-4">
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-black" style={{ background: `linear-gradient(135deg, ${themeColors.primary}, ${themeColors.accent})` }}>
-                  {broker.full_name?.charAt(0).toUpperCase()}
-                </div>
+              <div className="flex items-center gap-3 mb-6">
+                {broker.logo ? (
+                  <div className="w-12 h-12 rounded-xl overflow-hidden bg-white flex items-center justify-center shadow-md">
+                    <img 
+                      src={broker.logo} 
+                      alt="Logo" 
+                      className="w-full h-full object-cover"
+                      onError={(e) => {
+                        console.error('Erro ao carregar logo no footer');
+                        e.currentTarget.style.display = 'none';
+                      }}
+                    />
+                  </div>
+                ) : (
+                  <div className="w-12 h-12 rounded-xl flex items-center justify-center text-white font-black text-xl bg-gradient-to-r from-[#0217ff] to-[#00c6ff]">
+                    {broker.full_name?.charAt(0).toUpperCase()}
+                  </div>
+                )}
                 <div>
-                  <h3 className="font-black uppercase text-sm">{broker.full_name}</h3>
-                  <p className="text-[9px] text-zinc-400 uppercase">{broker.professional_title}</p>
+                  <h3 className="font-black uppercase text-lg tracking-tighter">{broker.full_name}</h3>
+                  <p className="text-[9px] text-zinc-400 uppercase tracking-widest">Consultor Imobiliário</p>
                 </div>
               </div>
-              <p className="text-xs text-zinc-400 leading-relaxed">{broker.bio?.substring(0, 100)}...</p>
+              <p className="text-sm text-zinc-400 leading-relaxed mb-6">
+                {broker.bio?.substring(0, 120) || `Especialista em encontrar o lar ideal para você e sua família, com atendimento personalizado e assessoria completa.`}
+                {broker.bio?.length > 120 ? '...' : ''}
+              </p>
+              <div className="flex items-center gap-2">
+                <ShieldCheck size={16} className="text-[#0217ff]" />
+                <span className="text-[10px] text-zinc-500 uppercase tracking-wider">Profissional Credenciado</span>
+              </div>
             </div>
-            
+
+            {/* Coluna 2 - Links Rápidos */}
             <div>
-              <h4 className="text-[10px] font-black uppercase tracking-widest mb-4">Links</h4>
-              <ul className="space-y-2 text-sm text-zinc-400">
-                <li><button onClick={() => scrollToSection('imoveis')} className="hover:text-white transition-colors">Imóveis</button></li>
-                <li><button onClick={() => scrollToSection('sobre')} className="hover:text-white transition-colors">Sobre</button></li>
-                <li><button onClick={() => scrollToSection('depoimentos')} className="hover:text-white transition-colors">Depoimentos</button></li>
-                <li><button onClick={() => scrollToSection('contato')} className="hover:text-white transition-colors">Contato</button></li>
+              <h4 className="text-[11px] font-black uppercase tracking-widest text-[#0217ff] mb-6">Navegação</h4>
+              <ul className="space-y-3">
+                <li>
+                  <button onClick={() => scrollToSection('imoveis')} className="text-sm text-zinc-400 hover:text-white transition-colors flex items-center gap-2 group">
+                    <ChevronRight size={12} className="group-hover:translate-x-1 transition-transform" />
+                    Imóveis
+                  </button>
+                </li>
+                <li>
+                  <button onClick={() => scrollToSection('sobre')} className="text-sm text-zinc-400 hover:text-white transition-colors flex items-center gap-2 group">
+                    <ChevronRight size={12} className="group-hover:translate-x-1 transition-transform" />
+                    Sobre
+                  </button>
+                </li>
+                <li>
+                  <button onClick={() => scrollToSection('depoimentos')} className="text-sm text-zinc-400 hover:text-white transition-colors flex items-center gap-2 group">
+                    <ChevronRight size={12} className="group-hover:translate-x-1 transition-transform" />
+                    Depoimentos
+                  </button>
+                </li>
+                <li>
+                  <button onClick={() => scrollToSection('contato')} className="text-sm text-zinc-400 hover:text-white transition-colors flex items-center gap-2 group">
+                    <ChevronRight size={12} className="group-hover:translate-x-1 transition-transform" />
+                    Contato
+                  </button>
+                </li>
               </ul>
             </div>
-            
+
+            {/* Coluna 3 - Contato */}
             <div>
-              <h4 className="text-[10px] font-black uppercase tracking-widest mb-4">Contato</h4>
-              {broker.phone && (
-                <p className="text-sm text-zinc-400 mb-2">{formatPhoneDisplay(broker.phone)}</p>
-              )}
-              <a href={`https://wa.me/${broker.phone?.replace(/\D/g, '')}`} target="_blank" className="text-sm text-[#0217ff] hover:underline">WhatsApp</a>
+              <h4 className="text-[11px] font-black uppercase tracking-widest text-[#0217ff] mb-6">Contato</h4>
+              <div className="space-y-4">
+                {broker.phone && (
+                  <div className="flex items-start gap-3">
+                    <PhoneCall size={16} className="text-[#0217ff] mt-0.5" />
+                    <div>
+                      <p className="text-[10px] text-zinc-500 uppercase">WhatsApp</p>
+                      <a href={`https://wa.me/${broker.phone.replace(/\D/g, '')}`} target="_blank" className="text-sm text-white hover:text-[#0217ff] transition-colors">
+                        {formatPhoneDisplay(broker.phone)}
+                      </a>
+                    </div>
+                  </div>
+                )}
+                <div className="flex items-start gap-3">
+                  <MailIcon size={16} className="text-[#0217ff] mt-0.5" />
+                  <div>
+                    <p className="text-[10px] text-zinc-500 uppercase">E-mail</p>
+                    <a href={`mailto:${broker.email || 'contato@imobipro.com'}`} className="text-sm text-white hover:text-[#0217ff] transition-colors break-all">
+                      {broker.email || 'contato@imobipro.com'}
+                    </a>
+                  </div>
+                </div>
+              </div>
             </div>
-            
+
+            {/* Coluna 4 - Redes Sociais */}
             <div>
-              <h4 className="text-[10px] font-black uppercase tracking-widest mb-4">Redes Sociais</h4>
-              <div className="flex gap-3">
-                {broker.social_media?.instagram && <a href={broker.social_media.instagram} target="_blank" className="p-2 bg-zinc-800 rounded-xl hover:bg-[#0217ff] transition-all"><Instagram size={16} /></a>}
-                {broker.social_media?.facebook && <a href={broker.social_media.facebook} target="_blank" className="p-2 bg-zinc-800 rounded-xl hover:bg-[#0217ff] transition-all"><Facebook size={16} /></a>}
-                {broker.social_media?.youtube && <a href={broker.social_media.youtube} target="_blank" className="p-2 bg-zinc-800 rounded-xl hover:bg-[#0217ff] transition-all"><Youtube size={16} /></a>}
-                {broker.social_media?.linkedin && <a href={broker.social_media.linkedin} target="_blank" className="p-2 bg-zinc-800 rounded-xl hover:bg-[#0217ff] transition-all"><Linkedin size={16} /></a>}
+              <h4 className="text-[11px] font-black uppercase tracking-widest text-[#0217ff] mb-6">Redes Sociais</h4>
+              <div className="flex flex-wrap gap-3 mb-6">
+                {broker.social_media?.instagram && (
+                  <a 
+                    href={broker.social_media.instagram} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="w-10 h-10 rounded-xl bg-zinc-800 flex items-center justify-center hover:bg-[#E1306C] transition-all group"
+                  >
+                    <Instagram size={18} className="text-zinc-400 group-hover:text-white" />
+                  </a>
+                )}
+                {broker.social_media?.facebook && (
+                  <a 
+                    href={broker.social_media.facebook} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="w-10 h-10 rounded-xl bg-zinc-800 flex items-center justify-center hover:bg-[#1877F2] transition-all group"
+                  >
+                    <Facebook size={18} className="text-zinc-400 group-hover:text-white" />
+                  </a>
+                )}
+                {broker.social_media?.youtube && (
+                  <a 
+                    href={broker.social_media.youtube} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="w-10 h-10 rounded-xl bg-zinc-800 flex items-center justify-center hover:bg-[#FF0000] transition-all group"
+                  >
+                    <Youtube size={18} className="text-zinc-400 group-hover:text-white" />
+                  </a>
+                )}
+                {broker.social_media?.linkedin && (
+                  <a 
+                    href={broker.social_media.linkedin} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="w-10 h-10 rounded-xl bg-zinc-800 flex items-center justify-center hover:bg-[#0A66C2] transition-all group"
+                  >
+                    <Linkedin size={18} className="text-zinc-400 group-hover:text-white" />
+                  </a>
+                )}
+              </div>
+              <div className="mt-4">
+                <p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-2">Receba Novidades</p>
+                <div className="flex gap-2">
+                  <input 
+                    type="email" 
+                    placeholder="Seu e-mail" 
+                    className="flex-1 px-3 py-2 rounded-lg bg-zinc-800 border border-zinc-700 text-white text-sm focus:outline-none focus:border-[#0217ff]"
+                  />
+                  <button className="px-3 py-2 bg-[#0217ff] rounded-lg hover:bg-[#0217ff]/80 transition-all">
+                    <Send size={14} />
+                  </button>
+                </div>
               </div>
             </div>
           </div>
-          
-          <div className="pt-8 border-t border-zinc-800 text-center">
-            <p className="text-[9px] text-zinc-500 uppercase tracking-[0.3em]">
-              ImobiPro © {new Date().getFullYear()} — Inteligência Imobiliária
-            </p>
+
+          {/* Divider */}
+          <div className="border-t border-zinc-800 pt-8">
+            <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+              <p className="text-[9px] text-zinc-500 uppercase tracking-[0.3em]">
+                ImobiPro © {new Date().getFullYear()} — Inteligência Imobiliária
+              </p>
+              <div className="flex gap-6">
+                <a href="#" className="text-[10px] text-zinc-500 hover:text-white transition-colors">Política de Privacidade</a>
+                <a href="#" className="text-[10px] text-zinc-500 hover:text-white transition-colors">Termos de Uso</a>
+              </div>
+            </div>
           </div>
         </div>
       </footer>

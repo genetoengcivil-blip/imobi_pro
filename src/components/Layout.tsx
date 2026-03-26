@@ -175,6 +175,20 @@ export default function Layout() {
     }
   };
 
+  // 🔥 CORREÇÃO: Obter a primeira letra do nome ou inicial do email
+  const getInitial = () => {
+    if (user?.name) {
+      return user.name.charAt(0).toUpperCase();
+    }
+    if (user?.user_metadata?.full_name) {
+      return user.user_metadata.full_name.charAt(0).toUpperCase();
+    }
+    if (user?.email) {
+      return user.email.charAt(0).toUpperCase();
+    }
+    return 'C';
+  };
+
   const theme = {
     bgApp: darkMode ? 'bg-zinc-950' : 'bg-zinc-50',
     bgSidebar: darkMode ? 'bg-black' : 'bg-white',
@@ -239,7 +253,7 @@ export default function Layout() {
               <Menu size={24} />
             </button>
             <h2 className="text-lg font-bold hidden sm:block">
-              Olá, {user?.user_metadata?.full_name?.split(' ')[0] || user?.name?.split(' ')[0] || 'Corretor'} 👋
+              Olá, {user?.name?.split(' ')[0] || user?.user_metadata?.full_name?.split(' ')[0] || 'Corretor'} 👋
             </h2>
           </div>
           
@@ -327,10 +341,18 @@ export default function Layout() {
               )}
             </div>
             
-            {/* AVATAR */}
-            <div className="w-10 h-10 rounded-full bg-gradient-to-r from-[#0217ff] to-[#00c6ff] flex items-center justify-center font-black text-white shadow-md">
-              {(user?.user_metadata?.full_name?.[0] || user?.name?.[0] || 'C').toUpperCase()}
-            </div>
+            {/* 🔥 AVATAR COM FOTO DO PERFIL */}
+            {user?.avatar ? (
+              <img 
+                src={user.avatar} 
+                alt="Avatar" 
+                className="w-10 h-10 rounded-full object-cover border-2 border-[#0217ff]/20 shadow-md"
+              />
+            ) : (
+              <div className="w-10 h-10 rounded-full bg-gradient-to-r from-[#0217ff] to-[#00c6ff] flex items-center justify-center font-black text-white shadow-md">
+                {getInitial()}
+              </div>
+            )}
           </div>
         </header>
 

@@ -129,9 +129,9 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const carregarDados = async (authUser: any) => {
     try {
-      // Carregar perfil da tabela perfil
+      // Carregar perfil da tabela profiles
       const { data: profile, error: profileError } = await supabase
-        .from('perfil')
+        .from('profiles')
         .select('*')
         .eq('id', authUser.id)
         .maybeSingle();
@@ -144,8 +144,13 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       let userProfile = profile;
       if (!profile) {
         const { data: newProfile, error: insertError } = await supabase
-          .from('perfil')
-          .insert([{ id: authUser.id }])
+          .from('profiles')
+          .insert([{ 
+            id: authUser.id,
+            full_name: authUser?.user_metadata?.full_name || 'Corretor',
+            professional_title: 'Consultor Imobiliário',
+            theme_config: { primaryColor: '#0217ff', accentColor: '#00c6ff', heroStyle: 'modern' }
+          }])
           .select()
           .single();
         
@@ -155,10 +160,11 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }
       }
 
-      setUser({
+      // Mapear dados do perfil para o formato da aplicação
+      const formattedUser = {
         ...authUser,
         ...userProfile,
-        name: userProfile?.nome_exibicao || authUser?.user_metadata?.full_name || 'Corretor',
+        name: userProfile?.full_name || authUser?.user_metadata?.full_name || 'Corretor',
         phone: userProfile?.phone || '',
         creci: userProfile?.creci || '',
         bio: userProfile?.bio || '',
@@ -169,8 +175,12 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         socialMedia: userProfile?.social_media || {},
         avatar: userProfile?.avatar || null,
         logo: userProfile?.logo || null,
-        slug: userProfile?.slug || ''
-      });
+        slug: userProfile?.slug || '',
+        theme_config: userProfile?.theme_config || { primaryColor: '#0217ff', accentColor: '#00c6ff', heroStyle: 'modern' }
+      };
+
+      setUser(formattedUser);
+      console.log('✅ Perfil carregado:', formattedUser);
 
       // Carregar dados das tabelas
       const [leadsData, propertiesData, transData, appData] = await Promise.all([
@@ -297,11 +307,10 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
     
     try {
-      // Mapear os campos para os nomes corretos da tabela perfil
+      // Mapear os campos para os nomes corretos da tabela profiles
       const payload: any = {};
       
-      // 🔥 MAPEAMENTO CORRETO
-      if (updates.name !== undefined) payload.nome_exibicao = updates.name;
+      if (updates.name !== undefined) payload.full_name = updates.name;
       if (updates.phone !== undefined) payload.phone = updates.phone;
       if (updates.creci !== undefined) payload.creci = updates.creci;
       if (updates.bio !== undefined) payload.bio = updates.bio;
@@ -313,8 +322,8 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       if (updates.logo !== undefined) payload.logo = updates.logo;
       if (updates.slug !== undefined) payload.slug = updates.slug;
       if (updates.socialMedia !== undefined) payload.social_media = updates.socialMedia;
+      if (updates.theme_config !== undefined) payload.theme_config = updates.theme_config;
       
-      // Adicionar updated_at
       payload.updated_at = new Date().toISOString();
       
       console.log('💾 Payload sendo enviado para o Supabase:', payload);
@@ -325,18 +334,13 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       
       // Salvar no Supabase
       const { data, error } = await supabase
-        .from('perfil')
+        .from('profiles')
         .update(payload)
         .eq('id', user.id)
         .select();
       
       if (error) {
-        console.error('❌ Erro detalhado ao atualizar perfil no Supabase:', {
-          code: error.code,
-          message: error.message,
-          details: error.details,
-          hint: error.hint
-        });
+        console.error('❌ Erro ao atualizar perfil no Supabase:', error);
       } else {
         console.log('✅ Perfil atualizado no Supabase com sucesso!', data);
       }

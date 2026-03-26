@@ -5,8 +5,7 @@ import {
   Edit3, Save, Camera, X, Image,
   ArrowLeft, Check, Phone, Award, Mail,
   Instagram, Facebook, Youtube, Linkedin,
-  User, Briefcase, Calendar, TrendingUp,
-  AlertCircle, Loader2, Building2
+  User, Briefcase, Calendar, TrendingUp, Building2, Loader2, AlertCircle
 } from 'lucide-react';
 
 const SOCIAL_CONFIG = [
@@ -17,7 +16,7 @@ const SOCIAL_CONFIG = [
 ];
 
 const ProfilePage: React.FC = () => {
-  const { user, updateUser, leads, transactions, darkMode } = useGlobal();
+  const { user, updateUser, leads, transactions } = useGlobal();
   const navigate = useNavigate();
 
   const [editing, setEditing] = useState(false);
@@ -32,6 +31,7 @@ const ProfilePage: React.FC = () => {
     email: user?.email || '',
     experience: user?.experience || '',
     specialties: user?.specialties || '',
+    company: user?.company || '',
     instagram: user?.socialMedia?.instagram || '',
     facebook: user?.socialMedia?.facebook || '',
     youtube: user?.socialMedia?.youtube || '',
@@ -53,6 +53,7 @@ const ProfilePage: React.FC = () => {
       email: user?.email || '',
       experience: user?.experience || '',
       specialties: user?.specialties || '',
+      company: user?.company || '',
       instagram: user?.socialMedia?.instagram || '',
       facebook: user?.socialMedia?.facebook || '',
       youtube: user?.socialMedia?.youtube || '',
@@ -91,14 +92,12 @@ const ProfilePage: React.FC = () => {
     
     setUploadingAvatar(true);
     
-    // Verificar tipo de arquivo
     if (!file.type.startsWith('image/')) {
       alert('Por favor, selecione uma imagem válida');
       setUploadingAvatar(false);
       return;
     }
     
-    // Verificar tamanho (máx 5MB)
     if (file.size > 5 * 1024 * 1024) {
       alert('A imagem deve ter no máximo 5MB');
       setUploadingAvatar(false);
@@ -188,10 +187,7 @@ const ProfilePage: React.FC = () => {
         
         {/* HEADER */}
         <div className="flex items-center gap-4 mb-8">
-          <button 
-            onClick={() => navigate(-1)} 
-            className="p-2 rounded-xl hover:bg-gray-100 transition-colors"
-          >
+          <button onClick={() => navigate(-1)} className="p-2 rounded-xl hover:bg-gray-100 transition-colors">
             <ArrowLeft size={20} className="text-gray-600" />
           </button>
           <div>
@@ -200,7 +196,7 @@ const ProfilePage: React.FC = () => {
           </div>
         </div>
 
-        {/* MENSAGENS DE FEEDBACK */}
+        {/* MENSAGENS */}
         {saveSuccess && (
           <div className="mb-4 p-4 rounded-xl bg-green-500/10 border border-green-500/20 text-green-600 flex items-center gap-2 animate-fade-in">
             <Check size={18} />
@@ -252,8 +248,12 @@ const ProfilePage: React.FC = () => {
               <div className="flex flex-col items-center gap-2">
                 <div className="relative group">
                   {avatarPreview ? (
-                    <div className="w-24 h-24 rounded-full overflow-hidden shadow-lg border-2 border-[#0217ff]/20">
-                      <img src={avatarPreview} alt="Avatar" className="w-full h-full object-cover" />
+                    <div className="w-24 h-24 rounded-full overflow-hidden shadow-lg border-2 border-[#0217ff]/20 bg-white">
+                      <img 
+                        src={avatarPreview} 
+                        alt="Avatar" 
+                        className="w-full h-full object-cover"
+                      />
                     </div>
                   ) : (
                     <div className="w-24 h-24 rounded-full flex items-center justify-center text-3xl font-bold text-white shadow-lg bg-gradient-to-r from-[#0217ff] to-[#00c6ff]">
@@ -284,12 +284,16 @@ const ProfilePage: React.FC = () => {
 
               <div className="h-12 w-px bg-gray-200 hidden sm:block" />
 
-              {/* Logo */}
+              {/* Logo - AGORA COM object-cover PARA PREENCHER TODO O ESPAÇO */}
               <div className="flex flex-col items-center gap-2">
                 <div className="relative group">
                   {logoPreview ? (
-                    <div className="w-24 h-24 rounded-full overflow-hidden shadow-lg border-2 border-[#0217ff]/20 bg-white flex items-center justify-center">
-                      <img src={logoPreview} alt="Logo" className="w-full h-full object-contain p-2" />
+                    <div className="w-24 h-24 rounded-full overflow-hidden shadow-lg border-2 border-[#0217ff]/20 bg-white">
+                      <img 
+                        src={logoPreview} 
+                        alt="Logo" 
+                        className="w-full h-full object-cover"
+                      />
                     </div>
                   ) : (
                     <div className="w-24 h-24 rounded-full border-2 border-dashed border-gray-300 flex flex-col items-center justify-center gap-1 cursor-pointer hover:border-[#0217ff] transition-colors bg-gray-50" onClick={() => logoInputRef.current?.click()}>
@@ -317,25 +321,22 @@ const ProfilePage: React.FC = () => {
                   />
                 </div>
                 <span className="text-xs text-gray-500">Logo da Imobiliária</span>
+                <p className="text-[9px] text-gray-400 text-center">Aparece no site público</p>
               </div>
             </div>
-
-            <p className="text-center text-[11px] text-gray-400 mt-4">
-              Foto e logo aparecem no seu site público e nos relatórios
-            </p>
           </div>
 
-          {/* FORM / DISPLAY */}
+          {/* FORM / DISPLAY - Restante do código igual... */}
           <div className="p-6">
             {editing ? (
               <form onSubmit={(e) => { e.preventDefault(); handleSave(); }} className="space-y-5">
+                {/* ... campos do formulário ... */}
                 <div>
                   <label className="text-[11px] font-bold uppercase text-gray-500 mb-1 block">Nome Completo</label>
                   <input 
                     value={form.name} 
                     onChange={e => setForm({ ...form, name: e.target.value })} 
                     className="w-full px-4 py-3 rounded-xl bg-gray-50 border border-gray-200 focus:border-[#0217ff] focus:outline-none text-gray-900"
-                    placeholder="Seu nome completo"
                   />
                 </div>
 
@@ -364,18 +365,15 @@ const ProfilePage: React.FC = () => {
                   </div>
                 </div>
 
-                {/* EMAIL - Campo somente leitura */}
                 <div>
                   <label className="text-[11px] font-bold uppercase text-gray-500 mb-1 block flex items-center gap-1">
-                    <Mail size={12} /> E-mail (não editável)
+                    <Mail size={12} /> E-mail
                   </label>
                   <input 
                     value={form.email} 
                     disabled
                     className="w-full px-4 py-3 rounded-xl bg-gray-100 border border-gray-200 text-gray-500 cursor-not-allowed"
-                    placeholder="seu@email.com"
                   />
-                  <p className="text-[9px] text-gray-400 mt-1">O e-mail é o mesmo usado no login e não pode ser alterado</p>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -401,7 +399,16 @@ const ProfilePage: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Redes Sociais */}
+                <div>
+                  <label className="text-[11px] font-bold uppercase text-gray-500 mb-1 block">Empresa / Imobiliária</label>
+                  <input 
+                    value={form.company} 
+                    onChange={e => setForm({ ...form, company: e.target.value })} 
+                    placeholder="Nome da sua imobiliária" 
+                    className="w-full px-4 py-3 rounded-xl bg-gray-50 border border-gray-200 focus:border-[#0217ff] focus:outline-none text-gray-900"
+                  />
+                </div>
+
                 <div className="pt-2 border-t border-gray-100">
                   <p className="text-xs font-semibold text-gray-700 mb-3">Redes Sociais (aparecem no site público)</p>
                   <div className="space-y-3">
@@ -427,11 +434,7 @@ const ProfilePage: React.FC = () => {
                     disabled={isSaving}
                     className="flex-1 py-3 bg-[#0217ff] text-white rounded-xl font-bold text-sm flex items-center justify-center gap-2 hover:bg-[#0217ff]/90 transition-all disabled:opacity-50"
                   >
-                    {isSaving ? (
-                      <Loader2 size={16} className="animate-spin" />
-                    ) : (
-                      <Save size={16} />
-                    )}
+                    {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
                     {isSaving ? 'Salvando...' : 'Salvar Alterações'}
                   </button>
                   <button 
@@ -445,15 +448,15 @@ const ProfilePage: React.FC = () => {
               </form>
             ) : (
               <div className="space-y-5">
-                {/* Informações de Contato */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <InfoItem icon={User} label="Nome" value={form.name || 'Não informado'} />
                   <InfoItem icon={Phone} label="WhatsApp" value={form.phone ? formatPhoneDisplay(form.phone) : 'Não informado'} />
                   <InfoItem icon={Mail} label="E-mail" value={form.email || 'Não informado'} />
                   <InfoItem icon={Award} label="CRECI" value={form.creci || 'Não informado'} />
                   <InfoItem icon={Calendar} label="Experiência" value={form.experience ? `${form.experience} anos` : 'Não informado'} />
+                  <InfoItem icon={Briefcase} label="Empresa" value={form.company || 'Não informado'} />
                 </div>
 
-                {/* Especialidades */}
                 {form.specialties && (
                   <div className="pt-2 border-t border-gray-100">
                     <p className="text-[11px] font-bold uppercase text-gray-500 mb-2">Especialidades</p>
@@ -467,7 +470,6 @@ const ProfilePage: React.FC = () => {
                   </div>
                 )}
 
-                {/* Redes Sociais */}
                 {socialLinks.length > 0 && (
                   <div className="pt-2 border-t border-gray-100">
                     <p className="text-[11px] font-bold uppercase text-gray-500 mb-3">Redes Sociais</p>
@@ -492,7 +494,6 @@ const ProfilePage: React.FC = () => {
                   </div>
                 )}
 
-                {/* Botão Editar */}
                 <div className="pt-4">
                   <button 
                     onClick={() => setEditing(true)} 
@@ -505,8 +506,6 @@ const ProfilePage: React.FC = () => {
             )}
           </div>
         </div>
-
-        {/* NOTA: O BOTÃO SAIR FOI REMOVIDO DAQUI - ELE JÁ ESTÁ NA BARRA LATERAL DO LAYOUT */}
       </div>
 
       <style>{`
@@ -522,7 +521,6 @@ const ProfilePage: React.FC = () => {
   );
 };
 
-// Componente auxiliar para exibir informações
 function InfoItem({ icon: Icon, label, value }: { icon: any; label: string; value: string }) {
   return (
     <div className="flex items-start gap-3 p-3 rounded-xl bg-gray-50">
