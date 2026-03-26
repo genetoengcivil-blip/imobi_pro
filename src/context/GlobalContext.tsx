@@ -40,6 +40,7 @@ interface GlobalContextType {
   darkMode: boolean;
   loading: boolean;
   toggleDarkMode: () => void;
+  updateUser: (updates: any) => Promise<void>;
   addLead: (lead: any) => Promise<void>;
   updateLead: (id: string, lead: any) => Promise<void>;
   deleteLead: (id: string) => Promise<void>;
@@ -128,17 +129,47 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const carregarDados = async (authUser: any) => {
     try {
-      // Carregar perfil
-      const { data: profile } = await supabase
+      // Carregar perfil da tabela perfil
+      const { data: profile, error: profileError } = await supabase
         .from('perfil')
         .select('*')
         .eq('id', authUser.id)
         .maybeSingle();
 
+      if (profileError) {
+        console.error('Erro ao carregar perfil:', profileError);
+      }
+
+      // Se não existe perfil, criar um novo
+      let userProfile = profile;
+      if (!profile) {
+        const { data: newProfile, error: insertError } = await supabase
+          .from('perfil')
+          .insert([{ id: authUser.id }])
+          .select()
+          .single();
+        
+        if (!insertError && newProfile) {
+          userProfile = newProfile;
+          console.log('✅ Perfil criado para o usuário:', authUser.id);
+        }
+      }
+
       setUser({
         ...authUser,
-        ...profile,
-        name: profile?.nome_exibicao || authUser?.user_metadata?.full_name || 'Corretor',
+        ...userProfile,
+        name: userProfile?.nome_exibicao || authUser?.user_metadata?.full_name || 'Corretor',
+        phone: userProfile?.phone || '',
+        creci: userProfile?.creci || '',
+        bio: userProfile?.bio || '',
+        company: userProfile?.company || '',
+        professional_title: userProfile?.professional_title || 'Consultor Imobiliário',
+        experience: userProfile?.experience || '',
+        specialties: userProfile?.specialties || '',
+        socialMedia: userProfile?.social_media || {},
+        avatar: userProfile?.avatar || null,
+        logo: userProfile?.logo || null,
+        slug: userProfile?.slug || ''
       });
 
       // Carregar dados das tabelas
@@ -256,6 +287,64 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
   }, []);
 
+  // ========== USER FUNCTIONS ==========
+  const updateUser = async (updates: any) => {
+    console.log('📝 updateUser chamada:', updates);
+    
+    if (!user?.id) {
+      console.error('❌ Usuário não autenticado');
+      return;
+    }
+    
+    try {
+      // Mapear os campos para os nomes corretos da tabela perfil
+      const payload: any = {};
+      
+      // 🔥 MAPEAMENTO CORRETO
+      if (updates.name !== undefined) payload.nome_exibicao = updates.name;
+      if (updates.phone !== undefined) payload.phone = updates.phone;
+      if (updates.creci !== undefined) payload.creci = updates.creci;
+      if (updates.bio !== undefined) payload.bio = updates.bio;
+      if (updates.company !== undefined) payload.company = updates.company;
+      if (updates.professional_title !== undefined) payload.professional_title = updates.professional_title;
+      if (updates.experience !== undefined) payload.experience = updates.experience;
+      if (updates.specialties !== undefined) payload.specialties = updates.specialties;
+      if (updates.avatar !== undefined) payload.avatar = updates.avatar;
+      if (updates.logo !== undefined) payload.logo = updates.logo;
+      if (updates.slug !== undefined) payload.slug = updates.slug;
+      if (updates.socialMedia !== undefined) payload.social_media = updates.socialMedia;
+      
+      // Adicionar updated_at
+      payload.updated_at = new Date().toISOString();
+      
+      console.log('💾 Payload sendo enviado para o Supabase:', payload);
+      
+      // Atualizar estado local imediatamente
+      setUser((prev: any) => ({ ...prev, ...updates }));
+      console.log('✅ Usuário atualizado no estado local');
+      
+      // Salvar no Supabase
+      const { data, error } = await supabase
+        .from('perfil')
+        .update(payload)
+        .eq('id', user.id)
+        .select();
+      
+      if (error) {
+        console.error('❌ Erro detalhado ao atualizar perfil no Supabase:', {
+          code: error.code,
+          message: error.message,
+          details: error.details,
+          hint: error.hint
+        });
+      } else {
+        console.log('✅ Perfil atualizado no Supabase com sucesso!', data);
+      }
+    } catch (err) {
+      console.error('❌ Erro exceção ao atualizar perfil:', err);
+    }
+  };
+
   // ========== LEAD FUNCTIONS ==========
   const addLead = async (leadData: any) => {
     const payload = { ...leadData, user_id: user?.id };
@@ -347,7 +436,6 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const addAppointment = async (appointment: Omit<Appointment, 'id'>) => {
     console.log('📝 addAppointment chamada:', appointment);
     
-    // Validar campos obrigatórios
     if (!appointment.title || !appointment.date || !appointment.time) {
       console.error('❌ Campos obrigatórios faltando');
       alert('Preencha título, data e horário');
@@ -359,14 +447,11 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       id: Date.now().toString()
     };
     
-    // Atualizar estado local imediatamente
     setAppointments(prev => [newAppointment, ...prev]);
     console.log('✅ Compromisso adicionado ao estado local');
     
-    // Tentar salvar no Supabase
     if (user?.id) {
       try {
-        // 🔥 Mapeamento correto para os campos da tabela
         const payload: any = {
           user_id: user.id,
           title: appointment.title,
@@ -376,7 +461,6 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           status: appointment.status || 'pendente'
         };
         
-        // Adicionar campos opcionais
         if (appointment.endTime && appointment.endTime !== '') {
           payload.end_time = appointment.endTime;
         }
@@ -461,6 +545,7 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         loading,
         darkMode,
         toggleDarkMode,
+        updateUser,
         addLead,
         updateLead,
         deleteLead,

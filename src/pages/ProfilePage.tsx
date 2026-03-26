@@ -5,7 +5,8 @@ import {
   Edit3, Save, Camera, X, Image,
   ArrowLeft, Check, Phone, Award, Mail,
   Instagram, Facebook, Youtube, Linkedin,
-  User, Briefcase, Calendar, TrendingUp
+  User, Briefcase, Calendar, TrendingUp,
+  AlertCircle, Loader2, Building2
 } from 'lucide-react';
 
 const SOCIAL_CONFIG = [
@@ -16,10 +17,14 @@ const SOCIAL_CONFIG = [
 ];
 
 const ProfilePage: React.FC = () => {
-  const { user, updateUser, leads, transactions, logout } = useGlobal();
+  const { user, updateUser, leads, transactions, darkMode } = useGlobal();
   const navigate = useNavigate();
 
   const [editing, setEditing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+  const [saveError, setSaveError] = useState('');
+  
   const [form, setForm] = useState({
     name: user?.name || '',
     phone: user?.phone || '',
@@ -34,7 +39,11 @@ const ProfilePage: React.FC = () => {
   });
 
   const avatarInputRef = useRef<HTMLInputElement>(null);
+  const logoInputRef = useRef<HTMLInputElement>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(user?.avatar || null);
+  const [logoPreview, setLogoPreview] = useState<string | null>(user?.logo || null);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
 
   useEffect(() => {
     setForm({
@@ -50,30 +59,106 @@ const ProfilePage: React.FC = () => {
       linkedin: user?.socialMedia?.linkedin || '',
     });
     setAvatarPreview(user?.avatar || null);
+    setLogoPreview(user?.logo || null);
   }, [user]);
 
-  const handleSave = () => {
-    const { instagram, facebook, youtube, linkedin, ...rest } = form;
-    updateUser({ 
-      ...rest, 
-      socialMedia: { instagram, facebook, youtube, linkedin } 
-    });
-    setEditing(false);
+  const handleSave = async () => {
+    setIsSaving(true);
+    setSaveError('');
+    setSaveSuccess(false);
+    
+    try {
+      const { instagram, facebook, youtube, linkedin, email, ...rest } = form;
+      await updateUser({ 
+        ...rest, 
+        socialMedia: { instagram, facebook, youtube, linkedin } 
+      });
+      setSaveSuccess(true);
+      setEditing(false);
+      setTimeout(() => setSaveSuccess(false), 3000);
+    } catch (error) {
+      console.error('Erro ao salvar:', error);
+      setSaveError('Erro ao salvar as alterações. Tente novamente.');
+      setTimeout(() => setSaveError(''), 3000);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     
-    // Preview imediato
+    setUploadingAvatar(true);
+    
+    // Verificar tipo de arquivo
+    if (!file.type.startsWith('image/')) {
+      alert('Por favor, selecione uma imagem válida');
+      setUploadingAvatar(false);
+      return;
+    }
+    
+    // Verificar tamanho (máx 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      alert('A imagem deve ter no máximo 5MB');
+      setUploadingAvatar(false);
+      return;
+    }
+    
     const reader = new FileReader();
-    reader.onload = (ev) => {
+    reader.onload = async (ev) => {
       const result = ev.target?.result as string;
       setAvatarPreview(result);
-      updateUser({ avatar: result });
+      await updateUser({ avatar: result });
+      setUploadingAvatar(false);
+    };
+    reader.onerror = () => {
+      alert('Erro ao carregar imagem');
+      setUploadingAvatar(false);
     };
     reader.readAsDataURL(file);
     e.target.value = '';
+  };
+
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    setUploadingLogo(true);
+    
+    if (!file.type.startsWith('image/')) {
+      alert('Por favor, selecione uma imagem válida');
+      setUploadingLogo(false);
+      return;
+    }
+    
+    if (file.size > 5 * 1024 * 1024) {
+      alert('A imagem deve ter no máximo 5MB');
+      setUploadingLogo(false);
+      return;
+    }
+    
+    const reader = new FileReader();
+    reader.onload = async (ev) => {
+      const result = ev.target?.result as string;
+      setLogoPreview(result);
+      await updateUser({ logo: result });
+      setUploadingLogo(false);
+    };
+    reader.onerror = () => {
+      alert('Erro ao carregar logo');
+      setUploadingLogo(false);
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  const formatPhoneDisplay = (phone: string) => {
+    const numbers = phone?.replace(/\D/g, '') || '';
+    if (numbers.length <= 10) {
+      return numbers.replace(/(\d{2})(\d{4})(\d{4})/, '($1) $2-$3');
+    }
+    return numbers.replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3');
   };
 
   const totalLeads = leads.length;
@@ -115,6 +200,21 @@ const ProfilePage: React.FC = () => {
           </div>
         </div>
 
+        {/* MENSAGENS DE FEEDBACK */}
+        {saveSuccess && (
+          <div className="mb-4 p-4 rounded-xl bg-green-500/10 border border-green-500/20 text-green-600 flex items-center gap-2 animate-fade-in">
+            <Check size={18} />
+            <span className="text-sm font-medium">Perfil atualizado com sucesso!</span>
+          </div>
+        )}
+        
+        {saveError && (
+          <div className="mb-4 p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-600 flex items-center gap-2 animate-fade-in">
+            <AlertCircle size={18} />
+            <span className="text-sm font-medium">{saveError}</span>
+          </div>
+        )}
+
         {/* STATS CARDS */}
         <div className="grid grid-cols-3 gap-4 mb-8">
           <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
@@ -145,53 +245,83 @@ const ProfilePage: React.FC = () => {
 
         {/* PROFILE CARD */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          {/* AVATAR SECTION */}
+          {/* AVATAR & LOGO SECTION */}
           <div className="p-6 border-b border-gray-100">
-            <div className="flex flex-col sm:flex-row items-center gap-6">
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-8">
               {/* Avatar */}
-              <div className="relative group">
-                {avatarPreview ? (
-                  <div className="w-24 h-24 rounded-full overflow-hidden shadow-lg border-2 border-[#0217ff]/20">
-                    <img src={avatarPreview} alt="Avatar" className="w-full h-full object-cover" />
-                  </div>
-                ) : (
-                  <div className="w-24 h-24 rounded-full flex items-center justify-center text-3xl font-bold text-white shadow-lg bg-gradient-to-r from-[#0217ff] to-[#00c6ff]">
-                    {getInitials(form.name)}
-                  </div>
-                )}
-                <button 
-                  onClick={() => avatarInputRef.current?.click()} 
-                  className="absolute inset-0 rounded-full bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                >
-                  <Camera className="w-5 h-5 text-white" />
-                </button>
-                <input 
-                  ref={avatarInputRef} 
-                  type="file" 
-                  accept="image/*" 
-                  onChange={handleAvatarUpload} 
-                  className="hidden" 
-                />
+              <div className="flex flex-col items-center gap-2">
+                <div className="relative group">
+                  {avatarPreview ? (
+                    <div className="w-24 h-24 rounded-full overflow-hidden shadow-lg border-2 border-[#0217ff]/20">
+                      <img src={avatarPreview} alt="Avatar" className="w-full h-full object-cover" />
+                    </div>
+                  ) : (
+                    <div className="w-24 h-24 rounded-full flex items-center justify-center text-3xl font-bold text-white shadow-lg bg-gradient-to-r from-[#0217ff] to-[#00c6ff]">
+                      {getInitials(form.name)}
+                    </div>
+                  )}
+                  <button 
+                    onClick={() => avatarInputRef.current?.click()} 
+                    disabled={uploadingAvatar}
+                    className="absolute inset-0 rounded-full bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-0"
+                  >
+                    {uploadingAvatar ? (
+                      <Loader2 className="w-5 h-5 text-white animate-spin" />
+                    ) : (
+                      <Camera className="w-5 h-5 text-white" />
+                    )}
+                  </button>
+                  <input 
+                    ref={avatarInputRef} 
+                    type="file" 
+                    accept="image/*" 
+                    onChange={handleAvatarUpload} 
+                    className="hidden" 
+                  />
+                </div>
+                <span className="text-xs text-gray-500">Foto de Perfil</span>
               </div>
 
-              {/* Info Rápida */}
-              <div className="text-center sm:text-left">
-                <h2 className="text-xl font-bold text-gray-900">{form.name || 'Seu Nome'}</h2>
-                {form.creci && (
-                  <span className="inline-flex items-center gap-1 text-xs text-[#0217ff] bg-[#0217ff]/10 px-2 py-0.5 rounded-full mt-1">
-                    <Award size={10} /> CRECI {form.creci}
-                  </span>
-                )}
-                {form.experience && (
-                  <p className="text-sm text-gray-500 mt-1 flex items-center gap-1 justify-center sm:justify-start">
-                    <Calendar size={12} /> {form.experience} anos de experiência
-                  </p>
-                )}
+              <div className="h-12 w-px bg-gray-200 hidden sm:block" />
+
+              {/* Logo */}
+              <div className="flex flex-col items-center gap-2">
+                <div className="relative group">
+                  {logoPreview ? (
+                    <div className="w-24 h-24 rounded-full overflow-hidden shadow-lg border-2 border-[#0217ff]/20 bg-white flex items-center justify-center">
+                      <img src={logoPreview} alt="Logo" className="w-full h-full object-contain p-2" />
+                    </div>
+                  ) : (
+                    <div className="w-24 h-24 rounded-full border-2 border-dashed border-gray-300 flex flex-col items-center justify-center gap-1 cursor-pointer hover:border-[#0217ff] transition-colors bg-gray-50" onClick={() => logoInputRef.current?.click()}>
+                      <Building2 className="w-6 h-6 text-gray-400" />
+                      <span className="text-[9px] text-gray-400">Logo</span>
+                    </div>
+                  )}
+                  <button 
+                    onClick={() => logoInputRef.current?.click()} 
+                    disabled={uploadingLogo}
+                    className="absolute inset-0 rounded-full bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-0"
+                  >
+                    {uploadingLogo ? (
+                      <Loader2 className="w-5 h-5 text-white animate-spin" />
+                    ) : (
+                      <Camera className="w-5 h-5 text-white" />
+                    )}
+                  </button>
+                  <input 
+                    ref={logoInputRef} 
+                    type="file" 
+                    accept="image/*" 
+                    onChange={handleLogoUpload} 
+                    className="hidden" 
+                  />
+                </div>
+                <span className="text-xs text-gray-500">Logo da Imobiliária</span>
               </div>
             </div>
 
             <p className="text-center text-[11px] text-gray-400 mt-4">
-              Sua foto aparece no site público e nos relatórios
+              Foto e logo aparecem no seu site público e nos relatórios
             </p>
           </div>
 
@@ -234,16 +364,18 @@ const ProfilePage: React.FC = () => {
                   </div>
                 </div>
 
+                {/* EMAIL - Campo somente leitura */}
                 <div>
                   <label className="text-[11px] font-bold uppercase text-gray-500 mb-1 block flex items-center gap-1">
-                    <Mail size={12} /> E-mail
+                    <Mail size={12} /> E-mail (não editável)
                   </label>
                   <input 
                     value={form.email} 
-                    onChange={e => setForm({ ...form, email: e.target.value })} 
-                    className="w-full px-4 py-3 rounded-xl bg-gray-50 border border-gray-200 focus:border-[#0217ff] focus:outline-none text-gray-900"
+                    disabled
+                    className="w-full px-4 py-3 rounded-xl bg-gray-100 border border-gray-200 text-gray-500 cursor-not-allowed"
                     placeholder="seu@email.com"
                   />
+                  <p className="text-[9px] text-gray-400 mt-1">O e-mail é o mesmo usado no login e não pode ser alterado</p>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -271,7 +403,7 @@ const ProfilePage: React.FC = () => {
 
                 {/* Redes Sociais */}
                 <div className="pt-2 border-t border-gray-100">
-                  <p className="text-xs font-semibold text-gray-700 mb-3">Redes Sociais</p>
+                  <p className="text-xs font-semibold text-gray-700 mb-3">Redes Sociais (aparecem no site público)</p>
                   <div className="space-y-3">
                     {SOCIAL_CONFIG.map(({ key, label, placeholder, color, icon: Icon }) => (
                       <div key={key} className="relative">
@@ -292,9 +424,15 @@ const ProfilePage: React.FC = () => {
                 <div className="flex gap-3 pt-4">
                   <button 
                     type="submit" 
-                    className="flex-1 py-3 bg-[#0217ff] text-white rounded-xl font-bold text-sm flex items-center justify-center gap-2 hover:bg-[#0217ff]/90 transition-all"
+                    disabled={isSaving}
+                    className="flex-1 py-3 bg-[#0217ff] text-white rounded-xl font-bold text-sm flex items-center justify-center gap-2 hover:bg-[#0217ff]/90 transition-all disabled:opacity-50"
                   >
-                    <Save size={16} /> Salvar Alterações
+                    {isSaving ? (
+                      <Loader2 size={16} className="animate-spin" />
+                    ) : (
+                      <Save size={16} />
+                    )}
+                    {isSaving ? 'Salvando...' : 'Salvar Alterações'}
                   </button>
                   <button 
                     type="button"
@@ -309,7 +447,7 @@ const ProfilePage: React.FC = () => {
               <div className="space-y-5">
                 {/* Informações de Contato */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <InfoItem icon={Phone} label="WhatsApp" value={form.phone || 'Não informado'} />
+                  <InfoItem icon={Phone} label="WhatsApp" value={form.phone ? formatPhoneDisplay(form.phone) : 'Não informado'} />
                   <InfoItem icon={Mail} label="E-mail" value={form.email || 'Não informado'} />
                   <InfoItem icon={Award} label="CRECI" value={form.creci || 'Não informado'} />
                   <InfoItem icon={Calendar} label="Experiência" value={form.experience ? `${form.experience} anos` : 'Não informado'} />
@@ -368,14 +506,18 @@ const ProfilePage: React.FC = () => {
           </div>
         </div>
 
-        {/* BOTÃO SAIR */}
-        <button 
-          onClick={() => { logout(); navigate('/login'); }}
-          className="w-full mt-6 py-3 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 border border-red-200 bg-red-50 text-red-600 hover:bg-red-500 hover:text-white hover:border-red-500 transition-all"
-        >
-          Sair da Conta
-        </button>
+        {/* NOTA: O BOTÃO SAIR FOI REMOVIDO DAQUI - ELE JÁ ESTÁ NA BARRA LATERAL DO LAYOUT */}
       </div>
+
+      <style>{`
+        .animate-fade-in {
+          animation: fadeIn 0.3s ease-out;
+        }
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(10px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
     </div>
   );
 };
