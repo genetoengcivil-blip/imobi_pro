@@ -464,7 +464,7 @@ export default function SettingsPage() {
           </div>
           <div className="flex justify-between py-2">
             <span className={theme.textMuted}>Suporte</span>
-            <a href="mailto:suporte@imobipro.com.br" className="text-[#0217ff] hover:underline">suporte@imobipro.com.br</a>
+            <a href="atendimento.imobipro@gmail.com" className="text-[#0217ff] hover:underline">atendimento.imobipro@gmail.com</a>
           </div>
         </div>
       </div>
