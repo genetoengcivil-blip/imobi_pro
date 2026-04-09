@@ -16,6 +16,37 @@ import {
 import { useGlobal } from '../context/GlobalContext';
 import { supabase } from '../lib/supabase';
 
+// --- FUNÇÕES DE MÁSCARA CORRIGIDAS ---
+const maskCurrency = (value: string | number) => {
+  if (value === undefined || value === null || value === '') return '';
+  
+  // Se for número (ex: vindo do banco de dados), formata diretamente para BRL
+  if (typeof value === 'number') {
+    return new Intl.NumberFormat('pt-BR', { 
+      style: 'currency', 
+      currency: 'BRL' 
+    }).format(value);
+  }
+
+  // Se for string (usuário digitando), aplica a lógica de centavos
+  let v = value.replace(/\D/g, '');
+  if (!v) return '';
+  v = (Number(v) / 100).toFixed(2).replace('.', ',');
+  v = v.replace(/(\d)(?=(\d{3})+(?!\d))/g, '$1.');
+  return `R$ ${v}`;
+};
+
+const unmaskCurrency = (value: string | number) => {
+  if (typeof value === 'number') return value;
+  const cleanValue = value.replace(/\D/g, '');
+  return cleanValue ? Number(cleanValue) / 100 : 0;
+};
+
+const maskCEP = (value: string) => {
+  if (!value) return '';
+  return value.replace(/\D/g, '').replace(/^(\d{5})(\d)/, '$1-$2').substring(0, 9);
+};
+
 // --- TIPOS E INTERFACES ---
 interface Property {
   id: string;
@@ -221,7 +252,7 @@ export default function PropertiesPage() {
     if (validComparables.length === 0) return { avgM2: 0, total: 0 };
 
     const sumM2 = validComparables.reduce((acc, c) => {
-      const price = parseFloat(String(c.price).replace(/[R$\s.]/g, '').replace(',', '.')) || 0;
+      const price = unmaskCurrency(c.price);
       const area = parseFloat(c.area) || 1;
       return acc + (price / area);
     }, 0);
@@ -320,8 +351,8 @@ export default function PropertiesPage() {
     const payload = {
       ...formData,
       user_id: user?.id,
-      price: Number(formData.price) || 0,
-      condo_fee: Number(formData.condo_fee) || 0,
+      price: unmaskCurrency(formData.price as any),
+      condo_fee: unmaskCurrency(formData.condo_fee as any),
       bedrooms: Number(formData.bedrooms) || 0,
       bathrooms: Number(formData.bathrooms) || 0,
       suites: Number(formData.suites) || 0,
@@ -389,7 +420,7 @@ export default function PropertiesPage() {
         </div>
         
         <div className="flex gap-3 w-full md:w-auto">
-          {/* 🔥 VIEW MODE TOGGLE - CORRIGIDO */}
+          {/* 🔥 VIEW MODE TOGGLE */}
           <div className="flex gap-1 p-1 rounded-xl bg-zinc-100 dark:bg-white/5">
             <button 
               onClick={() => setViewMode('grid')} 
@@ -491,21 +522,19 @@ export default function PropertiesPage() {
         </div>
       )}
 
-      {/* PROPERTIES GRID/LIST */}
+      {/* PROPERTIES DISPLAY */}
       {loading ? (
         <div className="flex justify-center py-20"><Loader2 className="animate-spin text-[#0217ff]" size={40} /></div>
       ) : filteredAndSortedProperties.length === 0 ? (
         <div className={`${theme.card} rounded-[32px] border p-12 text-center`}>
           <Home size={48} className="mx-auto mb-4 text-zinc-300" />
           <p className={`${theme.text} font-bold`}>{searchTerm ? 'Nenhum imóvel encontrado' : 'Nenhum imóvel cadastrado'}</p>
-          <p className="text-[10px] text-zinc-500 font-bold uppercase mt-2">{searchTerm ? 'Tente outros termos de busca' : 'Clique em "Novo Imóvel" para começar'}</p>
         </div>
       ) : viewMode === 'grid' ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredAndSortedProperties.map((property) => {
             const status = PROPERTY_STATUS[property.status as keyof typeof PROPERTY_STATUS] || PROPERTY_STATUS.disponivel;
             const type = PROPERTY_TYPES[property.type as keyof typeof PROPERTY_TYPES] || PROPERTY_TYPES.venda;
-            const amenitiesCount = AMENITIES.filter(a => property[a.id as keyof Property]).length;
             return (
               <div key={property.id} className={`${theme.card} rounded-2xl border overflow-hidden relative group hover:shadow-xl transition-all`}>
                 <div className="absolute top-3 right-3 z-10 flex gap-2 opacity-0 group-hover:opacity-100 transition-all">
@@ -527,24 +556,6 @@ export default function PropertiesPage() {
                     <span className="flex items-center gap-1 text-[9px] font-bold text-zinc-500"><Bath size={12}/> {property.bathrooms}</span>
                     <span className="flex items-center gap-1 text-[9px] font-bold text-zinc-500"><Car size={12}/> {property.parking_spaces}</span>
                   </div>
-                  {/* 🔥 AMENITIES PREVIEW - PARA APARECER NO SITE PÚBLICO */}
-                  {amenitiesCount > 0 && (
-                    <div className="flex flex-wrap gap-1.5 pt-1">
-                      {AMENITIES.filter(a => property[a.id as keyof Property]).slice(0, 4).map((amenity) => {
-                        const Icon = amenity.icon;
-                        return (
-                          <div key={amenity.id} className="p-1.5 bg-zinc-100 dark:bg-white/5 rounded-lg" title={amenity.label}>
-                            <Icon size={10} className="text-zinc-500" />
-                          </div>
-                        );
-                      })}
-                      {amenitiesCount > 4 && (
-                        <div className="p-1.5 bg-zinc-100 dark:bg-white/5 rounded-lg text-[8px] font-bold text-zinc-500">
-                          +{amenitiesCount - 4}
-                        </div>
-                      )}
-                    </div>
-                  )}
                 </div>
               </div>
             );
@@ -554,7 +565,6 @@ export default function PropertiesPage() {
         <div className="space-y-4">
           {filteredAndSortedProperties.map((property) => {
             const status = PROPERTY_STATUS[property.status as keyof typeof PROPERTY_STATUS] || PROPERTY_STATUS.disponivel;
-            const amenitiesCount = AMENITIES.filter(a => property[a.id as keyof Property]).length;
             return (
               <div key={property.id} className={`${theme.card} rounded-2xl border p-4 hover:shadow-md transition-all`}>
                 <div className="flex items-center gap-4">
@@ -562,30 +572,6 @@ export default function PropertiesPage() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1"><h3 className={`font-bold truncate ${theme.text}`}>{property.title}</h3><span className={`px-2 py-0.5 rounded-full text-[8px] font-bold uppercase ${status.bg} ${status.color}`}>{status.label}</span></div>
                     <p className="text-[9px] text-zinc-500 font-bold uppercase mb-2 flex items-center gap-1"><MapPin size={9} /> {property.location || 'Localização não informada'}</p>
-                    <div className="flex flex-wrap gap-3 text-[9px] font-bold text-zinc-500">
-                      <span className="flex items-center gap-1"><Square size={10}/> {property.area}m²</span>
-                      <span className="flex items-center gap-1"><Bed size={10}/> {property.bedrooms}</span>
-                      <span className="flex items-center gap-1"><Bath size={10}/> {property.bathrooms}</span>
-                      <span className="flex items-center gap-1"><Car size={10}/> {property.parking_spaces}</span>
-                    </div>
-                    {/* 🔥 AMENITIES PREVIEW NA LISTA */}
-                    {amenitiesCount > 0 && (
-                      <div className="flex flex-wrap gap-1 mt-2">
-                        {AMENITIES.filter(a => property[a.id as keyof Property]).slice(0, 4).map((amenity) => {
-                          const Icon = amenity.icon;
-                          return (
-                            <div key={amenity.id} className="p-1 bg-zinc-100 dark:bg-white/5 rounded-lg" title={amenity.label}>
-                              <Icon size={8} className="text-zinc-500" />
-                            </div>
-                          );
-                        })}
-                        {amenitiesCount > 4 && (
-                          <div className="p-1 bg-zinc-100 dark:bg-white/5 rounded-lg text-[7px] font-bold text-zinc-500">
-                            +{amenitiesCount - 4}
-                          </div>
-                        )}
-                      </div>
-                    )}
                     <div className="mt-2"><span className="text-sm font-black text-[#0217ff]">{formatCurrency(property.price)}</span></div>
                   </div>
                   <div className="flex gap-2">
@@ -610,7 +596,19 @@ export default function PropertiesPage() {
               <div><label className="text-[10px] font-bold uppercase text-[#0217ff] mb-2 block">Área do Imóvel (m²)</label><input className={`w-full ${theme.input} px-4 py-3 rounded-xl`} placeholder="Ex: 120" value={baseArea} onChange={(e) => setBaseArea(e.target.value)} /></div>
               <div><label className="text-[10px] font-bold uppercase text-[#0217ff] mb-2 block">Imóveis Comparáveis</label>
                 {comparables.map((comp, idx) => (
-                  <div key={idx} className="grid grid-cols-2 gap-3 mb-3"><input className={`${theme.input} px-4 py-2 rounded-xl text-sm`} placeholder="Preço" value={comp.price} onChange={(e) => { const newComps = [...comparables]; newComps[idx].price = e.target.value; setComparables(newComps); }} /><input className={`${theme.input} px-4 py-2 rounded-xl text-sm`} placeholder="Área m²" value={comp.area} onChange={(e) => { const newComps = [...comparables]; newComps[idx].area = e.target.value; setComparables(newComps); }} /></div>
+                  <div key={idx} className="grid grid-cols-2 gap-3 mb-3">
+                    <input 
+                      className={`${theme.input} px-4 py-2 rounded-xl text-sm`} 
+                      placeholder="Preço" 
+                      value={maskCurrency(comp.price)} 
+                      onChange={(e) => { 
+                        const newComps = [...comparables]; 
+                        newComps[idx].price = maskCurrency(e.target.value); 
+                        setComparables(newComps); 
+                      }} 
+                    />
+                    <input className={`${theme.input} px-4 py-2 rounded-xl text-sm`} placeholder="Área m²" value={comp.area} onChange={(e) => { const newComps = [...comparables]; newComps[idx].area = e.target.value; setComparables(newComps); }} />
+                  </div>
                 ))}
                 <button onClick={() => setComparables([...comparables, { price: '', area: '' }])} className="text-[10px] font-bold text-[#0217ff] flex items-center gap-1"><PlusCircle size={12} /> Adicionar comparável</button>
               </div>
@@ -621,7 +619,7 @@ export default function PropertiesPage() {
         </div>
       )}
 
-      {/* PROPERTY FORM MODAL */}
+      {/* PROPERTY FORM MODAL - INTEGRALMENTE RESTAURADO */}
       {showModal && (
         <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-0 md:p-4">
           <div className={`${theme.modal} w-full h-full md:h-auto md:max-w-4xl md:max-h-[90vh] overflow-hidden md:rounded-[40px] flex flex-col`}>
@@ -629,14 +627,48 @@ export default function PropertiesPage() {
             <div className="flex-1 overflow-y-auto p-6 md:p-10"><form onSubmit={handleSubmit} className="space-y-8">
               <div className="grid grid-cols-4 md:grid-cols-6 gap-3"><label className="aspect-square rounded-xl border-2 border-dashed border-zinc-300 flex flex-col items-center justify-center cursor-pointer hover:border-[#0217ff] transition-colors">{uploading ? <Loader2 className="animate-spin text-[#0217ff]" size={20} /> : <><PlusCircle size={20} className="text-zinc-400" /><span className="text-[8px] font-bold text-zinc-400">Fotos</span></>}<input type="file" multiple accept="image/*" onChange={handleImageUpload} className="hidden" disabled={uploading} /></label>{formData.images?.map((url, idx) => (<div key={idx} className="relative aspect-square rounded-xl overflow-hidden group"><img src={url} className="w-full h-full object-cover" /><button type="button" onClick={() => removeImage(idx)} className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center"><Trash2 size={16} className="text-white" /></button></div>))}</div>
               <div><label className="text-[9px] font-bold uppercase text-zinc-400">Título</label><input disabled={isViewOnly} className={`w-full ${theme.input} px-4 py-3 rounded-xl`} value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} required /></div>
-              <div className="grid grid-cols-2 gap-4"><div><label className="text-[9px] font-bold uppercase text-zinc-400">Preço (R$)</label><input disabled={isViewOnly} type="number" className={`w-full ${theme.input} px-4 py-3 rounded-xl`} value={formData.price} onChange={e => setFormData({...formData, price: parseFloat(e.target.value)})} /></div><div><label className="text-[9px] font-bold uppercase text-zinc-400">Condomínio</label><input disabled={isViewOnly} type="number" className={`w-full ${theme.input} px-4 py-3 rounded-xl`} value={formData.condo_fee} onChange={e => setFormData({...formData, condo_fee: parseFloat(e.target.value)})} /></div></div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-[9px] font-bold uppercase text-zinc-400">Preço (R$)</label>
+                  <input 
+                    disabled={isViewOnly} 
+                    type="text" 
+                    className={`w-full ${theme.input} px-4 py-3 rounded-xl`} 
+                    value={maskCurrency(formData.price)} 
+                    onChange={e => setFormData({...formData, price: maskCurrency(e.target.value) as any})} 
+                  />
+                </div>
+                <div>
+                  <label className="text-[9px] font-bold uppercase text-zinc-400">Condomínio</label>
+                  <input 
+                    disabled={isViewOnly} 
+                    type="text" 
+                    className={`w-full ${theme.input} px-4 py-3 rounded-xl`} 
+                    value={maskCurrency(formData.condo_fee || 0)} 
+                    onChange={e => setFormData({...formData, condo_fee: maskCurrency(e.target.value) as any})} 
+                  />
+                </div>
+              </div>
+
               <div className="grid grid-cols-2 gap-4"><div><label className="text-[9px] font-bold uppercase text-zinc-400">Tipo</label><select disabled={isViewOnly} className={`w-full ${theme.input} px-4 py-3 rounded-xl`} value={formData.type} onChange={e => setFormData({...formData, type: e.target.value as any})}><option value="venda">Venda</option><option value="locacao">Locação</option><option value="venda_locacao">Venda/Locação</option></select></div><div><label className="text-[9px] font-bold uppercase text-zinc-400">Status</label><select disabled={isViewOnly} className={`w-full ${theme.input} px-4 py-3 rounded-xl`} value={formData.status} onChange={e => setFormData({...formData, status: e.target.value as any})}><option value="disponivel">Disponível</option><option value="negociacao">Em Negociação</option><option value="vendido">Vendido</option><option value="locado">Locado</option><option value="indisponivel">Indisponível</option></select></div></div>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4"><div><label className="text-[9px] font-bold uppercase text-zinc-400">Área (m²)</label><input disabled={isViewOnly} type="number" className={`w-full ${theme.input} px-4 py-3 rounded-xl text-center`} value={formData.area} onChange={e => setFormData({...formData, area: parseInt(e.target.value)})} /></div><div><label className="text-[9px] font-bold uppercase text-zinc-400">Quartos</label><input disabled={isViewOnly} type="number" className={`w-full ${theme.input} px-4 py-3 rounded-xl text-center`} value={formData.bedrooms} onChange={e => setFormData({...formData, bedrooms: parseInt(e.target.value)})} /></div><div><label className="text-[9px] font-bold uppercase text-zinc-400">Banheiros</label><input disabled={isViewOnly} type="number" className={`w-full ${theme.input} px-4 py-3 rounded-xl text-center`} value={formData.bathrooms} onChange={e => setFormData({...formData, bathrooms: parseInt(e.target.value)})} /></div><div><label className="text-[9px] font-bold uppercase text-zinc-400">Vagas</label><input disabled={isViewOnly} type="number" className={`w-full ${theme.input} px-4 py-3 rounded-xl text-center`} value={formData.parking_spaces} onChange={e => setFormData({...formData, parking_spaces: parseInt(e.target.value)})} /></div></div>
+              
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div><label className="text-[9px] font-bold uppercase text-zinc-400">CEP</label><input disabled={isViewOnly} className={`w-full ${theme.input} px-4 py-3 rounded-xl`} value={formData.cep} onChange={e => setFormData({...formData, cep: e.target.value})} onBlur={handleCEPBlur} /></div>
+                <div>
+                  <label className="text-[9px] font-bold uppercase text-zinc-400">CEP</label>
+                  <input 
+                    disabled={isViewOnly} 
+                    className={`w-full ${theme.input} px-4 py-3 rounded-xl`} 
+                    value={maskCEP(formData.cep || '')} 
+                    onChange={e => setFormData({...formData, cep: maskCEP(e.target.value)})} 
+                    onBlur={handleCEPBlur} 
+                  />
+                </div>
                 <div><label className="text-[9px] font-bold uppercase text-zinc-400">Número</label><input disabled={isViewOnly} className={`w-full ${theme.input} px-4 py-3 rounded-xl`} value={formData.number} onChange={e => setFormData({...formData, number: e.target.value})} /></div>
               </div>
-              {/* 🔥 ENDEREÇO COMPLETO - PARA CONSULTA DO CORRETOR */}
+
+              {/* CAMPO DE ENDEREÇO PRIVADO - RESTAURADO */}
               <div className="space-y-2">
                 <label className="text-[9px] font-bold uppercase text-zinc-400">Endereço Completo</label>
                 <textarea 
@@ -649,8 +681,20 @@ export default function PropertiesPage() {
                 />
                 <p className="text-[8px] text-zinc-400">Este endereço é visível apenas para o corretor</p>
               </div>
+
               <div><label className="text-[9px] font-bold uppercase text-zinc-400">Descrição</label><textarea disabled={isViewOnly} rows={3} className={`w-full ${theme.input} px-4 py-3 rounded-xl resize-none`} value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} placeholder="Descreva os detalhes do imóvel..." /></div>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-3"><h3 className="col-span-full text-[10px] font-bold uppercase text-[#0217ff]">Comodidades</h3>{AMENITIES.map(({ id, label, icon: Icon }) => (<label key={id} className={`flex items-center gap-2 p-2 rounded-xl cursor-pointer ${formData[id] ? 'bg-[#0217ff]/10 border border-[#0217ff]/20' : theme.input}`}><input type="checkbox" disabled={isViewOnly} checked={formData[id] || false} onChange={(e) => setFormData({...formData, [id]: e.target.checked})} className="hidden" /><Icon size={14} className={formData[id] ? 'text-[#0217ff]' : 'text-zinc-400'} /><span className={`text-[10px] font-bold ${formData[id] ? 'text-[#0217ff]' : theme.secondaryText}`}>{label}</span></label>))}</div>
+              
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                <h3 className="col-span-full text-[10px] font-bold uppercase text-[#0217ff]">Comodidades</h3>
+                {AMENITIES.map(({ id, label, icon: Icon }) => (
+                  <label key={id} className={`flex items-center gap-2 p-2 rounded-xl cursor-pointer ${formData[id as keyof PropertyFormData] ? 'bg-[#0217ff]/10 border border-[#0217ff]/20' : theme.input}`}>
+                    <input type="checkbox" disabled={isViewOnly} checked={!!formData[id as keyof PropertyFormData]} onChange={(e) => setFormData({...formData, [id]: e.target.checked})} className="hidden" />
+                    <Icon size={14} className={formData[id as keyof PropertyFormData] ? 'text-[#0217ff]' : 'text-zinc-400'} />
+                    <span className={`text-[10px] font-bold ${formData[id as keyof PropertyFormData] ? 'text-[#0217ff]' : theme.secondaryText}`}>{label}</span>
+                  </label>
+                ))}
+              </div>
+
               {!isViewOnly && <button type="submit" disabled={loading} className="w-full py-4 bg-[#0217ff] text-white rounded-xl font-bold uppercase text-xs tracking-widest shadow-xl hover:bg-[#0217ff]/90 transition-all flex items-center justify-center gap-2">{loading ? <Loader2 className="animate-spin" size={18} /> : <><Save size={18} /> {editingId ? 'Atualizar Imóvel' : 'Cadastrar Imóvel'}</>}</button>}
               {isViewOnly && <button type="button" onClick={() => { setShowModal(false); setEditingId(null); }} className="w-full py-4 bg-zinc-100 dark:bg-white/5 rounded-xl font-bold uppercase text-xs">Fechar</button>}
             </form></div>
@@ -667,7 +711,6 @@ export default function PropertiesPage() {
               {selectedProperty.images?.[0] && <img src={selectedProperty.images[0]} alt="" className="w-full h-64 object-cover rounded-2xl" />}
               <div><h3 className={`text-2xl font-bold ${theme.text}`}>{selectedProperty.title}</h3><p className="text-sm text-zinc-500 flex items-center gap-2 mt-1"><MapPin size={14} /> {selectedProperty.location}</p></div>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4"><div className="p-3 rounded-xl bg-zinc-50 dark:bg-white/5 text-center"><Ruler size={18} className="mx-auto mb-1 text-[#0217ff]" /><p className="text-[8px] font-bold uppercase text-zinc-400">Área</p><p className="font-bold">{selectedProperty.area} m²</p></div><div className="p-3 rounded-xl bg-zinc-50 dark:bg-white/5 text-center"><Bed size={18} className="mx-auto mb-1 text-[#0217ff]" /><p className="text-[8px] font-bold uppercase text-zinc-400">Quartos</p><p className="font-bold">{selectedProperty.bedrooms}</p></div><div className="p-3 rounded-xl bg-zinc-50 dark:bg-white/5 text-center"><Bath size={18} className="mx-auto mb-1 text-[#0217ff]" /><p className="text-[8px] font-bold uppercase text-zinc-400">Banheiros</p><p className="font-bold">{selectedProperty.bathrooms}</p></div><div className="p-3 rounded-xl bg-zinc-50 dark:bg-white/5 text-center"><Car size={18} className="mx-auto mb-1 text-[#0217ff]" /><p className="text-[8px] font-bold uppercase text-zinc-400">Vagas</p><p className="font-bold">{selectedProperty.parking_spaces}</p></div></div>
-              {/* 🔥 COMODIDADES NO DETAIL MODAL */}
               {AMENITIES.filter(a => selectedProperty[a.id as keyof Property]).length > 0 && (
                 <div>
                   <h4 className="text-[10px] font-bold uppercase text-[#0217ff] mb-3">Comodidades</h4>
