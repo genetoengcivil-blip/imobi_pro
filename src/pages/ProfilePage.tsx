@@ -119,6 +119,15 @@ const ProfilePage: React.FC = () => {
     e.target.value = '';
   };
 
+  // --- NOVA FUNÇÃO: REMOVER AVATAR ---
+  const handleRemoveAvatar = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (window.confirm('Deseja remover sua foto de perfil?')) {
+      setAvatarPreview(null);
+      await updateUser({ avatar: null });
+    }
+  };
+
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -150,6 +159,15 @@ const ProfilePage: React.FC = () => {
     };
     reader.readAsDataURL(file);
     e.target.value = '';
+  };
+
+  // --- NOVA FUNÇÃO: REMOVER LOGO ---
+  const handleRemoveLogo = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (window.confirm('Deseja remover a logo da imobiliária?')) {
+      setLogoPreview(null);
+      await updateUser({ logo: null });
+    }
   };
 
   const formatPhoneDisplay = (phone: string) => {
@@ -260,6 +278,18 @@ const ProfilePage: React.FC = () => {
                       {getInitials(form.name)}
                     </div>
                   )}
+
+                  {/* Botão de Apagar Avatar */}
+                  {avatarPreview && (
+                    <button 
+                      onClick={handleRemoveAvatar}
+                      className="absolute -top-1 -right-1 z-10 p-1 bg-red-500 text-white rounded-full shadow-md opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600"
+                      title="Remover foto"
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+
                   <button 
                     onClick={() => avatarInputRef.current?.click()} 
                     disabled={uploadingAvatar}
@@ -284,7 +314,7 @@ const ProfilePage: React.FC = () => {
 
               <div className="h-12 w-px bg-gray-200 hidden sm:block" />
 
-              {/* Logo - AGORA COM object-cover PARA PREENCHER TODO O ESPAÇO */}
+              {/* Logo */}
               <div className="flex flex-col items-center gap-2">
                 <div className="relative group">
                   {logoPreview ? (
@@ -301,6 +331,18 @@ const ProfilePage: React.FC = () => {
                       <span className="text-[9px] text-gray-400">Logo</span>
                     </div>
                   )}
+
+                  {/* Botão de Apagar Logo */}
+                  {logoPreview && (
+                    <button 
+                      onClick={handleRemoveLogo}
+                      className="absolute -top-1 -right-1 z-10 p-1 bg-red-500 text-white rounded-full shadow-md opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600"
+                      title="Remover logo"
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+
                   <button 
                     onClick={() => logoInputRef.current?.click()} 
                     disabled={uploadingLogo}
@@ -326,11 +368,9 @@ const ProfilePage: React.FC = () => {
             </div>
           </div>
 
-          {/* FORM / DISPLAY - Restante do código igual... */}
           <div className="p-6">
             {editing ? (
               <form onSubmit={(e) => { e.preventDefault(); handleSave(); }} className="space-y-5">
-                {/* ... campos do formulário ... */}
                 <div>
                   <label className="text-[11px] font-bold uppercase text-gray-500 mb-1 block">Nome Completo</label>
                   <input 
@@ -474,7 +514,7 @@ const ProfilePage: React.FC = () => {
                   <div className="pt-2 border-t border-gray-100">
                     <p className="text-[11px] font-bold uppercase text-gray-500 mb-3">Redes Sociais</p>
                     <div className="flex flex-wrap gap-3">
-                      {SOCIAL_CONFIG.filter(s => user?.socialMedia?.[s.key as keyof typeof user.socialMedia]).map(({ key, label, color, icon: Icon }) => {
+                      {socialLinks.map(({ key, label, color, icon: Icon }) => {
                         const url = user?.socialMedia?.[key as keyof typeof user.socialMedia] || '';
                         const href = url.startsWith('http') ? url : `https://${url}`;
                         return (
