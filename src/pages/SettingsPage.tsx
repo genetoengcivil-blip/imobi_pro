@@ -52,35 +52,57 @@ export default function SettingsPage() {
     }, 600);
   };
 
-  // --- FUNÇÃO: EXPORTAR BACKUP JSON ---
-  const handleExportBackup = () => {
+  // --- FUNÇÃO: EXPORTAR BACKUP JSON (CORRIGIDA) ---
+  const handleExportBackup = async () => {
+    setLoading(true);
     try {
+      // Buscamos os dados mais recentes diretamente do banco para garantir o backup completo
+      const [props, lds, trans, apps, conts, prof] = await Promise.all([
+        supabase.from('properties').select('*').eq('user_id', user?.id),
+        supabase.from('leads').select('*').eq('user_id', user?.id),
+        supabase.from('transactions').select('*').eq('user_id', user?.id),
+        supabase.from('appointments').select('*').eq('user_id', user?.id),
+        supabase.from('contracts').select('*').eq('user_id', user?.id),
+        supabase.from('profiles').select('*').eq('id', user?.id).single()
+      ]);
+
       const backupData = {
         app: 'ImobiPro',
-        version: '4.5.0',
+        version: '4.5.1',
         date: new Date().toISOString(),
-        content: { leads, properties, transactions, appointments }
+        content: { 
+          properties: props.data || [],
+          leads: lds.data || [], 
+          transactions: trans.data || [], 
+          appointments: apps.data || [],
+          contracts: conts.data || [],
+          profile: prof.data || {}
+        }
       };
+
       const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `backup_imobipro_${new Date().toISOString().split('T')[0]}.json`;
+      link.download = `backup_completo_${new Date().toISOString().split('T')[0]}.json`;
       link.click();
       URL.revokeObjectURL(url);
-      setSuccessMessage('Arquivo de backup gerado!');
+      
+      setSuccessMessage('Arquivo de backup gerado com sucesso!');
       setTimeout(() => setSuccessMessage(''), 3000);
     } catch (err) {
-      alert('Erro ao gerar backup.');
+      alert('Erro ao gerar backup completo.');
+    } finally {
+      setLoading(false);
     }
   };
 
-  // --- FUNÇÃO: RESTAURAR VIA ARQUIVO ---
+  // --- FUNÇÃO: RESTAURAR VIA ARQUIVO (CORRIGIDA) ---
   const handleRestoreFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (!file) return;
+    if (!file || !user?.id) return;
 
-    if (!window.confirm('Atenção: Os dados atuais serão apagados e substituídos pelos do arquivo. Confirmar restauração?')) return;
+    if (!window.confirm('Atenção: Todos os dados atuais (Imóveis, Leads, Contratos e Site) serão substituídos pelos do arquivo. Confirmar?')) return;
 
     setLoading(true);
     const reader = new FileReader();
@@ -89,30 +111,48 @@ export default function SettingsPage() {
         const backup = JSON.parse(e.target?.result as string);
         if (!backup.content) throw new Error("Arquivo inválido");
 
-        const tables = ['leads', 'properties', 'transactions', 'appointments'];
+        const { content } = backup;
+
+        // 1. Limpeza de todas as tabelas
+        const tables = ['properties', 'leads', 'transactions', 'appointments', 'contracts'];
         for (const table of tables) {
           await supabase.from(table).delete().eq('user_id', user.id);
-          const data = backup.content[table].map((item: any) => ({ 
-            ...item, 
-            user_id: user.id, 
-            id: undefined 
-          }));
-          if (data.length > 0) await supabase.from(table).insert(data);
         }
-        setSuccessMessage('Dados restaurados com sucesso!');
-        setTimeout(() => window.location.reload(), 1500);
+
+        // 2. Inserção dos dados restaurados
+        for (const table of tables) {
+          const tableData = content[table];
+          if (tableData && tableData.length > 0) {
+            const dataToInsert = tableData.map((item: any) => {
+              const { id, created_at, ...rest } = item;
+              return { ...rest, user_id: user.id };
+            });
+            await supabase.from(table).insert(dataToInsert);
+          }
+        }
+
+        // 3. Restauração do Perfil/Site
+        if (content.profile && Object.keys(content.profile).length > 0) {
+          const { id, created_at, ...profileData } = content.profile;
+          await supabase.from('profiles').update(profileData).eq('id', user.id);
+        }
+
+        setSuccessMessage('Sistema restaurado com sucesso!');
+        setTimeout(() => window.location.reload(), 1000);
       } catch (err) {
-        alert('Erro: O arquivo selecionado não é um backup válido do ImobiPro.');
+        alert('Erro: O arquivo não é um backup válido ou está corrompido.');
+      } finally {
         setLoading(false);
       }
     };
     reader.readAsText(file);
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  // --- FUNÇÃO: ZERAR SISTEMA (LIMPEZA TOTAL NO BANCO + PERFIL) ---
+  // --- FUNÇÃO: ZERAR SISTEMA (LIMPEZA TOTAL CORRIGIDA) ---
   const handleFullReset = async () => {
     const confirm = window.confirm(
-      '⚠️ AVISO FINAL: Isso apagará TODOS os seus leads, imóveis, financeiro e fotos de perfil permanentemente.\n\nPara concluir, você precisará fazer login novamente. Deseja continuar?'
+      '⚠️ AVISO FINAL: Isso apagará TODOS os seus leads, imóveis, contratos, financeiro e configurações do site permanentemente.\n\nDeseja continuar?'
     );
     
     if (!confirm) return;
@@ -121,39 +161,38 @@ export default function SettingsPage() {
     try {
       if (!user?.id) throw new Error("Sessão expirada.");
 
-      // 1. Limpar Tabelas Operacionais
-      const tables = ['leads', 'properties', 'transactions', 'appointments'];
+      // 1. Limpar Tabelas Operacionais (Incluindo Contratos)
+      const tables = ['leads', 'properties', 'transactions', 'appointments', 'contracts'];
       for (const table of tables) {
         await supabase.from(table).delete().eq('user_id', user.id);
       }
       
-      // 2. Limpar o Perfil (Fotos, bio, redes sociais)
-      const { error: profileError } = await supabase.from('profiles').update({
+      // 2. Limpar o Perfil/Site (Reset total dos campos)
+      await supabase.from('profiles').update({
         avatar: null,
         logo: null,
+        full_name: '',
+        slug: '',
         bio: '',
         phone: '',
         creci: '',
         company: '',
         experience: '',
         specialties: '',
-        professional_title: 'Consultor Imobiliário',
-        social_media: {}
+        whatsapp_message: '',
+        social_media: { instagram: '', facebook: '', youtube: '', linkedin: '' }
       }).eq('id', user.id);
 
-      if (profileError) throw profileError;
+      setSuccessMessage('Sistema zerado com sucesso!');
 
-      setSuccessMessage('Sistema zerado! Redirecionando para login...');
-
-      // 3. Aguardar um pouco para o usuário ler a mensagem, limpar cache e mandar para /login
       setTimeout(() => {
         localStorage.clear();
         sessionStorage.clear();
         window.location.href = '/login'; 
-      }, 2500);
+      }, 2000);
 
     } catch (err: any) {
-      alert('Erro ao tentar zerar o sistema: ' + err.message);
+      alert('Erro ao zerar o sistema: ' + err.message);
       setLoading(false);
     }
   };
@@ -225,15 +264,15 @@ export default function SettingsPage() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <button onClick={handleExportBackup} className={`flex items-center gap-4 p-5 rounded-2xl border ${theme.border} ${theme.bgHover} transition-all`}>
+          <button onClick={handleExportBackup} disabled={loading} className={`flex items-center gap-4 p-5 rounded-2xl border ${theme.border} ${theme.bgHover} transition-all`}>
             <div className="p-3 rounded-xl bg-blue-500/10 text-blue-500"><Download size={20} /></div>
             <div className="text-left">
               <p className={`font-bold ${theme.text}`}>Salvar Backup</p>
-              <p className="text-[10px] uppercase font-bold text-zinc-500">Exportar arquivo .JSON</p>
+              <p className="text-[10px] uppercase font-bold text-zinc-500">Exportar tudo (.JSON)</p>
             </div>
           </button>
 
-          <button onClick={() => setShowRestoreModal(true)} className={`flex items-center gap-4 p-5 rounded-2xl border ${theme.border} ${theme.bgHover} transition-all`}>
+          <button onClick={() => setShowRestoreModal(true)} disabled={loading} className={`flex items-center gap-4 p-5 rounded-2xl border ${theme.border} ${theme.bgHover} transition-all`}>
             <div className="p-3 rounded-xl bg-green-500/10 text-green-500"><RefreshCw size={20} /></div>
             <div className="text-left">
               <p className={`font-bold ${theme.text}`}>Restaurar Sistema</p>
@@ -268,7 +307,7 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* --- MODAL DE RESTAURAÇÃO (MOCK) --- */}
+      {/* --- MODAL DE RESTAURAÇÃO --- */}
       {showRestoreModal && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/70 backdrop-blur-md">
           <div className={`w-full max-w-md p-8 rounded-[40px] border ${theme.card} shadow-2xl relative animate-fade-in`}>
@@ -279,18 +318,16 @@ export default function SettingsPage() {
                 <RefreshCw size={32} className="text-[#0217ff]" />
               </div>
               <h3 className={`text-xl font-bold ${theme.text}`}>Restaurar Sistema</h3>
-              <p className={`text-sm ${theme.textMuted} mt-2`}>Como você deseja proceder com a restauração?</p>
+              <p className={`text-sm ${theme.textMuted} mt-2`}>Como você deseja proceder?</p>
             </div>
 
             <div className="space-y-4">
-              {/* RESTAURAÇÃO VIA ARQUIVO */}
               <button onClick={() => fileInputRef.current?.click()} className={`w-full flex items-center gap-4 p-5 rounded-2xl border ${theme.border} ${theme.bgHover} transition-all`}>
                 <div className="p-2 bg-green-500/10 text-green-500 rounded-lg"><Upload size={20} /></div>
                 <div className="text-left"><p className={`font-bold ${theme.text}`}>Backup de Sistema</p><p className="text-[10px] text-zinc-500 uppercase">Usar arquivo local (.json)</p></div>
               </button>
               <input type="file" ref={fileInputRef} className="hidden" accept=".json" onChange={handleRestoreFile} />
 
-              {/* ZERAR SISTEMA */}
               <button onClick={handleFullReset} className="w-full flex items-center gap-4 p-5 rounded-2xl border border-red-500/10 bg-red-500/5 hover:bg-red-500/10 transition-all">
                 <div className="p-2 bg-red-500/10 text-red-500 rounded-lg"><Trash2 size={20} /></div>
                 <div className="text-left"><p className="font-bold text-red-600">Zerar Sistema</p><p className="text-[10px] text-red-400 uppercase">Limpeza total e novo login</p></div>
@@ -300,22 +337,12 @@ export default function SettingsPage() {
             {loading && (
               <div className="absolute inset-0 bg-white/90 dark:bg-zinc-900/90 rounded-[40px] flex flex-col items-center justify-center">
                 <Loader2 size={40} className="animate-spin text-[#0217ff] mb-4" />
-                <p className="text-xs font-black uppercase tracking-widest text-[#0217ff]">Processando limpeza...</p>
+                <p className="text-xs font-black uppercase tracking-widest text-[#0217ff]">Processando...</p>
               </div>
             )}
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-// COMPONENTE AUXILIAR PARA SENHAS
-function PasswordField({ placeholder, value, onChange, show, setShow, theme }: any) {
-  return (
-    <div className="relative">
-      <input type={show ? 'text' : 'password'} placeholder={placeholder} value={value} onChange={(e) => onChange(e.target.value)} className={`w-full px-5 py-4 rounded-2xl ${theme.inputBg} border ${theme.border} focus:border-[#0217ff] focus:outline-none ${theme.text}`} />
-      <button type="button" onClick={() => setShow(!show)} className="absolute right-4 top-1/2 -translate-y-1/2 p-2">{show ? <EyeOff size={18} className={theme.textMuted} /> : <Eye size={18} className={theme.textMuted} />}</button>
     </div>
   );
 }

@@ -38,6 +38,7 @@ import { useGlobal } from '../context/GlobalContext';
 import { Appointment } from '../types';
 import { format, isToday, isTomorrow, isPast, isFuture, differenceInDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { supabase } from '../lib/supabase';
 
 // Função para formatar telefone
 const formatPhoneNumber = (value: string) => {
@@ -50,7 +51,8 @@ const formatPhoneNumber = (value: string) => {
 };
 
 export default function CalendarPage() {
-  const { appointments, addAppointment, deleteAppointment, darkMode } = useGlobal();
+  const { user, darkMode } = useGlobal();
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [currentDate, setCurrentDate] = useState(new Date());
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingAppointment, setEditingAppointment] = useState<Appointment | null>(null);
@@ -77,6 +79,42 @@ export default function CalendarPage() {
     status: 'pendente',
     reminder: true
   });
+
+  // --- BUSCAR DADOS DO BANCO ---
+  useEffect(() => {
+    if (user) loadAppointments();
+  }, [user]);
+
+  async function loadAppointments() {
+    try {
+      const { data, error } = await supabase
+        .from('appointments')
+        .select('*')
+        .eq('user_id', user?.id)
+        .order('time', { ascending: true });
+      
+      if (error) throw error;
+      
+      // Converte snake_case do banco para camelCase do seu código
+      const formatted = (data || []).map(item => ({
+        id: item.id,
+        title: item.title,
+        date: item.date,
+        time: item.time,
+        endTime: item.end_time,
+        type: item.type,
+        notes: item.notes,
+        location: item.location,
+        clientName: item.client_name,
+        clientPhone: item.client_phone,
+        status: item.status,
+        reminder: item.reminder
+      }));
+      setAppointments(formatted);
+    } catch (err) {
+      console.error('Erro ao carregar agenda:', err);
+    }
+  }
 
   // Dias da semana
   const weekDays = ['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB'];
@@ -164,6 +202,7 @@ export default function CalendarPage() {
     return styles[status] || styles.pendente;
   };
 
+  // --- FUNÇÃO SUBMIT ATUALIZADA ---
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -179,17 +218,35 @@ export default function CalendarPage() {
     
     setIsSubmitting(true);
     
-    const appointmentToSave = {
-      ...newApp,
-      id: editingAppointment?.id || Date.now().toString()
+    // Mapeamento para o banco de dados
+    const dbData = {
+      user_id: user?.id,
+      title: newApp.title,
+      date: newApp.date,
+      time: newApp.time,
+      end_time: newApp.endTime,
+      type: newApp.type,
+      notes: newApp.notes,
+      location: newApp.location,
+      client_name: newApp.clientName,
+      client_phone: newApp.clientPhone,
+      status: newApp.status,
+      reminder: newApp.reminder
     };
     
     try {
-      await addAppointment(appointmentToSave);
+      if (editingAppointment) {
+        await supabase.from('appointments').update(dbData).eq('id', editingAppointment.id);
+      } else {
+        await supabase.from('appointments').insert([dbData]);
+      }
+      
       setShowSuccessMessage(true);
       setTimeout(() => setShowSuccessMessage(false), 3000);
       setIsModalOpen(false);
       setEditingAppointment(null);
+      loadAppointments(); // Recarrega do banco
+      
       setNewApp({
         title: '',
         date: currentDate.toISOString().split('T')[0],
@@ -205,15 +262,16 @@ export default function CalendarPage() {
       });
     } catch (error) {
       console.error('Erro ao salvar compromisso:', error);
-      alert('Erro ao salvar compromisso. Tente novamente.');
+      alert('Erro ao salvar compromisso no banco.');
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (confirm('Tem certeza que deseja excluir este compromisso?')) {
-      deleteAppointment(id);
+      await supabase.from('appointments').delete().eq('id', id);
+      loadAppointments();
       if (showDetailsModal) setShowDetailsModal(false);
     }
   };
@@ -403,7 +461,7 @@ export default function CalendarPage() {
 
       {/* MAIN CONTENT - RESPONSIVO */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* CALENDAR SIDEBAR - Mobile adaptado */}
+        {/* CALENDAR SIDEBAR */}
         <div className={`p-4 md:p-6 rounded-2xl border ${cardStyles}`}>
           <div className="flex items-center justify-between mb-4 md:mb-6">
             <h2 className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Calendário</h2>
@@ -580,7 +638,7 @@ export default function CalendarPage() {
                           {format(day, 'dd')}
                         </div>
                         <div>
-                          <p className={`font-bold text-xs md:text-sm ${darkMode ? 'text-white' : 'text-gray-900'}`}>{weekDays[idx]}</p>
+                          <p className={`font-bold text-xs md:text-sm ${darkMode ? 'text-white' : 'text-gray-900'}`}>{weekDays[day.getDay()]}</p>
                           <p className="text-[8px] md:text-[10px] text-gray-500">{format(day, 'MMMM', { locale: ptBR })}</p>
                         </div>
                         {dayApps.length > 0 && (
@@ -674,7 +732,7 @@ export default function CalendarPage() {
         </div>
       </div>
 
-      {/* MODAL DE CRIAÇÃO/EDIÇÃO - RESPONSIVO */}
+      {/* MODAL DE CRIAÇÃO/EDIÇÃO */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[100] flex items-center justify-center p-4 animate-fade-in">
           <div className="bg-white w-full max-w-md md:max-w-2xl rounded-2xl border border-gray-200 shadow-2xl overflow-hidden relative max-h-[90vh] overflow-y-auto">
@@ -834,7 +892,7 @@ export default function CalendarPage() {
         </div>
       )}
 
-      {/* MODAL DE DETALHES - RESPONSIVO */}
+      {/* MODAL DE DETALHES */}
       {showDetailsModal && selectedAppointment && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[100] flex items-center justify-center p-4 animate-fade-in">
           <div className="bg-white w-full max-w-md rounded-2xl border border-gray-200 shadow-2xl overflow-hidden relative max-h-[90vh] overflow-y-auto">
