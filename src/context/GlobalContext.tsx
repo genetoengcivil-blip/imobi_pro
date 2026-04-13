@@ -43,7 +43,7 @@ interface GlobalContextType {
   toggleDarkMode: () => void;
   updateUser: (updates: any) => Promise<void>;
   addLead: (lead: any) => Promise<void>;
-  updateLead: (id: string, lead: any) => Promise<void>;
+  updateLead: (id: string, updates: any) => Promise<void>;
   deleteLead: (id: string) => Promise<void>;
   addProperty: (property: any) => Promise<void>;
   updateProperty: (id: string, property: any) => Promise<void>;
@@ -68,7 +68,6 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return saved ? JSON.parse(saved) : false;
   });
 
-  // Salvar apenas preferências estéticas no localStorage
   useEffect(() => {
     localStorage.setItem('darkMode', JSON.stringify(darkMode));
     if (darkMode) document.documentElement.classList.add('dark');
@@ -88,7 +87,6 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const carregarDados = async (authUser: any) => {
     try {
-      // 1. Perfil do Usuário
       const { data: profile } = await supabase
         .from('profiles')
         .select('*')
@@ -111,7 +109,6 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       setUser({ ...authUser, ...userProfile });
 
-      // 2. Carregar Dados com filtro estrito de USER_ID
       const [leadsData, propertiesData, transData, appData] = await Promise.all([
         safeFetch(supabase.from('leads').select('*').eq('user_id', authUser.id).order('created_at', { ascending: false })),
         safeFetch(supabase.from('properties').select('*').eq('user_id', authUser.id).order('created_at', { ascending: false })),
@@ -119,7 +116,6 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         safeFetch(supabase.from('appointments').select('*').eq('user_id', authUser.id).order('date', { ascending: false })),
       ]);
 
-      // Formatação para compatibilidade com a UI
       setLeads(leadsData.map((l: any) => ({
         ...l,
         id: l.id.toString(),
@@ -144,7 +140,6 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   };
 
-  // Monitor de Autenticação
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.user) {
@@ -161,14 +156,50 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return () => subscription.unsubscribe();
   }, []);
 
+  // ========== FUNÇÕES DE LEADS (CORRIGIDAS) ==========
+  const addLead = async (leadData: any) => {
+    if (!user?.id) return;
+    const { data, error } = await supabase
+      .from('leads')
+      .insert([{ ...leadData, user_id: user.id }])
+      .select().single();
+    if (!error && data) setLeads(prev => [{ ...data, id: data.id.toString(), createdAt: data.created_at }, ...prev]);
+  };
+
+  const updateLead = async (id: string, updates: any) => {
+    if (!user?.id) return;
+    const { error } = await supabase.from('leads').update(updates).eq('id', id);
+    if (!error) {
+      setLeads(prev => prev.map(l => l.id === id ? { ...l, ...updates } : l));
+    }
+  };
+
+  const deleteLead = async (id: string) => {
+    const { error } = await supabase.from('leads').delete().eq('id', id);
+    if (!error) setLeads(prev => prev.filter(l => l.id !== id));
+  };
+
+  // ========== FUNÇÕES DE IMÓVEIS ==========
+  const addProperty = async (prop: any) => {
+    if (!user?.id) return;
+    const { data, error } = await supabase.from('properties').insert([{ ...prop, user_id: user.id }]).select().single();
+    if (!error && data) setProperties(prev => [data, ...prev]);
+  };
+
+  const updateProperty = async (id: string, updates: any) => {
+    const { error } = await supabase.from('properties').update(updates).eq('id', id);
+    if (!error) setProperties(prev => prev.map(p => p.id === id ? { ...p, ...updates } : p));
+  };
+
+  const deleteProperty = async (id: string) => {
+    const { error } = await supabase.from('properties').delete().eq('id', id);
+    if (!error) setProperties(prev => prev.filter(p => p.id !== id));
+  };
+
   // ========== FUNÇÕES DE TRANSAÇÕES ==========
   const addTransaction = async (transaction: Omit<Transaction, 'id'>) => {
     if (!user?.id) return;
-    const { data, error } = await supabase
-      .from('transactions')
-      .insert([{ ...transaction, user_id: user.id }])
-      .select().single();
-    
+    const { data, error } = await supabase.from('transactions').insert([{ ...transaction, user_id: user.id }]).select().single();
     if (!error && data) setTransactions(prev => [data, ...prev]);
   };
 
@@ -177,44 +208,16 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (!error) setTransactions(prev => prev.filter(t => t.id !== id));
   };
 
-  // ========== FUNÇÕES DE IMÓVEIS ==========
-  const addProperty = async (prop: any) => {
-    if (!user?.id) return;
-    const { data, error } = await supabase
-      .from('properties')
-      .insert([{ ...prop, user_id: user.id }])
-      .select().single();
-    
-    if (!error && data) setProperties(prev => [data, ...prev]);
-  };
-
-  const deleteProperty = async (id: string) => {
-    const { error } = await supabase.from('properties').delete().eq('id', id);
-    if (!error) setProperties(prev => prev.filter(p => p.id !== id));
-  };
-
   // ========== FUNÇÕES DE COMPROMISSOS ==========
   const addAppointment = async (app: Omit<Appointment, 'id'>) => {
     if (!user?.id) return;
-    const payload = {
-      ...app,
-      user_id: user.id,
-      client_name: app.clientName,
-      client_phone: app.clientPhone,
-      end_time: app.endTime
-    };
-    // Limpar campos de UI antes de salvar no banco
+    const payload = { ...app, user_id: user.id, client_name: app.clientName, client_phone: app.clientPhone, end_time: app.endTime };
     delete (payload as any).clientName;
     delete (payload as any).clientPhone;
     delete (payload as any).endTime;
-
-    const { data, error } = await supabase
-      .from('appointments')
-      .insert([payload])
-      .select().single();
-
+    const { data, error } = await supabase.from('appointments').insert([payload]).select().single();
     if (!error && data) {
-      const formatted = { ...data, clientName: data.client_name, clientPhone: data.client_phone };
+      const formatted = { ...data, clientName: data.client_name, clientPhone: data.client_phone, id: data.id.toString() };
       setAppointments(prev => [formatted, ...prev]);
     }
   };
@@ -222,21 +225,6 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const deleteAppointment = async (id: string) => {
     const { error } = await supabase.from('appointments').delete().eq('id', id);
     if (!error) setAppointments(prev => prev.filter(a => a.id !== id));
-  };
-
-  // ========== FUNÇÕES DE LEADS E PERFIL ==========
-  const addLead = async (leadData: any) => {
-    if (!user?.id) return;
-    const { data, error } = await supabase
-      .from('leads')
-      .insert([{ ...leadData, user_id: user.id }])
-      .select().single();
-    if (!error && data) setLeads(prev => [data, ...prev]);
-  };
-
-  const deleteLead = async (id: string) => {
-    const { error } = await supabase.from('leads').delete().eq('id', id);
-    if (!error) setLeads(prev => prev.filter(l => l.id !== id));
   };
 
   const updateUser = async (updates: any) => {
@@ -251,8 +239,8 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     <GlobalContext.Provider
       value={{
         user, leads, properties, transactions, appointments, loading, darkMode,
-        toggleDarkMode, updateUser, addLead, updateLead: async () => {}, deleteLead,
-        addProperty, updateProperty: async () => {}, deleteProperty,
+        toggleDarkMode, updateUser, addLead, updateLead, deleteLead,
+        addProperty, updateProperty, deleteProperty,
         addTransaction, deleteTransaction, addAppointment, deleteAppointment,
       }}
     >

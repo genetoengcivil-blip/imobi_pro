@@ -51,6 +51,32 @@ export default function DashboardPage() {
   const safeTransactions = useMemo(() => transactions || [], [transactions]);
   const safeAppointments = useMemo(() => appointments || [], [appointments]);
 
+  // Função auxiliar para tratar data sem erro de fuso horário
+  const parseSafeDate = (dateStr: string) => {
+    if (!dateStr) return new Date();
+    const [year, month, day] = dateStr.split('-').map(Number);
+    return new Date(year, month - 1, day);
+  };
+
+  // --- LÓGICA CORRIGIDA DE COMPROMISSOS ---
+  const upcomingAppointments = useMemo(() => {
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+
+    return [...safeAppointments]
+      .filter(app => {
+        const appDate = parseSafeDate(app.date);
+        return appDate >= now; // Apenas hoje ou futuro
+      })
+      .sort((a, b) => {
+        // Ordena por data e depois por hora
+        const dateA = new Date(`${a.date}T${a.time || '00:00'}`);
+        const dateB = new Date(`${b.date}T${b.time || '00:00'}`);
+        return dateA.getTime() - dateB.getTime();
+      })
+      .slice(0, 5);
+  }, [safeAppointments]);
+
   // Métricas de Automação
   const automationStats = useMemo(() => {
     const leadsDoSite = safeLeads.filter(l => l.source === 'site_publico');
@@ -77,7 +103,6 @@ export default function DashboardPage() {
     const leadsNoPeriodo = safeLeads.filter(l => new Date(l.createdAt) >= startDate);
     const transacoesNoPeriodo = safeTransactions.filter(t => new Date(t.date || (t as any).created_at) >= startDate);
 
-    // Métricas de Leads
     const vgvAtivo = leadsNoPeriodo.filter(l => l.status !== 'fechado' && l.status !== 'perdido').reduce((acc, l) => acc + (Number(l.value) || 0), 0);
     const previsaoComissao = leadsNoPeriodo.filter(l => l.status !== 'fechado' && l.status !== 'perdido').reduce((acc, l) => acc + (Number(l.value) * (Number(l.commission_rate) || 0) / 100), 0);
     const leadsNovos = leadsNoPeriodo.filter(l => l.status === 'novo').length;
@@ -85,7 +110,6 @@ export default function DashboardPage() {
     const leadsFechados = leadsNoPeriodo.filter(l => l.status === 'fechado').length;
     const leadsPerdidos = leadsNoPeriodo.filter(l => l.status === 'perdido').length;
     
-    // Métricas Financeiras
     const receitasFin = transacoesNoPeriodo.filter(t => t.type === 'receita').reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
     const despesasFin = transacoesNoPeriodo.filter(t => t.type === 'despesa').reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
     const comissoesFechadas = leadsNoPeriodo.filter(l => l.status === 'fechado').reduce((acc, l) => acc + (Number(l.value) * (Number(l.commission_rate) || 0) / 100), 0);
@@ -108,7 +132,6 @@ export default function DashboardPage() {
     };
   }, [safeLeads, safeTransactions, viewType]);
 
-  // Dados do Gráfico de VGV
   const chartData = useMemo(() => {
     const data = [];
     const now = new Date();
@@ -168,7 +191,6 @@ export default function DashboardPage() {
     return data;
   }, [safeLeads, viewType]);
 
-  // Dados para gráfico de funil de leads
   const funnelData = useMemo(() => [
     { name: 'Novos', value: dynamicMetrics.leadsNovos, color: '#3b82f6' },
     { name: 'Em Andamento', value: dynamicMetrics.leadsEmAndamento, color: '#f59e0b' },
@@ -176,7 +198,6 @@ export default function DashboardPage() {
     { name: 'Perdidos', value: dynamicMetrics.leadsPerdidos, color: '#ef4444' }
   ], [dynamicMetrics]);
 
-  // Dados para gráfico de categorias de despesa
   const expenseCategories = useMemo(() => {
     const categories: { [key: string]: number } = {};
     safeTransactions
@@ -264,7 +285,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* KPI CARDS - 4 Principais */}
+      {/* KPI CARDS */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         <div className={cardClass}>
           <div className="flex items-start justify-between">
@@ -377,7 +398,6 @@ export default function DashboardPage() {
 
       {/* GRÁFICOS PRINCIPAIS */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Gráfico de VGV - Ocupa 2 colunas */}
         <div className="lg:col-span-2">
           <div className={cardClass}>
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 gap-4">
@@ -449,7 +469,6 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Gráfico de Funil */}
         <div className={cardClass}>
           <h3 className="font-black text-xs mb-4 flex items-center gap-2 uppercase tracking-widest">
             <PieChart size={14} className="text-[#0217ff]" /> Funil de Leads
@@ -473,7 +492,6 @@ export default function DashboardPage() {
               </div>
             ))}
           </div>
-          
           <div className="mt-6 pt-4 border-t border-zinc-100 dark:border-white/10">
             <div className="flex items-center justify-between text-[10px]">
               <span className="text-zinc-500">Taxa de Conversão</span>
@@ -489,16 +507,14 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* SEGUNDA LINHA DE GRÁFICOS */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Categorias de Despesa */}
         <div className={cardClass}>
           <h3 className="font-black text-xs mb-4 flex items-center gap-2 uppercase tracking-widest">
             <BarChart3 size={14} className="text-[#0217ff]" /> Top Categorias de Despesa
           </h3>
           {expenseCategories.length > 0 ? (
             <div className="space-y-3">
-              {expenseCategories.map((cat, idx) => (
+              {expenseCategories.map((cat) => (
                 <div key={cat.name} className="space-y-1">
                   <div className="flex justify-between text-xs">
                     <span className="font-medium">{cat.name}</span>
@@ -524,13 +540,11 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Fluxo Financeiro */}
         <div className={cardClass}>
           <h3 className="font-black text-xs mb-4 flex items-center gap-2 uppercase tracking-widest">
             <DollarSign size={14} className="text-[#0217ff]" /> Fluxo do Período
           </h3>
           <div className="space-y-4">
-            {/* Receitas Financeiro */}
             <div className="flex justify-between items-center p-3 rounded-xl bg-green-500/5 border border-green-500/10">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-lg bg-green-500/10 flex items-center justify-center">
@@ -542,8 +556,6 @@ export default function DashboardPage() {
                 </div>
               </div>
             </div>
-
-            {/* Comissões Ganhas */}
             <div className="flex justify-between items-center p-3 rounded-xl bg-green-500/5 border border-green-500/10">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-lg bg-green-500/10 flex items-center justify-center">
@@ -555,8 +567,6 @@ export default function DashboardPage() {
                 </div>
               </div>
             </div>
-
-            {/* Despesas Totais */}
             <div className="flex justify-between items-center p-3 rounded-xl bg-red-500/5 border border-red-500/10">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-lg bg-red-500/10 flex items-center justify-center">
@@ -568,8 +578,6 @@ export default function DashboardPage() {
                 </div>
               </div>
             </div>
-
-            {/* Lucro Líquido */}
             <div className="pt-3 border-t border-zinc-100 dark:border-white/5 flex justify-between items-center">
               <span className="text-[10px] font-black uppercase">Lucro Líquido</span>
               <div className="flex items-center gap-2">
@@ -589,7 +597,6 @@ export default function DashboardPage() {
 
       {/* ÚLTIMOS LEADS E AGENDA */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Últimos Leads */}
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-bold flex items-center gap-2">
@@ -629,7 +636,7 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Próximos Compromissos */}
+        {/* --- SEÇÃO DE COMPROMISSOS CORRIGIDA --- */}
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-bold flex items-center gap-2">
@@ -640,38 +647,41 @@ export default function DashboardPage() {
             </button>
           </div>
           <div className={cardClass}>
-            {safeAppointments.length > 0 ? (
+            {upcomingAppointments.length > 0 ? (
               <div className="space-y-3">
-                {safeAppointments.slice(0, 5).map((app, i) => (
-                  <div 
-                    key={i} 
-                    className="flex items-center gap-4 p-3 rounded-xl bg-zinc-50 dark:bg-white/5 hover:bg-zinc-100 dark:hover:bg-white/10 transition-all cursor-pointer group"
-                    onClick={() => handleViewAppointment(app)}
-                  >
-                    <div className="text-center min-w-[50px]">
-                      <div className="text-[9px] font-black text-[#0217ff] uppercase">
-                        {new Date(app.date).toLocaleString('pt-BR', { month: 'short' }).toUpperCase()}
+                {upcomingAppointments.map((app, i) => {
+                  const appDate = parseSafeDate(app.date);
+                  return (
+                    <div 
+                      key={i} 
+                      className="flex items-center gap-4 p-3 rounded-xl bg-zinc-50 dark:bg-white/5 hover:bg-zinc-100 dark:hover:bg-white/10 transition-all cursor-pointer group"
+                      onClick={() => handleViewAppointment(app)}
+                    >
+                      <div className="text-center min-w-[50px]">
+                        <div className="text-[9px] font-black text-[#0217ff] uppercase">
+                          {appDate.toLocaleString('pt-BR', { month: 'short' }).toUpperCase()}
+                        </div>
+                        <div className="text-lg font-black leading-none">
+                          {appDate.getDate()}
+                        </div>
                       </div>
-                      <div className="text-lg font-black leading-none">
-                        {new Date(app.date).getDate()}
+                      <div className="flex-1">
+                        <div className="font-bold text-sm line-clamp-1 group-hover:text-[#0217ff] transition-colors">{app.title}</div>
+                        <div className="text-[10px] text-zinc-500 flex items-center gap-2 mt-0.5">
+                          <Clock size={10} />
+                          <span>{app.time}</span>
+                          {app.clientName && (
+                            <>
+                              <span className="w-1 h-1 rounded-full bg-zinc-300" />
+                              <span>{app.clientName}</span>
+                            </>
+                          )}
+                        </div>
                       </div>
+                      <ChevronRight size={16} className="text-zinc-400 group-hover:translate-x-1 transition-transform" />
                     </div>
-                    <div className="flex-1">
-                      <div className="font-bold text-sm line-clamp-1 group-hover:text-[#0217ff] transition-colors">{app.title}</div>
-                      <div className="text-[10px] text-zinc-500 flex items-center gap-2 mt-0.5">
-                        <Clock size={10} />
-                        <span>{app.time}</span>
-                        {app.clientName && (
-                          <>
-                            <span className="w-1 h-1 rounded-full bg-zinc-300" />
-                            <span>{app.clientName}</span>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                    <ChevronRight size={16} className="text-zinc-400 group-hover:translate-x-1 transition-transform" />
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             ) : (
               <div className="text-center py-8">
@@ -685,7 +695,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* MODAL DE DETALHES DO COMPROMISSO */}
+      {/* MODAL DE DETALHES */}
       {showAppointmentModal && selectedAppointment && (
         <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
           <div className={`bg-white dark:bg-zinc-900 rounded-2xl max-w-md w-full shadow-2xl border ${darkMode ? 'border-white/10' : 'border-gray-200'} overflow-hidden`}>
@@ -698,10 +708,7 @@ export default function DashboardPage() {
                   </div>
                   <h3 className="text-lg font-bold text-gray-900 dark:text-white">Detalhes do Compromisso</h3>
                 </div>
-                <button 
-                  onClick={() => setShowAppointmentModal(false)}
-                  className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
-                >
+                <button onClick={() => setShowAppointmentModal(false)} className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-white/10 transition-colors">
                   <X size={18} className="text-gray-500" />
                 </button>
               </div>
@@ -716,7 +723,7 @@ export default function DashboardPage() {
                   <div className="p-3 rounded-xl bg-gray-50 dark:bg-white/5">
                     <p className="text-[10px] text-gray-500 dark:text-zinc-400 mb-1">Data</p>
                     <p className="font-medium text-sm text-gray-900 dark:text-white">
-                      {new Date(selectedAppointment.date).toLocaleDateString('pt-BR')}
+                      {parseSafeDate(selectedAppointment.date).toLocaleDateString('pt-BR')}
                     </p>
                   </div>
                   <div className="p-3 rounded-xl bg-gray-50 dark:bg-white/5">
@@ -730,48 +737,22 @@ export default function DashboardPage() {
 
                 {selectedAppointment.clientName && (
                   <div className="p-4 rounded-xl bg-gray-50 dark:bg-white/5">
-                    <p className="text-xs text-gray-500 dark:text-zinc-400 mb-1 flex items-center gap-1">
-                      <User size={12} /> Cliente
-                    </p>
+                    <p className="text-xs text-gray-500 dark:text-zinc-400 mb-1 flex items-center gap-1"><User size={12} /> Cliente</p>
                     <p className="font-medium text-gray-900 dark:text-white">{selectedAppointment.clientName}</p>
-                    {selectedAppointment.clientPhone && (
-                      <p className="text-sm text-gray-500 dark:text-zinc-400 mt-1">
-                        {formatPhoneDisplay(selectedAppointment.clientPhone)}
-                      </p>
-                    )}
                   </div>
                 )}
 
                 {selectedAppointment.location && (
                   <div className="p-4 rounded-xl bg-gray-50 dark:bg-white/5">
-                    <p className="text-xs text-gray-500 dark:text-zinc-400 mb-1 flex items-center gap-1">
-                      <MapPin size={12} /> Local
-                    </p>
+                    <p className="text-xs text-gray-500 dark:text-zinc-400 mb-1 flex items-center gap-1"><MapPin size={12} /> Local</p>
                     <p className="font-medium text-gray-900 dark:text-white">{selectedAppointment.location}</p>
                   </div>
                 )}
 
-                {selectedAppointment.notes && (
-                  <div className="p-4 rounded-xl bg-gray-50 dark:bg-white/5">
-                    <p className="text-xs text-gray-500 dark:text-zinc-400 mb-1">Observações</p>
-                    <p className="text-sm text-gray-700 dark:text-zinc-300">{selectedAppointment.notes}</p>
-                  </div>
-                )}
-
                 <div className="flex gap-3 pt-2">
-                  <button 
-                    onClick={() => navigate('/calendar')}
-                    className="flex-1 py-3 bg-[#0217ff] text-white rounded-xl font-bold text-sm hover:bg-[#0217ff]/90 transition-all"
-                  >
-                    Ver Agenda Completa
-                  </button>
+                  <button onClick={() => navigate('/calendar')} className="flex-1 py-3 bg-[#0217ff] text-white rounded-xl font-bold text-sm hover:bg-[#0217ff]/90 transition-all">Ver Agenda Completa</button>
                   {selectedAppointment.clientPhone && (
-                    <a
-                      href={`https://wa.me/${selectedAppointment.clientPhone.replace(/\D/g, '')}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="px-4 py-3 bg-green-500 text-white rounded-xl font-bold text-sm hover:bg-green-600 transition-all flex items-center gap-2"
-                    >
+                    <a href={`https://wa.me/${selectedAppointment.clientPhone.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" className="px-4 py-3 bg-green-500 text-white rounded-xl font-bold text-sm hover:bg-green-600 transition-all flex items-center gap-2">
                       <MessageSquare size={16} />
                     </a>
                   )}
@@ -783,19 +764,9 @@ export default function DashboardPage() {
       )}
 
       <style>{`
-        .animate-fade-in {
-          animation: fadeIn 0.5s ease-out;
-        }
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(10px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        .line-clamp-1 {
-          display: -webkit-box;
-          -webkit-line-clamp: 1;
-          -webkit-box-orient: vertical;
-          overflow: hidden;
-        }
+        .animate-fade-in { animation: fadeIn 0.5s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .line-clamp-1 { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
       `}</style>
     </div>
   );
